@@ -130,6 +130,123 @@ export default function OrdersSection({
   const [editedSnapshot, setEditedSnapshot] = useState<Record<string, string | number>>({});
   const [editError, setEditError] = useState<string | null>(null);
 
+  // Archive & View Vault States
+  const [viewMode, setViewMode] = useState<'Active' | 'Archived'>('Active');
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const [restoreStageId, setRestoreStageId] = useState('Pending');
+
+  // Reopen Delivered Order back to Getting Ready (Pending)
+  const reopenOrder = async (order: Order) => {
+    if (!confirm('Are you sure you want to reopen this Delivered order? This will unlock it and return it to the "Getting Ready" stage.')) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/orders/${order.id}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: 'Pending' })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setSelectedOrder(updated);
+        fetchOrders();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to reopen order.');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Error reopening order.');
+    }
+  };
+
+  // Restore Archived Order to a Selected Stage
+  const restoreOrder = async (order: Order, stageId: string) => {
+    try {
+      const res = await fetch(`/api/orders/${order.id}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: stageId })
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setSelectedOrder(updated);
+        setRestoreDialogOpen(false);
+        fetchOrders();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to restore order.');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Error restoring order.');
+    }
+  };
+
+  // Duplicate an Order (Pre-fill booking form)
+  const handleDuplicateOrder = async (order: Order) => {
+    try {
+      const res = await fetch(`/api/customers/${order.customer_id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const custData = await res.json();
+        const clonedItems = order.items.map(item => ({
+          type: item.type,
+          price: item.price,
+          notes: item.notes || ''
+        }));
+
+        setCustomer(custData);
+        setItems(clonedItems);
+        setTotalAmount(order.total_amount);
+        setPaidAmount(0); // Default to 0 advance paid for new booking
+
+        const defaultDue = new Date();
+        defaultDue.setDate(defaultDue.getDate() + 10);
+        setDueDate(defaultDue.toISOString().split('T')[0]);
+
+        setIsCreating(true);
+        setIsEditing(false);
+        setSelectedOrder(null);
+      } else {
+        alert('Could not retrieve customer details for duplication.');
+      }
+    } catch (err) {
+      console.error('Error duplicating order:', err);
+      alert('Failed to duplicate order.');
+    }
+  };
+
+  // Delete Order (with explicit Owner confirmation)
+  const handleDeleteOrder = async (order: Order) => {
+    if (!confirm(`Are you absolutely sure you want to permanently delete order ${order.order_number}? This action is irreversible and cannot be undone.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/orders/${order.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setSelectedOrder(null);
+        fetchOrders();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to delete order.');
+      }
+    } catch (err) {
+      console.error('Error deleting order:', err);
+      alert('Failed to delete order.');
+    }
+  };
+
   // Fetch Orders
   const fetchOrders = async () => {
     setLoading(true);
@@ -382,6 +499,8 @@ export default function OrdersSection({
         return 'bg-[#DCFCE7] text-[#15803D] border border-green-200';
       case 'Delivered':
         return 'bg-slate-100 text-slate-600 border border-slate-200';
+      case 'Archived':
+        return 'bg-purple-100 text-purple-700 border border-purple-200';
       case 'Pending':
         return 'bg-[#DBEAFE] text-[#1D4ED8] border border-blue-100';
       default: // Cutting, Stitching, Fitting
@@ -395,7 +514,9 @@ export default function OrdersSection({
       {/* LEFT COLUMN: Queue / Filters */}
       <div className="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-slate-900 tracking-tight font-display uppercase">Active Queue</h2>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight font-display uppercase">
+            {viewMode === 'Active' ? 'Active Queue' : 'Archived Vault'}
+          </h2>
           {!isCreating && (
             <button
               onClick={() => {
@@ -409,27 +530,66 @@ export default function OrdersSection({
           )}
         </div>
 
-        {/* Status Filters - Styled as elegant tabs */}
-        <div className="flex flex-wrap gap-1 bg-slate-50 p-1.5 rounded-xl border border-slate-200/50 justify-center">
-          {['All', ...activeQueueStages.map(s => s.id)].map((tabId) => {
-            const isSelected = activeFilter === tabId;
-            const tabName = tabId === 'All' ? 'All' : (stagesList.find(s => s.id === tabId)?.name || tabId);
-            return (
-              <button
-                key={tabId}
-                onClick={() => setActiveFilter(tabId)}
-                className={`py-1.5 px-2.5 rounded-lg text-2xs font-extrabold transition-all cursor-pointer text-center uppercase tracking-wider truncate border border-transparent ${
-                  isSelected
-                    ? 'bg-[#1E293B] text-white border-slate-700 shadow-sm font-black'
-                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
-                }`}
-                title={tabName}
-              >
-                {tabName}
-              </button>
-            );
-          })}
+        {/* Segmented Control for Active vs Archived */}
+        <div className="grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/40">
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode('Active');
+              setActiveFilter('All');
+            }}
+            className={`py-2 text-xs font-bold rounded-lg cursor-pointer transition-all text-center uppercase tracking-wider ${
+              viewMode === 'Active'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-500 hover:text-slate-850'
+            }`}
+          >
+            Active Pipeline
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode('Archived');
+              setActiveFilter('Archived');
+            }}
+            className={`py-2 text-xs font-bold rounded-lg cursor-pointer transition-all text-center uppercase tracking-wider ${
+              viewMode === 'Archived'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-500 hover:text-slate-850'
+            }`}
+          >
+            Archived Vault
+          </button>
         </div>
+
+        {/* Status Filters - Styled as elegant tabs - Only shown in Active view mode */}
+        {viewMode === 'Active' ? (
+          <div className="flex flex-wrap gap-1 bg-slate-50 p-1.5 rounded-xl border border-slate-200/50 justify-center">
+            {['All', ...activeQueueStages.map(s => s.id)].map((tabId) => {
+              const isSelected = activeFilter === tabId;
+              const tabName = tabId === 'All' ? 'All' : (stagesList.find(s => s.id === tabId)?.name || tabId);
+              return (
+                <button
+                  key={tabId}
+                  type="button"
+                  onClick={() => setActiveFilter(tabId)}
+                  className={`py-1.5 px-2.5 rounded-lg text-2xs font-extrabold transition-all cursor-pointer text-center uppercase tracking-wider truncate border border-transparent ${
+                    isSelected
+                      ? 'bg-[#1E293B] text-white border-slate-700 shadow-sm font-black'
+                      : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
+                  }`}
+                  title={tabName}
+                >
+                  {tabName}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-2 bg-purple-50 rounded-xl border border-purple-100 text-center text-purple-700 text-xs font-bold uppercase tracking-wider">
+            Displaying Archived Vault Records
+          </div>
+        )}
 
         {/* Search */}
         <div className="space-y-4">
@@ -813,7 +973,14 @@ export default function OrdersSection({
                       Print Receipt
                     </button>
 
-                    {userRole === 'Owner' && (
+                    <button
+                      onClick={() => handleDuplicateOrder(selectedOrder)}
+                      className="px-3.5 py-2 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      Duplicate Order
+                    </button>
+
+                    {userRole === 'Owner' && selectedOrder.status !== 'Delivered' && selectedOrder.status !== 'Archived' && (
                       <button
                         onClick={() => {
                           setEditedItems([...selectedOrder.items]);
@@ -828,12 +995,71 @@ export default function OrdersSection({
                         Edit Order
                       </button>
                     )}
+
+                    {userRole === 'Owner' && (
+                      <button
+                        onClick={() => handleDeleteOrder(selectedOrder)}
+                        className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4 text-red-500" />
+                        Delete
+                      </button>
+                    )}
                   </div>
                 </div>
 
                 {/* Progress bar state machine - styled perfectly with sky-blue pipeline */}
                 <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/60 space-y-3.5 print:hidden">
                   {(() => {
+                    if (selectedOrder.status === 'Delivered') {
+                      return (
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div className="space-y-1">
+                            <span className="font-extrabold text-xs text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
+                              <CheckCircle className="w-4.5 h-4.5 text-emerald-500" />
+                              Delivered and Locked
+                            </span>
+                            <p className="text-slate-500 text-xs font-semibold">
+                              Delivered on: <span className="text-slate-800 font-bold">{selectedOrder.delivered_at ? new Date(selectedOrder.delivered_at).toLocaleString() : 'N/A'}</span>
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => reopenOrder(selectedOrder)}
+                            className="px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold rounded-lg text-xs uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
+                          >
+                            Reopen Order
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    if (selectedOrder.status === 'Archived') {
+                      return (
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div className="space-y-1">
+                            <span className="font-extrabold text-xs text-purple-700 uppercase tracking-wider flex items-center gap-1.5">
+                              <ShieldAlert className="w-4.5 h-4.5 text-purple-500" />
+                              Archived in Vault
+                            </span>
+                            <p className="text-slate-500 text-xs font-semibold">
+                              This order is frozen. Movements and edits are locked.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRestoreStageId('Pending');
+                              setRestoreDialogOpen(true);
+                            }}
+                            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg text-xs uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
+                          >
+                            Restore Order
+                          </button>
+                        </div>
+                      );
+                    }
+
                     const activeWorkflowStageIds = activeWorkflowStages.map(s => s.id);
                     const currentStageIndex = activeWorkflowStageIds.indexOf(selectedOrder.status);
                     const hasNextStage = currentStageIndex !== -1 && currentStageIndex < activeWorkflowStageIds.length - 1;
@@ -848,6 +1074,7 @@ export default function OrdersSection({
                           </span>
                           {hasNextStage ? (
                             <button
+                              type="button"
                               onClick={() => advanceOrderStatus(selectedOrder)}
                               className="px-3 py-1.5 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold rounded-lg text-xs uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-all border border-slate-800"
                             >
@@ -1140,6 +1367,55 @@ export default function OrdersSection({
             </div>
           </div>
 
+        </div>
+      )}
+
+      {/* RESTORE DIALOG MODAL */}
+      {restoreDialogOpen && selectedOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/65 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl border border-slate-200 animate-fade-in">
+            <div className="flex items-center gap-2.5 text-purple-600">
+              <Clock className="w-5 h-5 text-[#38BDF8]" />
+              <h3 className="font-extrabold text-base text-slate-900 uppercase tracking-wider">Restore Order</h3>
+            </div>
+            
+            <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+              Where would you like to restore order <strong className="text-slate-800 font-bold">{selectedOrder.order_number}</strong>?
+              It will return to the active production queue in the selected stage.
+            </p>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Select Active Stage</label>
+              <select
+                value={restoreStageId}
+                onChange={(e) => setRestoreStageId(e.target.value)}
+                className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-lg font-bold text-slate-800 text-xs focus:outline-none focus:border-[#38BDF8]"
+              >
+                {activeQueueStages.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setRestoreDialogOpen(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-2xs uppercase tracking-wider rounded-lg cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => restoreOrder(selectedOrder, restoreStageId)}
+                className="px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold text-2xs uppercase tracking-wider rounded-lg cursor-pointer"
+              >
+                Restore to Active Queue
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

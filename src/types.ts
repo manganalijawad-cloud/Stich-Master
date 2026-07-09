@@ -61,6 +61,7 @@ export interface Order {
   paid_amount: number;
   due_date: string;
   measurement_snapshot: Record<string, string | number>;
+  delivered_at?: string;
   created_at: string;
   updated_at: string;
   created_by: string;
@@ -89,6 +90,7 @@ export interface ShopSettings {
   currency: string; // e.g., $, PKR, INR, AED, £
   measurement_fields: string[]; // customizable measurement parameters
   pipeline_stages?: PipelineStage[]; // customizable pipeline stages
+  auto_archive_days?: number; // default: 30 days
   updated_at: string;
   updated_by: string;
 }

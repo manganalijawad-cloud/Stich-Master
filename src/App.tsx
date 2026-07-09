@@ -4,16 +4,48 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Shield, Users, ShoppingBag, Settings, LogOut, Info, AlertTriangle, ShieldCheck, Menu, X } from 'lucide-react';
+import { Shield, Users, ShoppingBag, Settings, LogOut, Info, ShieldCheck, Menu, X, Key } from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
 import CustomersSection from './components/CustomersSection';
 import OrdersSection from './components/OrdersSection';
 import OwnerDashboard from './components/OwnerDashboard';
 import { Customer, UserProfile, UserRole, PipelineStage } from './types';
 
+// -------------------------------------------------------------------------
+// GLOBAL WINDOW.FETCH INTERCEPTOR FOR AUTH & PASSING ACTIVE ROLE HEADER
+// -------------------------------------------------------------------------
+const originalFetch = window.fetch;
+const customFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const token = localStorage.getItem('tailor_token');
+  const activeRole = localStorage.getItem('tailor_active_role') || 'Worker';
+
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : '';
+  if (url.startsWith('/api/') || url.includes('/api/')) {
+    const newInit = { ...init };
+    const headers = new Headers(newInit.headers || {});
+    if (token && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+    headers.set('X-Active-Role', activeRole);
+    newInit.headers = headers;
+    return originalFetch(input, newInit);
+  }
+  return originalFetch(input, init);
+};
+
+try {
+  window.fetch = customFetch;
+} catch (e) {
+  Object.defineProperty(window, 'fetch', {
+    value: customFetch,
+    configurable: true,
+    writable: true,
+  });
+}
+
 export default function App() {
   const [token, setToken] = useState<string | null>(() => {
-    return localStorage.getItem('tailor_token') || 'mock-owner-token';
+    return localStorage.getItem('tailor_token') || null;
   });
   const [user, setUser] = useState<UserProfile | null>(() => {
     const savedUser = localStorage.getItem('tailor_user');
@@ -24,17 +56,22 @@ export default function App() {
         // ignore
       }
     }
-    return {
-      id: '00000000-0000-0000-0000-000000000001',
-      email: 'owner@tailor.com',
-      name: 'Owner Account',
-      role: 'Owner',
-    };
+    return null;
+  });
+
+  const [activeRole, setActiveRole] = useState<UserRole>(() => {
+    return (localStorage.getItem('tailor_active_role') as UserRole) || 'Worker';
   });
 
   const [activeTab, setActiveTab] = useState<'Customers' | 'Orders' | 'Owner'>('Customers');
   const [activeCustomerIdForNewOrder, setActiveCustomerIdForNewOrder] = useState<string | undefined>(undefined);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Password verification modal state
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordVerificationError, setPasswordVerificationError] = useState<string | null>(null);
+  const [verifyPasswordLoading, setVerifyPasswordLoading] = useState(false);
 
   // Shop configurations fetched from settings API
   const [shopName, setShopName] = useState('Classic Tailors');
@@ -44,7 +81,7 @@ export default function App() {
   const [measurementFields, setMeasurementFields] = useState<string[]>([]);
   const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
   const [supabaseConfig, setSupabaseConfig] = useState<{ supabaseConnected: boolean; supabaseUrl: string | null }>({
-    supabaseConnected: false,
+    supabaseConnected: true,
     supabaseUrl: null,
   });
 
@@ -80,6 +117,12 @@ export default function App() {
           const data = await res.json();
           setUser(data.user);
           localStorage.setItem('tailor_user', JSON.stringify(data.user));
+
+          // If they are a Worker in the database, force Worker role in case activeRole is somehow Owner
+          if (data.user.role === 'Worker' && activeRole === 'Owner') {
+            setActiveRole('Worker');
+            localStorage.setItem('tailor_active_role', 'Worker');
+          }
         } else {
           handleLogout();
         }
@@ -95,6 +138,7 @@ export default function App() {
 
   // Fetch shop metadata
   const fetchShopMetadata = async () => {
+    if (!token) return;
     try {
       const configRes = await fetch('/api/config-status');
       const configContentType = configRes.headers.get('content-type') || '';
@@ -105,7 +149,7 @@ export default function App() {
 
       // Fetch dynamic settings
       const settingsRes = await fetch('/api/settings', {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { Authorization: `Bearer ${token}` },
       });
       const settingsContentType = settingsRes.headers.get('content-type') || '';
       if (settingsRes.ok && settingsContentType.includes('application/json')) {
@@ -131,11 +175,20 @@ export default function App() {
     fetchShopMetadata();
   }, [token]);
 
+  // Handle active role tab reset if activeRole becomes Worker while viewing Owner tab
+  useEffect(() => {
+    if (activeRole === 'Worker' && activeTab === 'Owner') {
+      setActiveTab('Customers');
+    }
+  }, [activeRole, activeTab]);
+
   const handleLoginSuccess = (usr: UserProfile, tkn: string) => {
     setUser(usr);
     setToken(tkn);
+    setActiveRole(usr.role);
     localStorage.setItem('tailor_token', tkn);
     localStorage.setItem('tailor_user', JSON.stringify(usr));
+    localStorage.setItem('tailor_active_role', usr.role);
     setActiveTab('Customers');
   };
 
@@ -150,12 +203,53 @@ export default function App() {
     }
     setUser(null);
     setToken(null);
+    setActiveRole('Worker');
     localStorage.removeItem('tailor_token');
     localStorage.removeItem('tailor_user');
+    localStorage.removeItem('tailor_active_role');
   };
 
   const handleSettingsUpdated = () => {
     fetchShopMetadata();
+  };
+
+  // Secure Password Verification and Role Switch
+  const handleVerifyPasswordAndSwitch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordInput) {
+      setPasswordVerificationError('Password is required.');
+      return;
+    }
+
+    setVerifyPasswordLoading(true);
+    setPasswordVerificationError(null);
+
+    try {
+      const res = await fetch('/api/auth/verify-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ password: passwordInput }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setActiveRole('Owner');
+        localStorage.setItem('tailor_active_role', 'Owner');
+        setIsPasswordModalOpen(false);
+        setPasswordInput('');
+      } else {
+        // Generic failure message protecting security details
+        setPasswordVerificationError(data.error || 'Password verification failed. Stayed in Worker mode.');
+      }
+    } catch (err: any) {
+      console.error('Password verification error:', err);
+      setPasswordVerificationError('An error occurred during verification. Stayed in Worker mode.');
+    } finally {
+      setVerifyPasswordLoading(false);
+    }
   };
 
   if (isVerifyingSession) {
@@ -168,7 +262,7 @@ export default function App() {
 
   if (!user || !token) {
     return (
-      <LoginScreen onLoginSuccess={handleLoginSuccess} supabaseConfig={supabaseConfig} />
+      <LoginScreen onLoginSuccess={handleLoginSuccess} />
     );
   }
 
@@ -183,7 +277,7 @@ export default function App() {
       label: 'Garment Orders',
       icon: ShoppingBag,
     },
-    ...(user.role === 'Owner'
+    ...(activeRole === 'Owner'
       ? [
           {
             id: 'Owner' as const,
@@ -243,7 +337,7 @@ export default function App() {
         </nav>
 
         {/* Footer/Logout Area */}
-        <div className="pt-6 border-t border-slate-800 mt-auto space-y-4">
+        <div className="pt-6 border-t border-slate-800 mt-auto space-y-3.5">
           <div className="flex flex-col gap-1 px-2">
             <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Staff Member</span>
             <div className="flex items-center gap-2 justify-between">
@@ -253,6 +347,36 @@ export default function App() {
               </span>
             </div>
           </div>
+
+          {/* Role switcher for accounts with Owner permissions */}
+          {user.role === 'Owner' && (
+            <button
+              onClick={() => {
+                if (activeRole === 'Owner') {
+                  // Instant switch to worker mode, no password needed
+                  setActiveRole('Worker');
+                  localStorage.setItem('tailor_active_role', 'Worker');
+                } else {
+                  // Password verification required to switch back to Owner
+                  setPasswordInput('');
+                  setPasswordVerificationError(null);
+                  setIsPasswordModalOpen(true);
+                }
+              }}
+              className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 text-[#38BDF8] border border-[#38BDF8]/20 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-[#38BDF8]" />
+              <span>Switch to {activeRole === 'Owner' ? 'Worker' : 'Owner'}</span>
+            </button>
+          )}
+
+          <button
+            onClick={handleLogout}
+            className="w-full py-2 px-3 bg-red-950/40 hover:bg-red-950/60 text-red-400 border border-red-900/30 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+          >
+            <LogOut className="w-3.5 h-3.5 shrink-0" />
+            <span>Sign Out</span>
+          </button>
         </div>
 
       </aside>
@@ -309,6 +433,37 @@ export default function App() {
                 {user.role}
               </span>
             </div>
+
+            {user.role === 'Owner' && (
+              <button
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  if (activeRole === 'Owner') {
+                    setActiveRole('Worker');
+                    localStorage.setItem('tailor_active_role', 'Worker');
+                  } else {
+                    setPasswordInput('');
+                    setPasswordVerificationError(null);
+                    setIsPasswordModalOpen(true);
+                  }
+                }}
+                className="w-full py-2.5 px-3 bg-[#1E293B] hover:bg-slate-800 text-[#38BDF8] border border-[#38BDF8]/25 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-[#38BDF8]" />
+                <span>Switch to {activeRole === 'Owner' ? 'Worker' : 'Owner'}</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                setIsMobileMenuOpen(false);
+                handleLogout();
+              }}
+              className="w-full py-2.5 px-3 bg-red-950/40 hover:bg-red-950/60 text-red-400 border border-red-900/30 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+            >
+              <LogOut className="w-3.5 h-3.5 shrink-0" />
+              <span>Sign Out</span>
+            </button>
           </div>
         </div>
       )}
@@ -327,24 +482,16 @@ export default function App() {
 
           <div className="flex items-center gap-4">
             
-            {/* Supabase status badge in topbar styled like StitchMaster user-tag */}
-            {!supabaseConfig.supabaseConnected ? (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FEF9C3] border border-amber-200 text-[#854D0E] rounded-full text-xs font-bold uppercase tracking-wider">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                <span>Sandbox DB Active</span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#E0F2FE] border border-sky-100 text-[#0369A1] rounded-full text-xs font-bold uppercase tracking-wider">
-                <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                <span>Cloud Synced</span>
-              </div>
-            )}
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#E0F2FE] border border-sky-100 text-[#0369A1] rounded-full text-xs font-bold uppercase tracking-wider">
+              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+              <span>Supabase Cloud Synced</span>
+            </div>
 
             {/* Profile widget */}
             <div className="flex items-center gap-2.5 bg-slate-50 border border-slate-200 rounded-full py-1 px-3.5 text-sm font-bold text-slate-800">
               <span>{user.name}</span>
               <span className="text-3xs font-extrabold bg-[#E0F2FE] text-[#0369A1] px-1.5 py-0.5 rounded uppercase">
-                {user.role}
+                Active: {activeRole}
               </span>
             </div>
 
@@ -354,26 +501,12 @@ export default function App() {
         {/* CORE WORKSPACE CONTENT AREA */}
         <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl w-full mx-auto">
           
-          {/* Sandbox alert matching the Professional Polish warning alerts */}
-          {!supabaseConfig.supabaseConnected && (
-            <div className="mb-6 p-4 bg-[#FEF9C3] border border-amber-200 text-[#854D0E] rounded-xl flex items-start gap-3 shadow-sm print:hidden">
-              <AlertTriangle className="w-5.5 h-5.5 text-amber-700 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-extrabold text-sm uppercase tracking-wide text-slate-800">Executing inside a temporary sandbox database</p>
-                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                  Measurements, custom fields, and customer orders are currently saved to a local sandbox database (<code>sandbox_db.json</code>).
-                  To set up a production-ready database with automatic cloud syncing, configure your Supabase connection strings inside the Administration Settings panel.
-                </p>
-              </div>
-            </div>
-          )}
-
           {/* ACTIVE MODULE CONTAINER */}
           <div className="animate-fade-in">
             {activeTab === 'Customers' && (
               <CustomersSection
                 token={token}
-                userRole={user.role}
+                userRole={activeRole}
                 measurementFields={measurementFields}
                 currency={currency}
                 selectedCustomerId={activeCustomerIdForNewOrder}
@@ -387,7 +520,7 @@ export default function App() {
             {activeTab === 'Orders' && (
               <OrdersSection
                 token={token}
-                userRole={user.role}
+                userRole={activeRole}
                 currency={currency}
                 measurementFields={measurementFields}
                 pipelineStages={pipelineStages}
@@ -401,7 +534,7 @@ export default function App() {
               />
             )}
 
-            {activeTab === 'Owner' && user.role === 'Owner' && (
+            {activeTab === 'Owner' && activeRole === 'Owner' && (
               <OwnerDashboard
                 token={token}
                 currency={currency}
@@ -423,6 +556,64 @@ export default function App() {
         </footer>
 
       </div>
+
+      {/* PASSWORD VERIFICATION DIALOG MODAL */}
+      {isPasswordModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden">
+            <div className="bg-[#0F172A] p-6 text-center border-b border-slate-800 text-white">
+              <div className="inline-flex items-center justify-center p-3 bg-slate-800 rounded-xl mb-3 border border-slate-700">
+                <Key className="w-6 h-6 text-[#38BDF8]" />
+              </div>
+              <h3 className="text-lg font-bold tracking-tight">Switch to Owner Mode</h3>
+              <p className="text-slate-400 text-xs font-semibold uppercase mt-0.5 tracking-wider">Password Verification Required</p>
+            </div>
+
+            <form onSubmit={handleVerifyPasswordAndSwitch} className="p-6 space-y-4">
+              {passwordVerificationError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold leading-relaxed">
+                  {passwordVerificationError}
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-650 uppercase tracking-wider">Account Password</label>
+                <input
+                  type="password"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  placeholder="Enter your account password"
+                  required
+                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-sm font-semibold focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all"
+                  disabled={verifyPasswordLoading}
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPasswordModalOpen(false);
+                    setPasswordVerificationError(null);
+                    setPasswordInput('');
+                  }}
+                  className="flex-1 py-2.5 border-2 border-slate-200 rounded-xl font-bold text-xs uppercase tracking-wider text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors"
+                  disabled={verifyPasswordLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-[#0F172A] hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-1 cursor-pointer transition-all disabled:opacity-50"
+                  disabled={verifyPasswordLoading}
+                >
+                  {verifyPasswordLoading ? 'Verifying...' : 'Verify & Switch'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

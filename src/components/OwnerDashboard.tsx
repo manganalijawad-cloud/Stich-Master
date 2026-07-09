@@ -41,6 +41,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated }: O
   const [newField, setNewField] = useState('');
   const [editedStages, setEditedStages] = useState<PipelineStage[]>([]);
   const [newStageName, setNewStageName] = useState('');
+  const [editedAutoArchiveDays, setEditedAutoArchiveDays] = useState<number>(30);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [settingsSuccess, setSettingsSuccess] = useState(false);
 
@@ -105,6 +106,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated }: O
         setEditedPhone(data.phone || '');
         setEditedAddress(data.address || '');
         setEditedCurrency(data.currency || '$');
+        setEditedAutoArchiveDays(data.auto_archive_days !== undefined ? Number(data.auto_archive_days) : 30);
         setEditedFields(data.measurement_fields || []);
         setEditedStages(data.pipeline_stages || [
           { id: 'Pending', name: 'Getting Ready', enabled: true },
@@ -239,6 +241,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated }: O
           currency: editedCurrency,
           measurement_fields: editedFields,
           pipeline_stages: editedStages,
+          auto_archive_days: editedAutoArchiveDays,
         }),
       });
 
@@ -704,6 +707,22 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated }: O
                     <option value="AED">AED (Dh)</option>
                     <option value="£">GBP (£)</option>
                     <option value="€">EUR (€)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Auto-Archive Delivered Orders</label>
+                  <select
+                    value={editedAutoArchiveDays}
+                    onChange={(e) => setEditedAutoArchiveDays(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-lg font-bold text-slate-800 text-xs focus:outline-none focus:border-[#38BDF8]"
+                  >
+                    <option value={0}>Never</option>
+                    <option value={7}>7 Days</option>
+                    <option value={15}>15 Days</option>
+                    <option value={30}>30 Days</option>
+                    <option value={60}>60 Days</option>
+                    <option value={90}>90 Days</option>
                   </select>
                 </div>
               </div>

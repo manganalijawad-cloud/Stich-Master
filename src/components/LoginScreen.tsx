@@ -8,10 +8,9 @@ import { Shield, Key, Mail, AlertTriangle, Info } from 'lucide-react';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: { id: string; email: string; name: string; role: 'Owner' | 'Worker' }, token: string) => void;
-  supabaseConfig: { supabaseConnected: boolean; supabaseUrl: string | null };
 }
 
-export default function LoginScreen({ onLoginSuccess, supabaseConfig }: LoginScreenProps) {
+export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -60,7 +59,7 @@ export default function LoginScreen({ onLoginSuccess, supabaseConfig }: LoginScr
       }
 
       if (!isJson || !data) {
-        throw new Error('Server returned an unexpected response format (not JSON). Please try again or contact support.');
+        throw new Error('Server returned an unexpected response format (not JSON). Please try again.');
       }
 
       onLoginSuccess(data.user, data.token);
@@ -108,32 +107,10 @@ export default function LoginScreen({ onLoginSuccess, supabaseConfig }: LoginScr
             </div>
           )}
 
-          {!supabaseConfig.supabaseConnected ? (
-            <div className="flex items-start gap-3 bg-[#FEF9C3] border border-amber-200 rounded-xl p-4 text-[#854D0E]">
-              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-[#854D0E]" />
-              <div>
-                <p className="font-bold text-sm uppercase tracking-wider">Sandbox Mode Active</p>
-                <div className="text-xs font-medium text-slate-700 mt-1 space-y-1">
-                  <div>Default credentials:</div>
-                  <div className="flex gap-2 items-center">
-                    <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200">owner@tailor.com</span>
-                    <span>/</span>
-                    <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200">password123</span>
-                  </div>
-                  <div className="flex gap-2 items-center">
-                    <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200">worker@tailor.com</span>
-                    <span>/</span>
-                    <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200">password123</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3 bg-[#E0F2FE] border border-sky-100 rounded-xl p-4 text-[#0369A1]">
-              <Info className="w-5 h-5 shrink-0" />
-              <p className="text-xs font-bold uppercase tracking-wider">Cloud Connected (Supabase)</p>
-            </div>
-          )}
+          <div className="flex items-center gap-3 bg-[#E0F2FE] border border-sky-100 rounded-xl p-4 text-[#0369A1]">
+            <Info className="w-5 h-5 shrink-0" />
+            <p className="text-xs font-bold uppercase tracking-wider">Secure Cloud Auth Active</p>
+          </div>
         </div>
 
         {/* Login Form */}

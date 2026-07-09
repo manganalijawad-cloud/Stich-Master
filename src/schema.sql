@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS public.orders (
     paid_amount NUMERIC(12,2) NOT NULL DEFAULT 0.00,
     due_date DATE NOT NULL,
     measurement_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+    delivered_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     created_by UUID REFERENCES auth.users(id),
@@ -191,6 +192,8 @@ VALUES (
     'measurement_fields', '["Collar/Neck", "Chest", "Waist", "Hips", "Shoulder Width", "Sleeve Length", "Bicep", "Wrist", "Shirt/Jacket Length", "Trouser Length", "Inseam", "Thigh", "Ankle"]'::jsonb, now()
 ), (
     'pipeline_stages', '[{"id": "Pending", "name": "Getting Ready", "enabled": true}, {"id": "Ready to Deliver", "name": "Ready to Deliver", "enabled": true}, {"id": "Delivered", "name": "Delivered", "enabled": true}, {"id": "Archived", "name": "Archived", "enabled": true}]'::jsonb, now()
+), (
+    'auto_archive_days', '30'::jsonb, now()
 )
 ON CONFLICT (key) DO NOTHING;
 
