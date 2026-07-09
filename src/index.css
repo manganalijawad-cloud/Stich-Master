@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  
+  --color-brand-sidebar: #0F172A;
+  --color-brand-active: #1E293B;
+  --color-brand-sky: #38BDF8;
+  --color-brand-bg: #F8FAFC;
+}
+
+body {
+  background-color: var(--color-brand-bg);
+  color: #1E293B;
+  font-family: var(--font-sans);
+}
+
+/* Universal Print Stylesheet Configuration */
+@media print {
+  /* Hide standard interactive screen components */
+  body * {
+    visibility: hidden;
+    background-color: transparent !important;
+    box-shadow: none !important;
+  }
+  
+  /* Only display the print-slips-container and its contents */
+  #print-slips-container, #print-slips-container * {
+    visibility: visible;
+  }
+  
+  #print-slips-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: white !important;
+    color: black !important;
+  }
+
+  /* Secure correct page breaking between the dual slips */
+  .page-break {
+    page-break-after: always;
+    break-after: page;
+  }
+
+  /* Optimize page size margins for roll-feed thermal, A4, or Letter paper */
+  @page {
+    margin: 5mm;
+    size: auto;
+  }
+}

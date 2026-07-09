@@ -1,0 +1,6 @@
+{
+  "name": "Tailor Shop Management System",
+  "description": "A high-performance management system for tailor shops with role-based access, customer measurements, and order tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
