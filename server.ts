@@ -6,7 +6,7 @@
 import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { createClient as originalCreateClient, SupabaseClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -17,11 +17,77 @@ const PORT = 3000;
 app.use(express.json());
 
 // -------------------------------------------------------------------------
+// COMPATIBILITY LAYER FOR MISSING MULTI-TENANT DATABASE SCHEMA
+// -------------------------------------------------------------------------
+let IS_MULTI_TENANT_AVAILABLE = true;
+
+function proxyBuilder(builder: any): any {
+  return new Proxy(builder, {
+    get(target, prop, receiver) {
+      const val = Reflect.get(target, prop, receiver);
+      if (typeof val === "function") {
+        return function(...args: any[]) {
+          if (!IS_MULTI_TENANT_AVAILABLE) {
+            if (prop === "eq" && args[0] === "shop_id") {
+              return this;
+            }
+            if (prop === "in" && args[0] === "shop_id") {
+              return this;
+            }
+            if (prop === "select") {
+              if (typeof args[0] === "string" && args[0].includes("shop_id")) {
+                let cleanSelect = args[0]
+                  .split(",")
+                  .map((s: string) => s.trim())
+                  .filter((s: string) => s !== "shop_id")
+                  .join(",");
+                args[0] = cleanSelect;
+              }
+            }
+            if (prop === "insert" || prop === "upsert" || prop === "update") {
+              let payload = args[0];
+              if (payload) {
+                if (Array.isArray(payload)) {
+                  args[0] = payload.map(item => {
+                    const { shop_id, ...rest } = item;
+                    return rest;
+                  });
+                } else if (typeof payload === "object") {
+                  const { shop_id, ...rest } = payload;
+                  args[0] = rest;
+                }
+              }
+            }
+          }
+          
+          const result = val.apply(target, args);
+          if (result && typeof result === "object" && typeof result.then === "function") {
+            return proxyBuilder(result);
+          }
+          return result;
+        };
+      }
+      return val;
+    }
+  });
+}
+
+function createClient(url: string, key: string, options?: any): SupabaseClient {
+  const client = originalCreateClient(url, key, options);
+  const originalFrom = client.from.bind(client);
+  client.from = function(relation: string) {
+    let builder = originalFrom(relation);
+    return proxyBuilder(builder);
+  };
+  return client;
+}
+
+// -------------------------------------------------------------------------
 // SUPABASE CLIENT INITIALIZATION
 // -------------------------------------------------------------------------
-const SUPABASE_URL = process.env.SUPABASE_URL || "";
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   console.error("CRITICAL ERROR: SUPABASE_URL and SUPABASE_ANON_KEY must be configured.");
@@ -51,6 +117,30 @@ function getSupabaseClient(token?: string) {
   }
   return supabaseAnon;
 }
+
+// Dynamically check database schema at runtime
+async function checkDatabaseSchema() {
+  try {
+    const { error: shopError } = await supabaseAdmin.from("shops").select("id").limit(1);
+    const { error: profileError } = await supabaseAdmin.from("profiles").select("shop_id").limit(1);
+    
+    if (
+      (shopError && (shopError.code === "PGRST205" || shopError.message?.includes("relation \"public.shops\" does not exist"))) ||
+      (profileError && (profileError.code === "42703" || profileError.message?.includes("column profiles.shop_id does not exist") || profileError.message?.includes("column \"shop_id\" does not exist")))
+    ) {
+      console.warn("WARNING: Multi-tenant schema (shops table / shop_id columns) is missing in Supabase. Falling back to single-tenant compatibility mode.");
+      IS_MULTI_TENANT_AVAILABLE = false;
+    } else {
+      console.log("Database schema check passed: multi-tenant mode active.");
+    }
+  } catch (err) {
+    console.error("Database schema check failed, defaulting to single-tenant mode:", err);
+    IS_MULTI_TENANT_AVAILABLE = false;
+  }
+}
+
+// Run schema diagnostic asynchronously at startup
+checkDatabaseSchema();
 
 // -------------------------------------------------------------------------
 // DEFAULT BACKUP DATA FOR BOOTSTRAPPING DEFAULT VALUES
@@ -95,6 +185,7 @@ interface AuthenticatedRequest extends Request {
     email: string;
     name: string;
     role: "Owner" | "Worker";
+    shop_id: string;
   };
   token?: string;
 }
@@ -119,30 +210,89 @@ async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextF
       .eq("id", user.id)
       .single();
 
+    if (profile && profile.role === "Worker") {
+      // Auto-migrate to Owner since only Owners can possess active Supabase Auth accounts
+      await supabaseAdmin
+        .from("profiles")
+        .update({ role: "Owner" })
+        .eq("id", profile.id);
+      profile.role = "Owner";
+    }
+
     if (profError || !profile) {
-      // Bootstrap the first user as Owner if profiles table is completely empty
-      const { count } = await supabaseAdmin.from("profiles").select("*", { count: "exact", head: true });
-      if (count === 0) {
-        const newProfile = {
-          id: user.id,
-          email: user.email,
-          name: user.email?.split("@")[0] || "Owner",
-          role: "Owner",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
-        await supabaseAdmin.from("profiles").insert([newProfile]);
-        
-        req.user = {
-          id: user.id,
-          email: user.email || "",
-          name: newProfile.name,
-          role: "Owner"
-        };
-        req.token = token;
-        return next();
+      // Every newly created account must log in as Owner of their own shop by default
+      let shopId = "default-shop";
+      if (IS_MULTI_TENANT_AVAILABLE) {
+        // Create brand new shop for the new owner
+        const { data: newShop, error: shopErr } = await supabaseAdmin
+          .from("shops")
+          .insert([{ name: "My Tailor Shop" }])
+          .select()
+          .single();
+        if (shopErr) throw shopErr;
+        shopId = newShop.id;
       }
-      return res.status(403).json({ error: "Access denied. Profile not found." });
+
+      const newProfile: any = {
+        id: user.id,
+        email: user.email,
+        name: user.email?.split("@")[0] || "Owner",
+        role: "Owner",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      if (IS_MULTI_TENANT_AVAILABLE) {
+        newProfile.shop_id = shopId;
+      }
+      await supabaseAdmin.from("profiles").insert([newProfile]);
+      
+      // Seed default settings for this specific shop
+      const settingsEntries = Object.entries(DEFAULT_SHOP_SETTINGS).map(([key, value]) => {
+        const entry: any = {
+          key,
+          value,
+          updated_at: new Date().toISOString(),
+          updated_by: user.id
+        };
+        if (IS_MULTI_TENANT_AVAILABLE) {
+          entry.shop_id = shopId;
+        }
+        return entry;
+      });
+      await supabaseAdmin.from("shop_settings").insert(settingsEntries);
+
+      req.user = {
+        id: user.id,
+        email: user.email || "",
+        name: newProfile.name,
+        role: "Owner",
+        shop_id: shopId
+      };
+      req.token = token;
+      return next();
+    }
+
+    // If profile exists but shop_id is missing, let's auto-create a shop for them
+    if (IS_MULTI_TENANT_AVAILABLE && !profile.shop_id) {
+      const { data: newShop, error: shopErr } = await supabaseAdmin
+        .from("shops")
+        .insert([{ name: "My Tailor Shop" }])
+        .select()
+        .single();
+      if (!shopErr && newShop) {
+        await supabaseAdmin.from("profiles").update({ shop_id: newShop.id }).eq("id", profile.id);
+        profile.shop_id = newShop.id;
+
+        // Seed default settings for this specific shop
+        const settingsEntries = Object.entries(DEFAULT_SHOP_SETTINGS).map(([key, value]) => ({
+          shop_id: newShop.id,
+          key,
+          value,
+          updated_at: new Date().toISOString(),
+          updated_by: user.id
+        }));
+        await supabaseAdmin.from("shop_settings").insert(settingsEntries);
+      }
     }
 
     // Parse Active Role from request header
@@ -161,13 +311,22 @@ async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextF
       id: profile.id,
       email: profile.email,
       name: profile.name,
-      role: activeRole
+      role: activeRole,
+      shop_id: profile.shop_id || "default-shop"
     };
     req.token = token;
     next();
-  } catch (err) {
+  } catch (err: any) {
     console.error("Auth verification error:", err);
-    return res.status(500).json({ error: "Internal security validation error." });
+    if (err && typeof err === "object") {
+      console.error("Auth verification error message:", err.message);
+      console.error("Auth verification error stack:", err.stack);
+      console.error("Auth verification error raw:", JSON.stringify(err, null, 2));
+    }
+    return res.status(500).json({ 
+      error: "Internal security validation error.", 
+      details: err?.message || String(err) 
+    });
   }
 }
 
@@ -231,12 +390,13 @@ function handleSupabaseError(err: any, res: Response) {
 // -------------------------------------------------------------------------
 // LOGGER UTILITY
 // -------------------------------------------------------------------------
-async function logAction(user: { id: string; email: string }, action: string, details: Record<string, any>, token?: string) {
+async function logAction(user: { id: string; email: string; shop_id?: string }, action: string, details: Record<string, any>, token?: string) {
   try {
     const userSupabase = getSupabaseClient(token);
     await userSupabase.from("audit_logs").insert([{
       user_id: user.id,
       user_email: user.email,
+      shop_id: user.shop_id,
       action,
       details,
       created_at: new Date().toISOString()
@@ -275,32 +435,94 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
       .eq("id", data.user.id)
       .single();
 
+    if (profile && profile.role === "Worker") {
+      // Auto-migrate to Owner since only Owners can possess active Supabase Auth accounts
+      await supabaseAdmin
+        .from("profiles")
+        .update({ role: "Owner" })
+        .eq("id", profile.id);
+      profile.role = "Owner";
+    }
+
     if (profError || !profile) {
-      const { count } = await supabaseAdmin.from("profiles").select("*", { count: "exact", head: true });
-      if (count === 0) {
-        const newProfile = {
-          id: data.user.id,
-          email: data.user.email,
-          name: data.user.email?.split("@")[0] || "Owner",
-          role: "Owner",
-          created_at: new Date().toISOString(),
+      // Every newly created account must log in as Owner of their own shop by default
+      let shopId = "default-shop";
+      if (IS_MULTI_TENANT_AVAILABLE) {
+        const { data: newShop, error: shopErr } = await supabaseAdmin
+          .from("shops")
+          .insert([{ name: "My Tailor Shop" }])
+          .select()
+          .single();
+        if (shopErr) throw shopErr;
+        shopId = newShop.id;
+      }
+
+      const newProfile: any = {
+        id: data.user.id,
+        email: data.user.email,
+        name: data.user.email?.split("@")[0] || "Owner",
+        role: "Owner",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      if (IS_MULTI_TENANT_AVAILABLE) {
+        newProfile.shop_id = shopId;
+      }
+      await supabaseAdmin.from("profiles").insert([newProfile]);
+
+      // Seed default settings for this specific shop
+      const settingsEntries = Object.entries(DEFAULT_SHOP_SETTINGS).map(([key, value]) => {
+        const entry: any = {
+          key,
+          value,
           updated_at: new Date().toISOString(),
+          updated_by: data.user.id
         };
-        await supabaseAdmin.from("profiles").insert([newProfile]);
-        profile = newProfile;
-      } else {
-        return res.status(403).json({ error: "Your account exists, but no role profile has been created yet. Please ask an administrator." });
+        if (IS_MULTI_TENANT_AVAILABLE) {
+          entry.shop_id = shopId;
+        }
+        return entry;
+      });
+      await supabaseAdmin.from("shop_settings").insert(settingsEntries);
+
+      profile = newProfile;
+      if (!profile.shop_id) {
+        profile.shop_id = shopId;
       }
     }
 
-    await logAction({ id: profile.id, email: profile.email }, "USER_LOGIN", { ip: req.ip }, data.session.access_token);
+    // Auto-create a shop if somehow profile exists but is missing shop_id
+    if (IS_MULTI_TENANT_AVAILABLE && !profile.shop_id) {
+      const { data: newShop, error: shopErr } = await supabaseAdmin
+        .from("shops")
+        .insert([{ name: "My Tailor Shop" }])
+        .select()
+        .single();
+      if (!shopErr && newShop) {
+        await supabaseAdmin.from("profiles").update({ shop_id: newShop.id }).eq("id", profile.id);
+        profile.shop_id = newShop.id;
+
+        // Seed default settings for this specific shop
+        const settingsEntries = Object.entries(DEFAULT_SHOP_SETTINGS).map(([key, value]) => ({
+          shop_id: newShop.id,
+          key,
+          value,
+          updated_at: new Date().toISOString(),
+          updated_by: data.user.id
+        }));
+        await supabaseAdmin.from("shop_settings").insert(settingsEntries);
+      }
+    }
+
+    await logAction({ id: profile.id, email: profile.email, shop_id: profile.shop_id || "default-shop" }, "USER_LOGIN", { ip: req.ip }, data.session.access_token);
 
     return res.json({
       user: {
         id: profile.id,
         email: profile.email,
         name: profile.name,
-        role: profile.role
+        role: profile.role,
+        shop_id: profile.shop_id || "default-shop"
       },
       token: data.session.access_token
     });
@@ -368,7 +590,7 @@ app.get("/api/customers", requireAuth, async (req: AuthenticatedRequest, res: Re
 
   try {
     const userSupabase = getSupabaseClient(req.token);
-    let reqQuery = userSupabase.from("customers").select("*");
+    let reqQuery = userSupabase.from("customers").select("*").eq("shop_id", req.user!.shop_id);
     if (query) {
       reqQuery = reqQuery.or(`name.ilike.%${query}%,phone.ilike.%${query}%`);
     }
@@ -386,9 +608,14 @@ app.get("/api/customers/:id", requireAuth, async (req: AuthenticatedRequest, res
   const customerId = req.params.id;
   try {
     const userSupabase = getSupabaseClient(req.token);
-    const { data, error } = await userSupabase.from("customers").select("*").eq("id", customerId).maybeSingle();
+    const { data, error } = await userSupabase
+      .from("customers")
+      .select("*")
+      .eq("id", customerId)
+      .eq("shop_id", req.user!.shop_id)
+      .maybeSingle();
     if (error) throw error;
-    if (!data) return res.status(404).json({ error: "Customer not found." });
+    if (!data) return res.status(404).json({ error: "Customer not found or access denied." });
     return res.json(data);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -412,6 +639,7 @@ app.post("/api/customers", requireAuth, async (req: AuthenticatedRequest, res: R
         .from("customers")
         .select("*")
         .eq("phone", cleanPhone)
+        .eq("shop_id", req.user!.shop_id)
         .maybeSingle();
 
       if (existing) {
@@ -429,6 +657,7 @@ app.post("/api/customers", requireAuth, async (req: AuthenticatedRequest, res: R
         address: address || null,
         email: email || null,
         notes: notes || null,
+        shop_id: req.user!.shop_id,
         created_by: req.user!.id,
         updated_by: req.user!.id,
         created_at: now,
@@ -441,6 +670,7 @@ app.post("/api/customers", requireAuth, async (req: AuthenticatedRequest, res: R
 
     const initialMeas = {
       customer_id: customer.id,
+      shop_id: req.user!.shop_id,
       data: measurements || {},
       created_by: req.user!.id,
       updated_by: req.user!.id,
@@ -464,10 +694,24 @@ app.get("/api/customers/:id/measurements", requireAuth, async (req: Authenticate
   const customerId = req.params.id;
   try {
     const userSupabase = getSupabaseClient(req.token);
+    
+    // First verify customer ownership
+    const { data: customer } = await userSupabase
+      .from("customers")
+      .select("id")
+      .eq("id", customerId)
+      .eq("shop_id", req.user!.shop_id)
+      .maybeSingle();
+
+    if (!customer) {
+      return res.status(404).json({ error: "Customer not found or access denied." });
+    }
+
     const { data, error } = await userSupabase
       .from("measurements")
       .select("*")
       .eq("customer_id", customerId)
+      .eq("shop_id", req.user!.shop_id)
       .maybeSingle();
 
     if (error) throw error;
@@ -487,10 +731,24 @@ app.put("/api/customers/:id/measurements", requireAuth, requireRole(["Owner"]), 
 
   try {
     const userSupabase = getSupabaseClient(req.token);
+
+    // First verify customer ownership
+    const { data: customer } = await userSupabase
+      .from("customers")
+      .select("id")
+      .eq("id", customerId)
+      .eq("shop_id", req.user!.shop_id)
+      .maybeSingle();
+
+    if (!customer) {
+      return res.status(404).json({ error: "Customer not found or access denied." });
+    }
+
     const { data, error } = await userSupabase
       .from("measurements")
       .select("*")
       .eq("customer_id", customerId)
+      .eq("shop_id", req.user!.shop_id)
       .maybeSingle();
 
     if (error) throw error;
@@ -504,6 +762,7 @@ app.put("/api/customers/:id/measurements", requireAuth, requireRole(["Owner"]), 
           updated_at: now
         })
         .eq("customer_id", customerId)
+        .eq("shop_id", req.user!.shop_id)
         .select()
         .single();
       if (uErr) throw uErr;
@@ -514,6 +773,7 @@ app.put("/api/customers/:id/measurements", requireAuth, requireRole(["Owner"]), 
         .from("measurements")
         .insert([{
           customer_id: customerId,
+          shop_id: req.user!.shop_id,
           data: measurementData,
           created_by: req.user!.id,
           updated_by: req.user!.id,
@@ -535,6 +795,19 @@ app.get("/api/customers/:id/orders", requireAuth, async (req: AuthenticatedReque
   const customerId = req.params.id;
   try {
     const userSupabase = getSupabaseClient(req.token);
+
+    // First verify customer ownership
+    const { data: customer } = await userSupabase
+      .from("customers")
+      .select("id")
+      .eq("id", customerId)
+      .eq("shop_id", req.user!.shop_id)
+      .maybeSingle();
+
+    if (!customer) {
+      return res.status(404).json({ error: "Customer not found or access denied." });
+    }
+
     const { data, error } = await userSupabase
       .from("orders")
       .select(`
@@ -552,6 +825,7 @@ app.get("/api/customers/:id/orders", requireAuth, async (req: AuthenticatedReque
         updated_by
       `)
       .eq("customer_id", customerId)
+      .eq("shop_id", req.user!.shop_id)
       .order("created_at", { ascending: false });
     if (error) throw error;
     return res.json(data || []);
@@ -574,7 +848,7 @@ app.get("/api/orders", requireAuth, async (req: AuthenticatedRequest, res: Respo
     const userSupabase = getSupabaseClient(req.token);
     let autoArchiveDays = 30;
     try {
-      const { data: settingsData } = await userSupabase.from("shop_settings").select("*");
+      const { data: settingsData } = await userSupabase.from("shop_settings").select("*").eq("shop_id", req.user!.shop_id);
       if (settingsData) {
         const settingsMap: Record<string, any> = {};
         settingsData.forEach((row: any) => {
@@ -595,6 +869,7 @@ app.get("/api/orders", requireAuth, async (req: AuthenticatedRequest, res: Respo
         .from("orders")
         .select("id")
         .eq("status", "Delivered")
+        .eq("shop_id", req.user!.shop_id)
         .lte("delivered_at", cutoffDate.toISOString());
 
       if (ordersToArchive && ordersToArchive.length > 0) {
@@ -602,6 +877,7 @@ app.get("/api/orders", requireAuth, async (req: AuthenticatedRequest, res: Respo
         await userSupabase
           .from("orders")
           .update({ status: "Archived", updated_at: new Date().toISOString() })
+          .eq("shop_id", req.user!.shop_id)
           .in("id", ids);
       }
     }
@@ -624,7 +900,7 @@ app.get("/api/orders", requireAuth, async (req: AuthenticatedRequest, res: Respo
         name,
         phone
       )
-    `);
+    `).eq("shop_id", req.user!.shop_id);
 
     if (statusFilter && statusFilter !== "All") {
       query = query.eq("status", statusFilter);
@@ -672,9 +948,10 @@ app.get("/api/orders/:id", requireAuth, async (req: AuthenticatedRequest, res: R
         )
       `)
       .eq("id", orderId)
+      .eq("shop_id", req.user!.shop_id)
       .maybeSingle();
     if (error) throw error;
-    if (!data) return res.status(404).json({ error: "Order not found." });
+    if (!data) return res.status(404).json({ error: "Order not found or access denied." });
     const mapped = {
       ...data,
       customer_name: data.customers?.name || "Unknown Customer",
@@ -696,17 +973,31 @@ app.post("/api/orders", requireAuth, async (req: AuthenticatedRequest, res: Resp
 
   try {
     const userSupabase = getSupabaseClient(req.token);
+
+    // Verify that the customer belongs to this shop
+    const { data: customerCheck } = await userSupabase
+      .from("customers")
+      .select("id")
+      .eq("id", customer_id)
+      .eq("shop_id", req.user!.shop_id)
+      .maybeSingle();
+
+    if (!customerCheck) {
+      return res.status(400).json({ error: "Invalid customer ID or access denied." });
+    }
+
     const { data: meas } = await userSupabase
       .from("measurements")
       .select("data")
       .eq("customer_id", customer_id)
+      .eq("shop_id", req.user!.shop_id)
       .maybeSingle();
 
     const snapshot = meas ? meas.data : {};
 
     let defaultStatus = "Pending";
     try {
-      const { data: settingsData } = await userSupabase.from("shop_settings").select("*");
+      const { data: settingsData } = await userSupabase.from("shop_settings").select("*").eq("shop_id", req.user!.shop_id);
       const settingsMap: any = {};
       if (settingsData) {
         settingsData.forEach((row: any) => {
@@ -722,12 +1013,13 @@ app.post("/api/orders", requireAuth, async (req: AuthenticatedRequest, res: Resp
       console.error("Failed to resolve starting status:", err);
     }
 
-    const { count } = await userSupabase.from("orders").select("*", { count: "exact", head: true });
+    const { count } = await userSupabase.from("orders").select("*", { count: "exact", head: true }).eq("shop_id", req.user!.shop_id);
     const orderNumber = `ORD-${(count || 0) + 1001}`;
 
     const { data: order, error: orderErr } = await userSupabase
       .from("orders")
       .insert([{
+        shop_id: req.user!.shop_id,
         order_number: orderNumber,
         customer_id,
         status: defaultStatus,
@@ -780,6 +1072,7 @@ app.put("/api/orders/:id/status", requireAuth, async (req: AuthenticatedRequest,
       .from("orders")
       .update(updateData)
       .eq("id", orderId)
+      .eq("shop_id", req.user!.shop_id)
       .select()
       .single();
 
@@ -812,6 +1105,7 @@ app.put("/api/orders/:id", requireAuth, requireRole(["Owner"]), async (req: Auth
         updated_at: now
       })
       .eq("id", orderId)
+      .eq("shop_id", req.user!.shop_id)
       .select()
       .single();
 
@@ -828,8 +1122,19 @@ app.delete("/api/orders/:id", requireAuth, requireRole(["Owner"]), async (req: A
   const orderId = req.params.id;
   try {
     const userSupabase = getSupabaseClient(req.token);
-    const { data: order } = await userSupabase.from("orders").select("order_number").eq("id", orderId).single();
-    const { error } = await userSupabase.from("orders").delete().eq("id", orderId);
+    const { data: order } = await userSupabase
+      .from("orders")
+      .select("order_number")
+      .eq("id", orderId)
+      .eq("shop_id", req.user!.shop_id)
+      .single();
+
+    const { error } = await userSupabase
+      .from("orders")
+      .delete()
+      .eq("id", orderId)
+      .eq("shop_id", req.user!.shop_id);
+
     if (error) throw error;
     await logAction(req.user!, "DELETE_ORDER", { id: orderId, order_number: order?.order_number }, req.token);
     return res.json({ success: true });
@@ -843,7 +1148,10 @@ app.delete("/api/orders/:id", requireAuth, requireRole(["Owner"]), async (req: A
 // -------------------------------------------------------------------------
 app.get("/api/workers", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { data, error } = await supabaseAdmin.from("profiles").select("*");
+    const { data, error } = await supabaseAdmin
+      .from("profiles")
+      .select("*")
+      .eq("shop_id", req.user!.shop_id);
     if (error) throw error;
     return res.json(data);
   } catch (err: any) {
@@ -852,10 +1160,19 @@ app.get("/api/workers", requireAuth, requireRole(["Owner"]), async (req: Authent
 });
 
 app.post("/api/workers", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
-  const { email, password, name, role } = req.body;
-  if (!email || !password || !name || !role) {
-    return res.status(400).json({ error: "All worker fields (email, password, name, role) are required." });
+  const { name } = req.body;
+
+  if (!name || name.trim() === "") {
+    return res.status(400).json({ error: "Worker Name is required." });
   }
+
+  const role = "Worker";
+  // Generate random credentials internally so that the database schema foreign key constraint is satisfied,
+  // but workers cannot log in independently and do not have an actual password shared with them.
+  const sanitizedName = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const randomSuffix = Math.random().toString(36).substring(2, 10);
+  const email = `${sanitizedName}_${randomSuffix}@internal-worker.local`;
+  const password = Math.random().toString(36).substring(2, 15) + "Wk!" + Math.floor(Math.random() * 1000) + "S!";
 
   const now = new Date().toISOString();
 
@@ -875,6 +1192,7 @@ app.post("/api/workers", requireAuth, requireRole(["Owner"]), async (req: Authen
       email,
       name,
       role,
+      shop_id: req.user!.shop_id,
       created_at: now,
       updated_at: now,
       created_by: req.user!.id,
@@ -888,7 +1206,16 @@ app.post("/api/workers", requireAuth, requireRole(["Owner"]), async (req: Authen
     }
 
     await logAction(req.user!, "CREATE_WORKER", { email, role, name }, req.token);
-    return res.status(201).json(newProfile);
+    
+    // Return the clean profile details without password/credentials
+    return res.status(201).json({
+      id: newProfile.id,
+      name: newProfile.name,
+      role: newProfile.role,
+      shop_id: newProfile.shop_id,
+      created_at: newProfile.created_at,
+      updated_at: newProfile.updated_at
+    });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -902,9 +1229,24 @@ app.delete("/api/workers/:id", requireAuth, requireRole(["Owner"]), async (req: 
   }
 
   try {
-    const { data: targetProfile } = await supabaseAdmin.from("profiles").select("*").eq("id", workerId).single();
-    if (targetProfile && targetProfile.role === "Owner") {
-      const { count } = await supabaseAdmin.from("profiles").select("*", { count: "exact" }).eq("role", "Owner");
+    const { data: targetProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("*")
+      .eq("id", workerId)
+      .eq("shop_id", req.user!.shop_id)
+      .maybeSingle();
+
+    if (!targetProfile) {
+      return res.status(404).json({ error: "Worker not found or access denied." });
+    }
+
+    if (targetProfile.role === "Owner") {
+      const { count } = await supabaseAdmin
+        .from("profiles")
+        .select("*", { count: "exact" })
+        .eq("role", "Owner")
+        .eq("shop_id", req.user!.shop_id);
+
       if (count && count <= 1) {
         return res.status(400).json({ error: "Cannot delete the last Owner account. Create another Owner first." });
       }
@@ -913,7 +1255,12 @@ app.delete("/api/workers/:id", requireAuth, requireRole(["Owner"]), async (req: 
     const { error: authErr } = await supabaseAdmin.auth.admin.deleteUser(workerId);
     if (authErr) throw authErr;
 
-    const { error: profErr } = await supabaseAdmin.from("profiles").delete().eq("id", workerId);
+    const { error: profErr } = await supabaseAdmin
+      .from("profiles")
+      .delete()
+      .eq("id", workerId)
+      .eq("shop_id", req.user!.shop_id);
+
     if (profErr) throw profErr;
 
     await logAction(req.user!, "DELETE_WORKER", { id: workerId, email: targetProfile?.email }, req.token);
@@ -929,7 +1276,11 @@ app.delete("/api/workers/:id", requireAuth, requireRole(["Owner"]), async (req: 
 app.get("/api/settings", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userSupabase = getSupabaseClient(req.token);
-    const { data, error } = await userSupabase.from("shop_settings").select("*");
+    const { data, error } = await userSupabase
+      .from("shop_settings")
+      .select("*")
+      .eq("shop_id", req.user!.shop_id);
+
     if (error) throw error;
     if (!data || data.length === 0) {
       return res.json(DEFAULT_SHOP_SETTINGS);
@@ -956,6 +1307,7 @@ app.put("/api/settings", requireAuth, requireRole(["Owner"]), async (req: Authen
     const entries = Object.entries(settingsData);
     for (const [key, value] of entries) {
       const { error } = await userSupabase.from("shop_settings").upsert({
+        shop_id: req.user!.shop_id,
         key,
         value,
         updated_at: now,
@@ -974,11 +1326,11 @@ app.post("/api/backup", requireAuth, requireRole(["Owner"]), async (req: Authent
   try {
     const userSupabase = getSupabaseClient(req.token);
     const [profiles, customers, measurements, orders, settings] = await Promise.all([
-      userSupabase.from("profiles").select("*"),
-      userSupabase.from("customers").select("*"),
-      userSupabase.from("measurements").select("*"),
-      userSupabase.from("orders").select("*"),
-      userSupabase.from("shop_settings").select("*"),
+      userSupabase.from("profiles").select("*").eq("shop_id", req.user!.shop_id),
+      userSupabase.from("customers").select("*").eq("shop_id", req.user!.shop_id),
+      userSupabase.from("measurements").select("*").eq("shop_id", req.user!.shop_id),
+      userSupabase.from("orders").select("*").eq("shop_id", req.user!.shop_id),
+      userSupabase.from("shop_settings").select("*").eq("shop_id", req.user!.shop_id),
     ]);
 
     const backup = {
@@ -1011,19 +1363,23 @@ app.post("/api/restore", requireAuth, requireRole(["Owner"]), async (req: Authen
     const { customers, measurements, orders, shop_settings } = backupData.data;
 
     if (customers && customers.length > 0) {
-      const { error } = await userSupabase.from("customers").upsert(customers);
+      const sanitized = customers.map((c: any) => ({ ...c, shop_id: req.user!.shop_id }));
+      const { error } = await userSupabase.from("customers").upsert(sanitized);
       if (error) throw error;
     }
     if (measurements && measurements.length > 0) {
-      const { error } = await userSupabase.from("measurements").upsert(measurements);
+      const sanitized = measurements.map((m: any) => ({ ...m, shop_id: req.user!.shop_id }));
+      const { error } = await userSupabase.from("measurements").upsert(sanitized);
       if (error) throw error;
     }
     if (orders && orders.length > 0) {
-      const { error } = await userSupabase.from("orders").upsert(orders);
+      const sanitized = orders.map((o: any) => ({ ...o, shop_id: req.user!.shop_id }));
+      const { error } = await userSupabase.from("orders").upsert(sanitized);
       if (error) throw error;
     }
     if (shop_settings && shop_settings.length > 0) {
-      const { error } = await userSupabase.from("shop_settings").upsert(shop_settings);
+      const sanitized = shop_settings.map((s: any) => ({ ...s, shop_id: req.user!.shop_id }));
+      const { error } = await userSupabase.from("shop_settings").upsert(sanitized);
       if (error) throw error;
     }
 
@@ -1047,6 +1403,7 @@ app.post("/api/archive-orders", requireAuth, requireRole(["Owner"]), async (req:
     const { error } = await userSupabase
       .from("orders")
       .update({ status: "Archived" })
+      .eq("shop_id", req.user!.shop_id)
       .lt("created_at", cutoff.toISOString())
       .in("status", ["Delivered", "Ready"]);
 
@@ -1065,9 +1422,9 @@ app.get("/api/reports/dashboard", requireAuth, requireRole(["Owner"]), async (re
   try {
     const userSupabase = getSupabaseClient(req.token);
     const [ordersRes, customersCountRes, settingsRes] = await Promise.all([
-      userSupabase.from("orders").select("total_amount, paid_amount, status, items"),
-      userSupabase.from("customers").select("*", { count: "exact", head: true }),
-      userSupabase.from("shop_settings").select("*")
+      userSupabase.from("orders").select("total_amount, paid_amount, status, items").eq("shop_id", req.user!.shop_id),
+      userSupabase.from("customers").select("*", { count: "exact", head: true }).eq("shop_id", req.user!.shop_id),
+      userSupabase.from("shop_settings").select("*").eq("shop_id", req.user!.shop_id)
     ]);
 
     const orders = ordersRes.data || [];
@@ -1128,6 +1485,7 @@ app.get("/api/audit-logs", requireAuth, requireRole(["Owner"]), async (req: Auth
     const { data, error } = await userSupabase
       .from("audit_logs")
       .select("*")
+      .eq("shop_id", req.user!.shop_id)
       .order("created_at", { ascending: false })
       .limit(100);
     if (error) throw error;

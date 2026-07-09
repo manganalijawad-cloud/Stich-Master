@@ -4,7 +4,8 @@
  */
 
 import React, { useState } from 'react';
-import { Shield, Key, Mail, AlertTriangle, Info } from 'lucide-react';
+import { Shield, Key, Mail, Info } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: { id: string; email: string; name: string; role: 'Owner' | 'Worker' }, token: string) => void;
@@ -27,57 +28,59 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     setError(null);
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+      // Authenticate directly using Supabase auth JS client
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       });
 
-      const contentType = response.headers.get('content-type') || '';
-      let data: any = null;
-      let isJson = false;
-
-      if (contentType.includes('application/json')) {
-        try {
-          data = await response.json();
-          isJson = true;
-        } catch (parseErr) {
-          console.error('Failed to parse response as JSON even though content-type matched:', parseErr);
-        }
+      if (authError) {
+        throw authError;
       }
+
+      if (!data.session) {
+        throw new Error('Authentication succeeded but no active session was returned.');
+      }
+
+      // Fetch the role profile from our server using the new access token
+      const response = await fetch('/api/auth/me', {
+        headers: {
+          'Authorization': `Bearer ${data.session.access_token}`
+        }
+      });
 
       if (!response.ok) {
-        if (isJson && data && data.error) {
-          throw new Error(data.error);
-        } else {
-          const textExcerpt = !isJson ? ' (received non-JSON/HTML response)' : '';
-          if (response.status === 403 || !isJson) {
-            throw new Error(`Auth403Error: Authentication failed with status ${response.status}${textExcerpt}. This usually occurs because third-party cookies are blocked or tracking protection/shields are enabled in your browser within the AI Studio iframe preview. Please open the app in a new tab using the 'Open in New Tab' button at the top-right of the preview pane to sign in successfully.`);
+        let errMsg = 'Failed to fetch user profile from server.';
+        try {
+          const errData = await response.json();
+          if (errData && errData.error) {
+            errMsg = errData.error;
           }
-          throw new Error(`Authentication failed with status ${response.status}${textExcerpt}. Please try again.`);
+        } catch (e) {
+          // ignore parsing error
         }
+        throw new Error(errMsg);
       }
 
-      if (!isJson || !data) {
-        throw new Error('Server returned an unexpected response format (not JSON). Please try again.');
+      const resData = await response.json();
+      if (!resData || !resData.user) {
+        throw new Error('Invalid profile response received from server.');
       }
 
-      onLoginSuccess(data.user, data.token);
+      onLoginSuccess(resData.user, data.session.access_token);
     } catch (err: any) {
-      setError(err.message || 'Something went wrong.');
+      // Handle authentication errors gracefully by displaying the actual Supabase/profile error message.
+      setError(err.message || 'Something went wrong during login.');
     } finally {
       setLoading(false);
     }
   };
 
-  const isAuth403Error = error && error.startsWith('Auth403Error:');
-  const displayError = isAuth403Error ? error.replace('Auth403Error: ', '') : error;
-
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center px-4 py-8 font-sans">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
         
-        {/* Banner/Header styled like StitchMaster Pro Sidebar */}
+        {/* Banner/Header */}
         <div className="bg-[#0F172A] p-8 text-center border-b border-slate-800">
           <div className="inline-flex items-center justify-center p-3.5 bg-slate-800 rounded-2xl mb-4 border border-slate-700">
             <Shield className="w-8 h-8 text-[#38BDF8]" />
@@ -86,27 +89,8 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           <p className="text-slate-400 mt-1 text-sm tracking-wide uppercase font-semibold">Secure Staff Portal</p>
         </div>
 
-        {/* Status Indicators matching theme styles */}
+        {/* Status Indicators */}
         <div className="px-8 pt-6">
-          {isAuth403Error && (
-            <div className="mb-4 flex flex-col gap-2.5 bg-amber-50 border border-amber-300 rounded-xl p-4 text-amber-900 shadow-sm animate-pulse">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
-                <p className="font-bold text-sm uppercase tracking-wider">Iframe Sandbox Blocked</p>
-              </div>
-              <p className="text-xs font-medium text-slate-700 leading-relaxed">
-                Google AI Studio previews run inside a sandboxed iframe. Your browser is blocking the authentication cookies required to complete this request.
-              </p>
-              <div className="text-xs bg-white p-2.5 border border-amber-200 rounded-lg text-slate-800 font-semibold space-y-1">
-                <p className="text-amber-700 font-bold">Recommended Solutions:</p>
-                <ul className="list-disc pl-4 space-y-1">
-                  <li>Click the <span className="font-bold text-[#0369A1]">"Open in New Tab"</span> button in the top-right corner of the preview pane.</li>
-                  <li>Alternatively, disable shields/tracking protection or allow third-party cookies for this site.</li>
-                </ul>
-              </div>
-            </div>
-          )}
-
           <div className="flex items-center gap-3 bg-[#E0F2FE] border border-sky-100 rounded-xl p-4 text-[#0369A1]">
             <Info className="w-5 h-5 shrink-0" />
             <p className="text-xs font-bold uppercase tracking-wider">Secure Cloud Auth Active</p>
@@ -117,7 +101,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         <form onSubmit={handleSubmit} className="p-8 space-y-5">
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-semibold">
-              {displayError}
+              {error}
             </div>
           )}
 

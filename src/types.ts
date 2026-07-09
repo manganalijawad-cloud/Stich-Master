@@ -10,6 +10,7 @@ export interface UserProfile {
   email: string;
   name: string;
   role: UserRole;
+  shop_id?: string;
   created_at: string;
   updated_at: string;
   created_by?: string;
@@ -18,6 +19,7 @@ export interface UserProfile {
 
 export interface Customer {
   id: string;
+  shop_id?: string;
   name: string;
   phone?: string;
   whatsapp?: string;
@@ -32,6 +34,7 @@ export interface Customer {
 
 export interface Measurements {
   id: string;
+  shop_id?: string;
   customer_id: string;
   // Key-value store of custom measurements (e.g., neck: 15.5, chest: 42, length: 30)
   data: Record<string, string | number>;
@@ -51,6 +54,7 @@ export interface OrderItem {
 
 export interface Order {
   id: string;
+  shop_id?: string;
   order_number: string;
   customer_id: string;
   customer_name?: string; // joined
@@ -70,6 +74,7 @@ export interface Order {
 
 export interface AuditLog {
   id: string;
+  shop_id?: string;
   user_id: string;
   user_email: string;
   action: string;
@@ -84,6 +89,7 @@ export interface PipelineStage {
 }
 
 export interface ShopSettings {
+  shop_id?: string;
   shop_name: string;
   phone: string;
   address: string;

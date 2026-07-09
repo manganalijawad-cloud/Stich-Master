@@ -23,10 +23,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated }: O
   // Workers State
   const [workers, setWorkers] = useState<UserProfile[]>([]);
   const [workersLoading, setWorkersLoading] = useState(false);
-  const [newWorkerEmail, setNewWorkerEmail] = useState('');
-  const [newWorkerPassword, setNewWorkerPassword] = useState('');
   const [newWorkerName, setNewWorkerName] = useState('');
-  const [newWorkerRole, setNewWorkerRole] = useState<'Owner' | 'Worker'>('Worker');
   const [workerError, setWorkerError] = useState<string | null>(null);
   const [workerSuccess, setWorkerSuccess] = useState<string | null>(null);
 
@@ -156,8 +153,8 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated }: O
   // Handle Create Worker
   const handleCreateWorker = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newWorkerEmail || !newWorkerPassword || !newWorkerName || !newWorkerRole) {
-      setWorkerError('All worker fields are required.');
+    if (!newWorkerName || newWorkerName.trim() === '') {
+      setWorkerError('Worker name is required.');
       return;
     }
 
@@ -172,10 +169,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated }: O
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          email: newWorkerEmail,
-          password: newWorkerPassword,
           name: newWorkerName,
-          role: newWorkerRole,
         }),
       });
 
@@ -184,9 +178,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated }: O
         throw new Error(data.error || 'Failed to create worker.');
       }
 
-      setWorkerSuccess(`Successfully created profile for ${newWorkerName} (${newWorkerRole})!`);
-      setNewWorkerEmail('');
-      setNewWorkerPassword('');
+      setWorkerSuccess(`Successfully created worker profile for ${newWorkerName}!`);
       setNewWorkerName('');
       fetchWorkers();
     } catch (err: any) {
@@ -564,42 +556,6 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated }: O
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Email Address (Login ID)</label>
-                  <input
-                    type="email"
-                    required
-                    value={newWorkerEmail}
-                    onChange={(e) => setNewWorkerEmail(e.target.value)}
-                    placeholder="staff@shop.com"
-                    className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#38BDF8]"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Initial Password</label>
-                  <input
-                    type="password"
-                    required
-                    value={newWorkerPassword}
-                    onChange={(e) => setNewWorkerPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#38BDF8]"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Role Designation</label>
-                  <select
-                    value={newWorkerRole}
-                    onChange={(e) => setNewWorkerRole(e.target.value as any)}
-                    className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-lg font-bold text-slate-800 text-xs focus:outline-none focus:border-[#38BDF8]"
-                  >
-                    <option value="Worker">Worker (Customer Search, Measurements, Book Order, Slip Print)</option>
-                    <option value="Owner">Owner (Full Admin, Reports, Delete Worker, Backup)</option>
-                  </select>
-                </div>
-
                 <button
                   type="submit"
                   className="w-full py-2.5 px-4 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold text-xs uppercase tracking-wider rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
@@ -620,7 +576,11 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated }: O
                   <div key={w.id} className="p-3.5 bg-white rounded-xl border border-slate-200 flex justify-between items-center shadow-2xs">
                     <div className="space-y-1">
                       <p className="font-extrabold text-slate-800 text-sm font-display">{w.name}</p>
-                      <p className="text-slate-400 text-xs">{w.email}</p>
+                      {w.role === 'Owner' ? (
+                        <p className="text-slate-400 text-xs">{w.email}</p>
+                      ) : (
+                        <p className="text-slate-400 text-2xs uppercase tracking-wider font-semibold">Internal Record</p>
+                      )}
                       <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase inline-block border ${
                         w.role === 'Owner'
                           ? 'bg-[#FEF9C3] text-[#854D0E] border-yellow-200'

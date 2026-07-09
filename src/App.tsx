@@ -10,6 +10,7 @@ import CustomersSection from './components/CustomersSection';
 import OrdersSection from './components/OrdersSection';
 import OwnerDashboard from './components/OwnerDashboard';
 import { Customer, UserProfile, UserRole, PipelineStage } from './types';
+import { supabase } from './lib/supabase';
 
 // -------------------------------------------------------------------------
 // GLOBAL WINDOW.FETCH INTERCEPTOR FOR AUTH & PASSING ACTIVE ROLE HEADER
@@ -51,7 +52,12 @@ export default function App() {
     const savedUser = localStorage.getItem('tailor_user');
     if (savedUser) {
       try {
-        return JSON.parse(savedUser);
+        const parsed = JSON.parse(savedUser) as UserProfile;
+        if (parsed && parsed.role === 'Worker') {
+          parsed.role = 'Owner';
+          localStorage.setItem('tailor_user', JSON.stringify(parsed));
+        }
+        return parsed;
       } catch (e) {
         // ignore
       }
@@ -60,10 +66,52 @@ export default function App() {
   });
 
   const [activeRole, setActiveRole] = useState<UserRole>(() => {
-    return (localStorage.getItem('tailor_active_role') as UserRole) || 'Worker';
+    const savedUser = localStorage.getItem('tailor_user');
+    if (savedUser) {
+      try {
+        const parsedUser = JSON.parse(savedUser) as UserProfile;
+        if (parsedUser.role === 'Worker') {
+          parsedUser.role = 'Owner';
+          localStorage.setItem('tailor_user', JSON.stringify(parsedUser));
+        }
+        if (parsedUser.role === 'Owner') {
+          const savedActiveRole = localStorage.getItem('tailor_active_role') as UserRole;
+          const isIntentionalWorker = localStorage.getItem('tailor_intentional_worker_mode') === 'true';
+          if (savedActiveRole === 'Worker' && isIntentionalWorker) {
+            return 'Worker';
+          }
+          return 'Owner';
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    return 'Worker';
   });
 
-  const [activeTab, setActiveTab] = useState<'Customers' | 'Orders' | 'Owner'>('Customers');
+  const [activeTab, setActiveTab] = useState<'Customers' | 'Orders' | 'Owner'>(() => {
+    const savedUser = localStorage.getItem('tailor_user');
+    if (savedUser) {
+      try {
+        const parsedUser = JSON.parse(savedUser) as UserProfile;
+        if (parsedUser.role === 'Worker') {
+          parsedUser.role = 'Owner';
+          localStorage.setItem('tailor_user', JSON.stringify(parsedUser));
+        }
+        if (parsedUser.role === 'Owner') {
+          const savedActiveRole = localStorage.getItem('tailor_active_role') as UserRole;
+          const isIntentionalWorker = localStorage.getItem('tailor_intentional_worker_mode') === 'true';
+          if (savedActiveRole === 'Worker' && isIntentionalWorker) {
+            return 'Customers';
+          }
+          return 'Owner';
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    return 'Customers';
+  });
   const [activeCustomerIdForNewOrder, setActiveCustomerIdForNewOrder] = useState<string | undefined>(undefined);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -101,40 +149,125 @@ export default function App() {
     }
   }, []);
 
-  // Verify stored session on startup
+  // Verify/Restore Supabase Session on Startup & Listen to Session Updates
   useEffect(() => {
-    const verifySession = async () => {
-      if (!token) {
-        setIsVerifyingSession(false);
-        return;
-      }
-      try {
-        const res = await fetch('/api/auth/me', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const contentType = res.headers.get('content-type') || '';
-        if (res.ok && contentType.includes('application/json')) {
-          const data = await res.json();
-          setUser(data.user);
-          localStorage.setItem('tailor_user', JSON.stringify(data.user));
+    let isMounted = true;
 
-          // If they are a Worker in the database, force Worker role in case activeRole is somehow Owner
-          if (data.user.role === 'Worker' && activeRole === 'Owner') {
-            setActiveRole('Worker');
-            localStorage.setItem('tailor_active_role', 'Worker');
+    const initializeAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session && isMounted) {
+          const tkn = session.access_token;
+          setToken(tkn);
+          localStorage.setItem('tailor_token', tkn);
+
+          const res = await fetch('/api/auth/me', {
+            headers: { Authorization: `Bearer ${tkn}` },
+          });
+
+          const contentType = res.headers.get('content-type') || '';
+          if (res.ok && contentType.includes('application/json')) {
+            const data = await res.json();
+            if (isMounted) {
+              setUser(data.user);
+              localStorage.setItem('tailor_user', JSON.stringify(data.user));
+
+              const savedActiveRole = localStorage.getItem('tailor_active_role') as UserRole;
+              const isIntentionalWorker = localStorage.getItem('tailor_intentional_worker_mode') === 'true';
+
+              if (data.user.role === 'Owner') {
+                if (savedActiveRole === 'Worker' && isIntentionalWorker) {
+                  setActiveRole('Worker');
+                } else {
+                  setActiveRole('Owner');
+                  localStorage.setItem('tailor_active_role', 'Owner');
+                }
+              } else {
+                setActiveRole('Worker');
+                localStorage.setItem('tailor_active_role', 'Worker');
+              }
+            }
+          } else {
+            await handleLogout();
           }
-        } else {
-          handleLogout();
+        } else if (isMounted) {
+          setUser(null);
+          setToken(null);
+          localStorage.removeItem('tailor_token');
+          localStorage.removeItem('tailor_user');
         }
       } catch (err) {
-        console.error('Session verification failed:', err);
+        console.error('Failed to initialize or restore Supabase session:', err);
       } finally {
-        setIsVerifyingSession(false);
+        if (isMounted) {
+          setIsVerifyingSession(false);
+        }
       }
     };
 
-    verifySession();
-  }, [token]);
+    initializeAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!isMounted) return;
+
+      if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setToken(null);
+        localStorage.removeItem('tailor_token');
+        localStorage.removeItem('tailor_user');
+        setIsVerifyingSession(false);
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        if (session) {
+          const tkn = session.access_token;
+          setToken(tkn);
+          localStorage.setItem('tailor_token', tkn);
+
+          try {
+            const res = await fetch('/api/auth/me', {
+              headers: { Authorization: `Bearer ${tkn}` },
+            });
+            const contentType = res.headers.get('content-type') || '';
+            if (res.ok && contentType.includes('application/json')) {
+              const data = await res.json();
+              if (isMounted) {
+                setUser(data.user);
+                localStorage.setItem('tailor_user', JSON.stringify(data.user));
+
+                const savedActiveRole = localStorage.getItem('tailor_active_role') as UserRole;
+                const isIntentionalWorker = localStorage.getItem('tailor_intentional_worker_mode') === 'true';
+
+                if (data.user.role === 'Owner') {
+                  if (savedActiveRole === 'Worker' && isIntentionalWorker) {
+                    setActiveRole('Worker');
+                  } else {
+                    setActiveRole('Owner');
+                    localStorage.setItem('tailor_active_role', 'Owner');
+                  }
+                } else {
+                  setActiveRole('Worker');
+                  localStorage.setItem('tailor_active_role', 'Worker');
+                }
+              }
+            } else {
+              await handleLogout();
+            }
+          } catch (err) {
+            console.error('Error fetching profile on auth change:', err);
+          } finally {
+            if (isMounted) {
+              setIsVerifyingSession(false);
+            }
+          }
+        }
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   // Fetch shop metadata
   const fetchShopMetadata = async () => {
@@ -189,11 +322,18 @@ export default function App() {
     localStorage.setItem('tailor_token', tkn);
     localStorage.setItem('tailor_user', JSON.stringify(usr));
     localStorage.setItem('tailor_active_role', usr.role);
-    setActiveTab('Customers');
+    localStorage.setItem('tailor_intentional_worker_mode', 'false');
+    
+    if (usr.role === 'Owner') {
+      setActiveTab('Owner');
+    } else {
+      setActiveTab('Customers');
+    }
   };
 
   const handleLogout = async () => {
     try {
+      await supabase.auth.signOut();
       await fetch('/api/auth/logout', {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -207,6 +347,7 @@ export default function App() {
     localStorage.removeItem('tailor_token');
     localStorage.removeItem('tailor_user');
     localStorage.removeItem('tailor_active_role');
+    localStorage.removeItem('tailor_intentional_worker_mode');
   };
 
   const handleSettingsUpdated = () => {
@@ -238,8 +379,10 @@ export default function App() {
       if (res.ok && data.success) {
         setActiveRole('Owner');
         localStorage.setItem('tailor_active_role', 'Owner');
+        localStorage.setItem('tailor_intentional_worker_mode', 'false');
         setIsPasswordModalOpen(false);
         setPasswordInput('');
+        setActiveTab('Owner');
       } else {
         // Generic failure message protecting security details
         setPasswordVerificationError(data.error || 'Password verification failed. Stayed in Worker mode.');
@@ -356,6 +499,7 @@ export default function App() {
                   // Instant switch to worker mode, no password needed
                   setActiveRole('Worker');
                   localStorage.setItem('tailor_active_role', 'Worker');
+                  localStorage.setItem('tailor_intentional_worker_mode', 'true');
                 } else {
                   // Password verification required to switch back to Owner
                   setPasswordInput('');
@@ -441,6 +585,7 @@ export default function App() {
                   if (activeRole === 'Owner') {
                     setActiveRole('Worker');
                     localStorage.setItem('tailor_active_role', 'Worker');
+                    localStorage.setItem('tailor_intentional_worker_mode', 'true');
                   } else {
                     setPasswordInput('');
                     setPasswordVerificationError(null);
