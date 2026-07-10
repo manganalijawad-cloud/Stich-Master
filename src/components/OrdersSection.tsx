@@ -980,7 +980,7 @@ export default function OrdersSection({
                       Duplicate Order
                     </button>
 
-                    {userRole === 'Owner' && selectedOrder.status !== 'Delivered' && selectedOrder.status !== 'Archived' && (
+                    {selectedOrder.status !== 'Delivered' && selectedOrder.status !== 'Archived' && (
                       <button
                         onClick={() => {
                           setEditedItems([...selectedOrder.items]);
@@ -996,15 +996,13 @@ export default function OrdersSection({
                       </button>
                     )}
 
-                    {userRole === 'Owner' && (
-                      <button
-                        onClick={() => handleDeleteOrder(selectedOrder)}
-                        className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4 text-red-500" />
-                        Delete
-                      </button>
-                    )}
+                    <button
+                      onClick={() => handleDeleteOrder(selectedOrder)}
+                      className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-500" />
+                      Delete
+                    </button>
                   </div>
                 </div>
 

@@ -14,6 +14,7 @@ interface CustomersSectionProps {
   currency: string;
   onBookOrder: (customer: Customer) => void;
   selectedCustomerId?: string;
+  shopName?: string;
 }
 
 export default function CustomersSection({
@@ -23,6 +24,7 @@ export default function CustomersSection({
   currency,
   onBookOrder,
   selectedCustomerId,
+  shopName,
 }: CustomersSectionProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -586,7 +588,7 @@ export default function CustomersSection({
               {/* CORE ACTIONS BUTTON PANEL AS REQUESTED */}
               <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100">
                 {/* 1. Edit Measurements */}
-                {userRole === 'Owner' && !isEditingMeasurements ? (
+                {!isEditingMeasurements ? (
                   <button
                     onClick={() => {
                       setEditedMeasurements({ ...measurements });
@@ -771,14 +773,6 @@ export default function CustomersSection({
                 </div>
               )}
             </div>
-
-            {/* Helper warning if Worker attempts to update measurements */}
-            {userRole === 'Worker' && (
-              <div className="flex items-center gap-2 text-slate-500 bg-[#E0F2FE]/40 p-3 rounded-xl border border-sky-100/50 text-2xs font-semibold uppercase tracking-wider">
-                <ShieldAlert className="w-4 h-4 shrink-0 text-[#0369A1]" />
-                <span>Only Owners can update original body measurements. Workers view measurements for references.</span>
-              </div>
-            )}
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-24 text-center print:hidden">
@@ -797,7 +791,7 @@ export default function CustomersSection({
       {selectedCustomer && (
         <div className="hidden print:block bg-white text-slate-900 p-8 space-y-6 max-w-2xl mx-auto">
           <div className="text-center space-y-2 border-b-2 border-slate-900 pb-5">
-            <h1 className="text-3xl font-black tracking-tight uppercase">Classic Tailors</h1>
+            <h1 className="text-3xl font-black tracking-tight uppercase">{shopName || 'Unnamed Tailor Shop'}</h1>
             <h2 className="text-xl font-bold tracking-wider text-slate-500 uppercase">Customer Measurement Sheet</h2>
             <p className="text-xs">Generated on: {new Date().toLocaleDateString()} • Printed by StitchMaster</p>
           </div>

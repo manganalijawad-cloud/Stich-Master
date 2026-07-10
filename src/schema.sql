@@ -1,27 +1,42 @@
--- SQL SCHEMA FOR TAILOR SHOP MANAGEMENT SYSTEM (MULTI-TENANT ISOLATED VERSION)
+-- SQL SCHEMA FOR TAILOR SHOP MANAGEMENT SYSTEM (MULTI-TENANT USER-LEVEL ISOLATED VERSION)
 -- Copy and execute this script inside the Supabase SQL Editor.
 
 -- Enable UUID extension if not enabled
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 1. SHOPS TABLE (The core tenant table)
+-- Enable pg_trgm extension if not already enabled for fast partial matches
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+-- 1. SHOPS TABLE
 CREATE TABLE IF NOT EXISTS public.shops (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    created_by UUID REFERENCES auth.users(id) DEFAULT auth.uid()
 );
 
--- 2. PROFILES TABLE
+-- Enable RLS on Shops
+ALTER TABLE public.shops ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Restrict shops to authenticated user's own records only" ON public.shops;
+CREATE POLICY "Restrict shops to authenticated user's own records only"
+    ON public.shops FOR ALL
+    TO authenticated
+    USING (created_by = auth.uid())
+    WITH CHECK (created_by = auth.uid());
+
+
+-- 2. PROFILES TABLE (User/Worker Accounts)
 CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     email TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('Owner', 'Worker')),
+    role TEXT NOT NULL CHECK (role IN ('Owner', 'Manager')),
     shop_id UUID REFERENCES public.shops(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
-    created_by UUID,
-    updated_by UUID
+    created_by UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
+    updated_by UUID REFERENCES auth.users(id) DEFAULT auth.uid()
 );
 
 -- Enable RLS on Profiles
@@ -38,40 +53,21 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Create policies for Profiles (Safe and idempotent)
+-- Drop old policies
 DROP POLICY IF EXISTS "Allow authenticated reads on profiles" ON public.profiles;
 DROP POLICY IF EXISTS "Allow owners full write on profiles" ON public.profiles;
 DROP POLICY IF EXISTS "Allow users to insert their own profile" ON public.profiles;
 DROP POLICY IF EXISTS "Allow users to update their own profile" ON public.profiles;
 DROP POLICY IF EXISTS "Allow authenticated reads on profiles in same shop" ON public.profiles;
 DROP POLICY IF EXISTS "Allow owners full write on profiles in same shop" ON public.profiles;
+DROP POLICY IF EXISTS "Restrict profiles to authenticated user's own records only" ON public.profiles;
 
-CREATE POLICY "Allow authenticated reads on profiles in same shop"
-    ON public.profiles FOR SELECT
-    TO authenticated
-    USING (shop_id = public.get_user_shop_id());
-
-CREATE POLICY "Allow owners full write on profiles in same shop"
+-- Create policies that restrict access to the user's own profile OR workers created by this owner
+CREATE POLICY "Restrict profiles to authenticated user's own records only"
     ON public.profiles FOR ALL
     TO authenticated
-    USING (
-        shop_id = public.get_user_shop_id() AND 
-        EXISTS (
-            SELECT 1 FROM public.profiles 
-            WHERE id = auth.uid() AND role = 'Owner'
-        )
-    );
-
-CREATE POLICY "Allow users to insert their own profile"
-    ON public.profiles FOR INSERT
-    TO authenticated
-    WITH CHECK (id = auth.uid());
-
-CREATE POLICY "Allow users to update their own profile"
-    ON public.profiles FOR UPDATE
-    TO authenticated
-    USING (id = auth.uid())
-    WITH CHECK (id = auth.uid() AND (shop_id IS NOT NULL OR shop_id = public.get_user_shop_id()));
+    USING (id = auth.uid() OR created_by = auth.uid())
+    WITH CHECK (id = auth.uid() OR created_by = auth.uid());
 
 
 -- 3. CUSTOMERS TABLE
@@ -86,29 +82,23 @@ CREATE TABLE IF NOT EXISTS public.customers (
     notes TEXT,
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
-    created_by UUID REFERENCES auth.users(id),
-    updated_by UUID REFERENCES auth.users(id)
+    created_by UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
+    updated_by UUID REFERENCES auth.users(id) DEFAULT auth.uid()
 );
-
--- Note: In multi-tenant, phone uniqueness must be scope to a shop or managed by logic.
--- To allow the same phone number in different shops but unique within a shop:
-ALTER TABLE public.customers DROP CONSTRAINT IF EXISTS customers_phone_key;
-ALTER TABLE public.customers DROP CONSTRAINT IF EXISTS customers_phone_shop_idx;
--- Add a unique constraint on (shop_id, phone) instead of globally unique phone number
--- But let's first drop existing UNIQUE constraints if any.
--- (To be completely safe, we'll keep the column non-globally unique, and we'll check uniqueness in code).
 
 -- Enable RLS on Customers
 ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow authenticated full access to customers" ON public.customers;
 DROP POLICY IF EXISTS "Allow shop isolated access to customers" ON public.customers;
+DROP POLICY IF EXISTS "Restrict customers to authenticated user's own records only" ON public.customers;
 
-CREATE POLICY "Allow shop isolated access to customers"
+-- Create policy restricting to the user's own customers only
+CREATE POLICY "Restrict customers to authenticated user's own records only"
     ON public.customers FOR ALL
     TO authenticated
-    USING (shop_id = public.get_user_shop_id())
-    WITH CHECK (shop_id = public.get_user_shop_id());
+    USING (created_by = auth.uid())
+    WITH CHECK (created_by = auth.uid());
 
 
 -- 4. MEASUREMENTS TABLE
@@ -119,8 +109,8 @@ CREATE TABLE IF NOT EXISTS public.measurements (
     data JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
-    created_by UUID REFERENCES auth.users(id),
-    updated_by UUID REFERENCES auth.users(id)
+    created_by UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
+    updated_by UUID REFERENCES auth.users(id) DEFAULT auth.uid()
 );
 
 -- Enable RLS on Measurements
@@ -129,12 +119,14 @@ ALTER TABLE public.measurements ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow authenticated select/update measurements" ON public.measurements;
 DROP POLICY IF EXISTS "Allow authenticated insert/update measurements" ON public.measurements;
 DROP POLICY IF EXISTS "Allow shop isolated access to measurements" ON public.measurements;
+DROP POLICY IF EXISTS "Restrict measurements to authenticated user's own records only" ON public.measurements;
 
-CREATE POLICY "Allow shop isolated access to measurements"
+-- Create policy restricting to own measurements only
+CREATE POLICY "Restrict measurements to authenticated user's own records only"
     ON public.measurements FOR ALL
     TO authenticated
-    USING (shop_id = public.get_user_shop_id())
-    WITH CHECK (shop_id = public.get_user_shop_id());
+    USING (created_by = auth.uid())
+    WITH CHECK (created_by = auth.uid());
 
 
 -- 5. ORDERS TABLE
@@ -149,11 +141,11 @@ CREATE TABLE IF NOT EXISTS public.orders (
     paid_amount NUMERIC(12,2) NOT NULL DEFAULT 0.00,
     due_date DATE NOT NULL,
     measurement_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
-    delivered_at TIMESTAMPTZ,
+    delivered_at TEXT,
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
-    created_by UUID REFERENCES auth.users(id),
-    updated_by UUID REFERENCES auth.users(id)
+    created_by UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
+    updated_by UUID REFERENCES auth.users(id) DEFAULT auth.uid()
 );
 
 -- Enable RLS on Orders
@@ -162,19 +154,21 @@ ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow authenticated select on orders" ON public.orders;
 DROP POLICY IF EXISTS "Allow authenticated write on orders" ON public.orders;
 DROP POLICY IF EXISTS "Allow shop isolated access to orders" ON public.orders;
+DROP POLICY IF EXISTS "Restrict orders to authenticated user's own records only" ON public.orders;
 
-CREATE POLICY "Allow shop isolated access to orders"
+-- Create policy restricting to own orders only
+CREATE POLICY "Restrict orders to authenticated user's own records only"
     ON public.orders FOR ALL
     TO authenticated
-    USING (shop_id = public.get_user_shop_id())
-    WITH CHECK (shop_id = public.get_user_shop_id());
+    USING (created_by = auth.uid())
+    WITH CHECK (created_by = auth.uid());
 
 
 -- 6. AUDIT LOGS TABLE
 CREATE TABLE IF NOT EXISTS public.audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     shop_id UUID REFERENCES public.shops(id) ON DELETE CASCADE,
-    user_id UUID,
+    user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
     user_email TEXT,
     action TEXT NOT NULL,
     details JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -188,22 +182,14 @@ DROP POLICY IF EXISTS "Allow owners to view audit logs" ON public.audit_logs;
 DROP POLICY IF EXISTS "Allow inserts into audit logs for authenticated users" ON public.audit_logs;
 DROP POLICY IF EXISTS "Allow shop isolated read to audit logs" ON public.audit_logs;
 DROP POLICY IF EXISTS "Allow inserts into audit logs in same shop" ON public.audit_logs;
+DROP POLICY IF EXISTS "Restrict audit_logs to authenticated user's own records only" ON public.audit_logs;
 
-CREATE POLICY "Allow shop isolated read to audit logs"
-    ON public.audit_logs FOR SELECT
+-- Create policies restricting to own audit logs only
+CREATE POLICY "Restrict audit_logs to authenticated user's own records only"
+    ON public.audit_logs FOR ALL
     TO authenticated
-    USING (
-        shop_id = public.get_user_shop_id() AND 
-        EXISTS (
-            SELECT 1 FROM public.profiles 
-            WHERE id = auth.uid() AND role = 'Owner'
-        )
-    );
-
-CREATE POLICY "Allow inserts into audit logs in same shop"
-    ON public.audit_logs FOR INSERT
-    TO authenticated
-    WITH CHECK (shop_id = public.get_user_shop_id());
+    USING (user_id = auth.uid())
+    WITH CHECK (user_id = auth.uid());
 
 
 -- 7. SHOP SETTINGS TABLE (Compound Key per Shop)
@@ -212,7 +198,8 @@ CREATE TABLE IF NOT EXISTS public.shop_settings (
     key TEXT NOT NULL,
     value JSONB NOT NULL DEFAULT '{}'::jsonb,
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
-    updated_by UUID REFERENCES auth.users(id),
+    updated_by UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
+    user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
     PRIMARY KEY (shop_id, key)
 );
 
@@ -223,32 +210,40 @@ DROP POLICY IF EXISTS "Allow authenticated read on shop settings" ON public.shop
 DROP POLICY IF EXISTS "Allow owners write access on shop settings" ON public.shop_settings;
 DROP POLICY IF EXISTS "Allow shop isolated read to shop settings" ON public.shop_settings;
 DROP POLICY IF EXISTS "Allow shop owner write to shop settings" ON public.shop_settings;
+DROP POLICY IF EXISTS "Restrict shop_settings to authenticated user's own records only" ON public.shop_settings;
 
-CREATE POLICY "Allow shop isolated read to shop settings"
-    ON public.shop_settings FOR SELECT
-    TO authenticated
-    USING (shop_id = public.get_user_shop_id());
-
-CREATE POLICY "Allow shop owner write to shop settings"
+-- Create policy restricting to settings owned by the authenticated user
+CREATE POLICY "Restrict shop_settings to authenticated user's own records only"
     ON public.shop_settings FOR ALL
     TO authenticated
-    USING (
-        shop_id = public.get_user_shop_id() AND 
-        EXISTS (
-            SELECT 1 FROM public.profiles 
-            WHERE id = auth.uid() AND role = 'Owner'
-        )
-    )
-    WITH CHECK (
-        shop_id = public.get_user_shop_id() AND 
-        EXISTS (
-            SELECT 1 FROM public.profiles 
-            WHERE id = auth.uid() AND role = 'Owner'
-        )
-    );
+    USING (user_id = auth.uid() OR key LIKE auth.uid()::text || ':%')
+    WITH CHECK (user_id = auth.uid() OR key LIKE auth.uid()::text || ':%');
 
 
--- 8. PERFORMANCE OPTIMIZING INDEXES FOR FAST SEARCH, JOIN, AND TENANT ISOLATION
+-- 8. INVENTORY TABLE (New Table with strict RLS)
+CREATE TABLE IF NOT EXISTS public.inventory (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 0,
+    price NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    created_by UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
+    updated_by UUID REFERENCES auth.users(id) DEFAULT auth.uid()
+);
+
+-- Enable RLS on Inventory
+ALTER TABLE public.inventory ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Restrict inventory to authenticated user's own records only" ON public.inventory;
+CREATE POLICY "Restrict inventory to authenticated user's own records only"
+    ON public.inventory FOR ALL
+    TO authenticated
+    USING (created_by = auth.uid())
+    WITH CHECK (created_by = auth.uid());
+
+
+-- 9. PERFORMANCE OPTIMIZING INDEXES FOR FAST SEARCH, JOIN, AND TENANT ISOLATION
 -- Tenant lookup indexes (Critical for Multi-Tenant performance)
 CREATE INDEX IF NOT EXISTS profiles_shop_id_idx ON public.profiles (shop_id);
 CREATE INDEX IF NOT EXISTS customers_shop_id_idx ON public.customers (shop_id);
@@ -261,9 +256,6 @@ CREATE INDEX IF NOT EXISTS shop_settings_shop_id_idx ON public.shop_settings (sh
 CREATE INDEX IF NOT EXISTS customers_name_idx ON public.customers (name);
 CREATE INDEX IF NOT EXISTS customers_phone_idx ON public.customers (phone);
 
--- Enable pg_trgm extension if not already enabled for fast partial matches
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-
 -- GIN Trigram indexes for ultra-fast customer name and phone substring matching
 CREATE INDEX IF NOT EXISTS customers_name_trgm_idx ON public.customers USING gin (name gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS customers_phone_trgm_idx ON public.customers USING gin (phone gin_trgm_ops);
@@ -273,3 +265,12 @@ CREATE INDEX IF NOT EXISTS orders_customer_id_idx ON public.orders (customer_id)
 CREATE INDEX IF NOT EXISTS orders_status_idx ON public.orders (status);
 CREATE INDEX IF NOT EXISTS orders_created_at_idx ON public.orders (created_at DESC);
 CREATE INDEX IF NOT EXISTS orders_order_number_idx ON public.orders (order_number);
+
+-- Security/RLS filtering optimization indexes
+CREATE INDEX IF NOT EXISTS profiles_created_by_idx ON public.profiles (created_by);
+CREATE INDEX IF NOT EXISTS customers_created_by_idx ON public.customers (created_by);
+CREATE INDEX IF NOT EXISTS measurements_created_by_idx ON public.measurements (created_by);
+CREATE INDEX IF NOT EXISTS orders_created_by_idx ON public.orders (created_by);
+CREATE INDEX IF NOT EXISTS audit_logs_user_id_idx ON public.audit_logs (user_id);
+CREATE INDEX IF NOT EXISTS shop_settings_user_id_idx ON public.shop_settings (user_id);
+CREATE INDEX IF NOT EXISTS inventory_created_by_idx ON public.inventory (created_by);

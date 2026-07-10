@@ -11,21 +11,24 @@ interface OwnerDashboardProps {
   token: string;
   currency: string;
   onSettingsUpdated: () => void;
+  onWorkersUpdated?: (workers: UserProfile[]) => void;
 }
 
-export default function OwnerDashboard({ token, currency, onSettingsUpdated }: OwnerDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'Reports' | 'Workers' | 'Settings' | 'Backup' | 'Logs'>('Reports');
+export default function OwnerDashboard({ token, currency, onSettingsUpdated, onWorkersUpdated }: OwnerDashboardProps) {
+  const [activeTab, setActiveTab] = useState<'Settings' | 'Backup' | 'Logs'>('Settings');
 
-  // Reports State
-  const [reportsData, setReportsData] = useState<any>(null);
-  const [reportsLoading, setReportsLoading] = useState(false);
+  // Managers State
+  const [managers, setManagers] = useState<any[]>([]);
+  const [managersLoading, setManagersLoading] = useState(false);
+  const [editingManager, setEditingManager] = useState<any | null>(null);
 
-  // Workers State
-  const [workers, setWorkers] = useState<UserProfile[]>([]);
-  const [workersLoading, setWorkersLoading] = useState(false);
-  const [newWorkerName, setNewWorkerName] = useState('');
-  const [workerError, setWorkerError] = useState<string | null>(null);
-  const [workerSuccess, setWorkerSuccess] = useState<string | null>(null);
+  // Form fields for adding/editing manager
+  const [mgrName, setMgrName] = useState('');
+  const [mgrPhone, setMgrPhone] = useState('');
+  const [mgrPhoto, setMgrPhoto] = useState('');
+  const [mgrActive, setMgrActive] = useState(true);
+  const [mgrError, setMgrError] = useState<string | null>(null);
+  const [mgrSuccess, setMgrSuccess] = useState<string | null>(null);
 
   // Settings State
   const [settings, setSettings] = useState<ShopSettings | null>(null);
@@ -53,39 +56,21 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated }: O
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
 
-  // Fetch Reports
-  const fetchReports = async () => {
-    setReportsLoading(true);
+  // Fetch Managers
+  const fetchManagers = async () => {
+    setManagersLoading(true);
     try {
-      const res = await fetch('/api/reports/dashboard', {
+      const res = await fetch('/api/managers', {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       if (res.ok) {
-        setReportsData(data);
+        setManagers(data);
       }
     } catch (err) {
       console.error(err);
     } finally {
-      setReportsLoading(false);
-    }
-  };
-
-  // Fetch Workers
-  const fetchWorkers = async () => {
-    setWorkersLoading(true);
-    try {
-      const res = await fetch('/api/workers', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setWorkers(data);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setWorkersLoading(false);
+      setManagersLoading(false);
     }
   };
 
@@ -139,9 +124,10 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated }: O
 
   // Load appropriate data on tab click
   useEffect(() => {
-    if (activeTab === 'Reports') fetchReports();
-    if (activeTab === 'Workers') fetchWorkers();
-    if (activeTab === 'Settings') fetchSettings();
+    if (activeTab === 'Settings') {
+      fetchSettings();
+      fetchManagers();
+    }
     if (activeTab === 'Backup') {
       const d = new Date();
       d.setDate(d.getDate() - 30);
@@ -150,66 +136,103 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated }: O
     if (activeTab === 'Logs') fetchLogs();
   }, [activeTab, token]);
 
-  // Handle Create Worker
-  const handleCreateWorker = async (e: React.FormEvent) => {
+  // Handle Save Manager
+  const handleSaveManager = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newWorkerName || newWorkerName.trim() === '') {
-      setWorkerError('Worker name is required.');
+    if (!mgrName || mgrName.trim() === '') {
+      setMgrError('Full Name is required.');
       return;
     }
 
-    setWorkerError(null);
-    setWorkerSuccess(null);
+    setMgrError(null);
+    setMgrSuccess(null);
 
     try {
-      const res = await fetch('/api/workers', {
-        method: 'POST',
+      const method = editingManager ? 'PUT' : 'POST';
+      const url = editingManager ? `/api/managers/${editingManager.id}` : '/api/managers';
+
+      const res = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          name: newWorkerName,
+          name: mgrName.trim(),
+          phone: mgrPhone.trim(),
+          photo: mgrPhoto.trim(),
+          active: mgrActive,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to create worker.');
+        throw new Error(data.error || 'Failed to save manager.');
       }
 
-      setWorkerSuccess(`Successfully created worker profile for ${newWorkerName}!`);
-      setNewWorkerName('');
-      fetchWorkers();
+      setMgrSuccess(editingManager ? 'Manager profile updated successfully!' : 'Manager profile created successfully!');
+      
+      // Reset form
+      setMgrName('');
+      setMgrPhone('');
+      setMgrPhoto('');
+      setMgrActive(true);
+      setEditingManager(null);
+      
+      fetchManagers();
+      if (onWorkersUpdated) {
+        onWorkersUpdated([]);
+      }
     } catch (err: any) {
-      setWorkerError(err.message);
+      setMgrError(err.message);
     }
   };
 
-  // Handle Delete Worker
-  const handleDeleteWorker = async (workerId: string) => {
-    if (!confirm('Are you absolutely sure you want to permanently delete this worker account? This will block their login immediately.')) {
+  const handleEditClick = (mgr: any) => {
+    setEditingManager(mgr);
+    setMgrName(mgr.name);
+    setMgrPhone(mgr.phone || '');
+    setMgrPhoto(mgr.photo || '');
+    setMgrActive(mgr.active !== false);
+    setMgrError(null);
+    setMgrSuccess(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingManager(null);
+    setMgrName('');
+    setMgrPhone('');
+    setMgrPhoto('');
+    setMgrActive(true);
+    setMgrError(null);
+  };
+
+  const handleDeleteManager = async (mgrId: string) => {
+    if (!confirm('Are you absolutely sure you want to permanently delete this manager? This cannot be undone.')) {
       return;
     }
 
-    setWorkerError(null);
-    setWorkerSuccess(null);
+    setMgrError(null);
+    setMgrSuccess(null);
 
     try {
-      const res = await fetch(`/api/workers/${workerId}`, {
+      const res = await fetch(`/api/managers/${mgrId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to delete worker.');
+        throw new Error(data.error || 'Failed to delete manager.');
       }
 
-      setWorkerSuccess('Worker account deleted successfully.');
-      fetchWorkers();
+      setMgrSuccess('Manager profile deleted successfully.');
+      fetchManagers();
+      if (onWorkersUpdated) {
+        onWorkersUpdated([]);
+      }
     } catch (err: any) {
-      setWorkerError(err.message);
+      setMgrError(err.message);
     }
   };
 
@@ -414,8 +437,6 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated }: O
       {/* Tab Navigation header - Styled as a premium command deck */}
       <div className="flex flex-wrap gap-1.5 border-b border-slate-200 pb-3">
         {[
-          { id: 'Reports', label: 'Financial Reports', icon: DollarSign },
-          { id: 'Workers', label: 'Workers Directory', icon: Users },
           { id: 'Settings', label: 'Shop Settings', icon: Settings },
           { id: 'Backup', label: 'Backup & Archiving', icon: Database },
           { id: 'Logs', label: 'Audit Logs', icon: Activity },
@@ -442,168 +463,6 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated }: O
       {/* Tab Body - Clean container frame */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6 min-h-[450px]">
         
-        {/* TAB 1: REPORTS */}
-        {activeTab === 'Reports' && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-slate-900 uppercase tracking-wider font-display">Financial Parameters</h3>
-              {reportsLoading && <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Loading Reports...</p>}
-            </div>
-            
-            {reportsData && (
-              <div className="space-y-6">
-                {/* High Contrast Professional Slate Bento Metrics Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="bg-[#0F172A] text-white p-6 rounded-2xl border border-slate-800 flex flex-col justify-between shadow-sm relative overflow-hidden">
-                    <div className="absolute right-4 top-4 opacity-10">
-                      <DollarSign className="w-16 h-16 text-[#38BDF8]" />
-                    </div>
-                    <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">Gross Booking Value</span>
-                    <span className="text-3xl font-black mt-4 font-display text-[#F8FAFC]">{currency}{reportsData.stats.totalRevenue.toLocaleString()}</span>
-                    <span className="text-2xs text-slate-400 font-medium uppercase tracking-wide mt-2">Aggregate booked garments value</span>
-                  </div>
-
-                  <div className="bg-[#0F172A] text-white p-6 rounded-2xl border border-slate-800 flex flex-col justify-between shadow-sm relative overflow-hidden">
-                    <div className="absolute right-4 top-4 opacity-10">
-                      <DollarSign className="w-16 h-16 text-[#10B981]" />
-                    </div>
-                    <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">Cash Received</span>
-                    <span className="text-3xl font-black mt-4 font-display text-emerald-400">{currency}{reportsData.stats.totalReceived.toLocaleString()}</span>
-                    <span className="text-2xs text-slate-400 font-medium uppercase tracking-wide mt-2">Paid advance + fitting clearances</span>
-                  </div>
-
-                  <div className="bg-[#0F172A] text-white p-6 rounded-2xl border border-slate-800 flex flex-col justify-between shadow-sm relative overflow-hidden">
-                    <div className="absolute right-4 top-4 opacity-10">
-                      <DollarSign className="w-16 h-16 text-[#F43F5E]" />
-                    </div>
-                    <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block">Outstanding Receivables</span>
-                    <span className="text-3xl font-black mt-4 font-display text-rose-400">{currency}{reportsData.stats.totalPendingDues.toLocaleString()}</span>
-                    <span className="text-2xs text-slate-400 font-medium uppercase tracking-wide mt-2">Balance dues on active orders</span>
-                  </div>
-                </div>
-
-                {/* Sub statistics - Grid of volume trackers */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
-                  
-                  {/* Pipeline Queue Stage stats */}
-                  <div className="bg-slate-50 p-5 rounded-xl border border-slate-200/60 space-y-4">
-                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                      <ListTodo className="w-4 h-4 text-[#38BDF8]" />
-                      Pipeline Queue Stages
-                    </h4>
-                    <div className="grid grid-cols-2 gap-3">
-                      {Object.entries(reportsData.orderStatuses).map(([status, count]) => (
-                        <div key={status} className="p-3.5 bg-white border border-slate-200/50 rounded-lg flex justify-between items-center shadow-2xs">
-                          <span className="font-bold text-slate-500 text-xs uppercase tracking-wider">{status}</span>
-                          <span className="text-lg font-black text-slate-900 font-display">{count as number}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Garment type statistics */}
-                  <div className="bg-slate-50 p-5 rounded-xl border border-slate-200/60 space-y-4">
-                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Stitched Garments distribution</h4>
-                    <div className="bg-white border border-slate-200/50 rounded-lg overflow-hidden divide-y divide-slate-100 shadow-2xs">
-                      {Object.keys(reportsData.popularItems).length === 0 ? (
-                        <p className="text-center text-slate-400 py-10 text-xs font-bold uppercase">No order items recorded yet.</p>
-                      ) : (
-                        Object.entries(reportsData.popularItems).map(([itemType, count]) => (
-                          <div key={itemType} className="p-3 flex justify-between items-center text-xs font-bold uppercase tracking-wider text-slate-650">
-                            <span>{itemType}</span>
-                            <span className="bg-[#F0F9FF] text-[#0369A1] px-2.5 py-1 rounded font-black text-3xs border border-sky-150">{count as number} units</span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* TAB 2: WORKERS DIRECTORY */}
-        {activeTab === 'Workers' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start animate-fade-in">
-            {/* Create worker form */}
-            <div className="lg:col-span-5 bg-slate-50 p-5 rounded-xl border border-slate-200/60 space-y-4">
-              <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Provision New Worker Account</h4>
-              
-              {workerSuccess && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-xs font-semibold">
-                  {workerSuccess}
-                </div>
-              )}
-
-              {workerError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs font-semibold">
-                  {workerError}
-                </div>
-              )}
-
-              <form onSubmit={handleCreateWorker} className="space-y-3.5">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Worker Full Name</label>
-                  <input
-                    type="text"
-                    required
-                    value={newWorkerName}
-                    onChange={(e) => setNewWorkerName(e.target.value)}
-                    placeholder="Staff Full Name"
-                    className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#38BDF8]"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-2.5 px-4 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold text-xs uppercase tracking-wider rounded-lg flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
-                >
-                  <Plus className="w-4 h-4 text-[#38BDF8]" />
-                  Provision Staff Profile
-                </button>
-              </form>
-            </div>
-
-            {/* Workers List */}
-            <div className="lg:col-span-7 space-y-4">
-              <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Provisioned Workers Directory</h4>
-              {workersLoading && <p className="text-slate-400 text-xs font-bold uppercase">Fetching workers directory...</p>}
-              
-              <div className="space-y-2 max-h-[440px] overflow-y-auto pr-1">
-                {workers.map((w) => (
-                  <div key={w.id} className="p-3.5 bg-white rounded-xl border border-slate-200 flex justify-between items-center shadow-2xs">
-                    <div className="space-y-1">
-                      <p className="font-extrabold text-slate-800 text-sm font-display">{w.name}</p>
-                      {w.role === 'Owner' ? (
-                        <p className="text-slate-400 text-xs">{w.email}</p>
-                      ) : (
-                        <p className="text-slate-400 text-2xs uppercase tracking-wider font-semibold">Internal Record</p>
-                      )}
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase inline-block border ${
-                        w.role === 'Owner'
-                          ? 'bg-[#FEF9C3] text-[#854D0E] border-yellow-200'
-                          : 'bg-slate-100 text-slate-650 border-slate-200'
-                      }`}>
-                        {w.role}
-                      </span>
-                    </div>
-
-                    <button
-                      onClick={() => handleDeleteWorker(w.id)}
-                      className="p-2 hover:bg-red-50 text-red-500 hover:text-red-600 rounded-lg cursor-pointer border border-transparent hover:border-red-150 transition-colors"
-                      title="Deprovision Worker account"
-                    >
-                      <Trash2 className="w-4.5 h-4.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* TAB 3: SHOP SETTINGS */}
         {activeTab === 'Settings' && (
           <form onSubmit={handleUpdateSettings} className="space-y-6 animate-fade-in">
@@ -611,7 +470,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated }: O
 
             {settingsSuccess && (
               <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-xs font-semibold">
-                Shop settings updated successfully across all staff devices.
+                Shop settings updated successfully.
               </div>
             )}
 

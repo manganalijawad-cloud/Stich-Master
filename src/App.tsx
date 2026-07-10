@@ -4,21 +4,21 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Shield, Users, ShoppingBag, Settings, LogOut, Info, ShieldCheck, Menu, X, Key } from 'lucide-react';
+import { Shield, Users, ShoppingBag, Settings, LogOut, Info, ShieldCheck, Menu, X, Key, DollarSign } from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
 import CustomersSection from './components/CustomersSection';
 import OrdersSection from './components/OrdersSection';
 import OwnerDashboard from './components/OwnerDashboard';
+import FinancialReports from './components/FinancialReports';
 import { Customer, UserProfile, UserRole, PipelineStage } from './types';
 import { supabase } from './lib/supabase';
 
 // -------------------------------------------------------------------------
-// GLOBAL WINDOW.FETCH INTERCEPTOR FOR AUTH & PASSING ACTIVE ROLE HEADER
+// GLOBAL WINDOW.FETCH INTERCEPTOR FOR AUTH
 // -------------------------------------------------------------------------
 const originalFetch = window.fetch;
 const customFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const token = localStorage.getItem('tailor_token');
-  const activeRole = localStorage.getItem('tailor_active_role') || 'Worker';
 
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : '';
   if (url.startsWith('/api/') || url.includes('/api/')) {
@@ -27,7 +27,6 @@ const customFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     if (token && !headers.has('Authorization')) {
       headers.set('Authorization', `Bearer ${token}`);
     }
-    headers.set('X-Active-Role', activeRole);
     newInit.headers = headers;
     return originalFetch(input, newInit);
   }
@@ -65,66 +64,16 @@ export default function App() {
     return null;
   });
 
-  const [activeRole, setActiveRole] = useState<UserRole>(() => {
-    const savedUser = localStorage.getItem('tailor_user');
-    if (savedUser) {
-      try {
-        const parsedUser = JSON.parse(savedUser) as UserProfile;
-        if (parsedUser.role === 'Worker') {
-          parsedUser.role = 'Owner';
-          localStorage.setItem('tailor_user', JSON.stringify(parsedUser));
-        }
-        if (parsedUser.role === 'Owner') {
-          const savedActiveRole = localStorage.getItem('tailor_active_role') as UserRole;
-          const isIntentionalWorker = localStorage.getItem('tailor_intentional_worker_mode') === 'true';
-          if (savedActiveRole === 'Worker' && isIntentionalWorker) {
-            return 'Worker';
-          }
-          return 'Owner';
-        }
-      } catch (e) {
-        // ignore
-      }
-    }
-    return 'Worker';
-  });
+  const activeRole = 'Owner' as UserRole;
 
-  const [activeTab, setActiveTab] = useState<'Customers' | 'Orders' | 'Owner'>(() => {
-    const savedUser = localStorage.getItem('tailor_user');
-    if (savedUser) {
-      try {
-        const parsedUser = JSON.parse(savedUser) as UserProfile;
-        if (parsedUser.role === 'Worker') {
-          parsedUser.role = 'Owner';
-          localStorage.setItem('tailor_user', JSON.stringify(parsedUser));
-        }
-        if (parsedUser.role === 'Owner') {
-          const savedActiveRole = localStorage.getItem('tailor_active_role') as UserRole;
-          const isIntentionalWorker = localStorage.getItem('tailor_intentional_worker_mode') === 'true';
-          if (savedActiveRole === 'Worker' && isIntentionalWorker) {
-            return 'Customers';
-          }
-          return 'Owner';
-        }
-      } catch (e) {
-        // ignore
-      }
-    }
-    return 'Customers';
-  });
+  const [activeTab, setActiveTab] = useState<'Customers' | 'Orders' | 'Financials' | 'Owner'>('Customers');
   const [activeCustomerIdForNewOrder, setActiveCustomerIdForNewOrder] = useState<string | undefined>(undefined);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  // Password verification modal state
-  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
-  const [passwordInput, setPasswordInput] = useState('');
-  const [passwordVerificationError, setPasswordVerificationError] = useState<string | null>(null);
-  const [verifyPasswordLoading, setVerifyPasswordLoading] = useState(false);
-
   // Shop configurations fetched from settings API
-  const [shopName, setShopName] = useState('Classic Tailors');
-  const [shopPhone, setShopPhone] = useState('+1 (555) 123-4567');
-  const [shopAddress, setShopAddress] = useState('123 Elegance Lane, Fashion District');
+  const [shopName, setShopName] = useState('');
+  const [shopPhone, setShopPhone] = useState('');
+  const [shopAddress, setShopAddress] = useState('');
   const [currency, setCurrency] = useState('$');
   const [measurementFields, setMeasurementFields] = useState<string[]>([]);
   const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
@@ -153,6 +102,19 @@ export default function App() {
   useEffect(() => {
     let isMounted = true;
 
+    const fetchWithRetry = async (url: string, options: RequestInit, retries = 5, delay = 1000): Promise<Response> => {
+      try {
+        const res = await fetch(url, options);
+        return res;
+      } catch (err) {
+        if (retries > 0 && isMounted) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return fetchWithRetry(url, options, retries - 1, delay * 1.5);
+        }
+        throw err;
+      }
+    };
+
     const initializeAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -162,7 +124,7 @@ export default function App() {
           setToken(tkn);
           localStorage.setItem('tailor_token', tkn);
 
-          const res = await fetch('/api/auth/me', {
+          const res = await fetchWithRetry('/api/auth/me', {
             headers: { Authorization: `Bearer ${tkn}` },
           });
 
@@ -172,21 +134,6 @@ export default function App() {
             if (isMounted) {
               setUser(data.user);
               localStorage.setItem('tailor_user', JSON.stringify(data.user));
-
-              const savedActiveRole = localStorage.getItem('tailor_active_role') as UserRole;
-              const isIntentionalWorker = localStorage.getItem('tailor_intentional_worker_mode') === 'true';
-
-              if (data.user.role === 'Owner') {
-                if (savedActiveRole === 'Worker' && isIntentionalWorker) {
-                  setActiveRole('Worker');
-                } else {
-                  setActiveRole('Owner');
-                  localStorage.setItem('tailor_active_role', 'Owner');
-                }
-              } else {
-                setActiveRole('Worker');
-                localStorage.setItem('tailor_active_role', 'Worker');
-              }
             }
           } else {
             await handleLogout();
@@ -224,7 +171,7 @@ export default function App() {
           localStorage.setItem('tailor_token', tkn);
 
           try {
-            const res = await fetch('/api/auth/me', {
+            const res = await fetchWithRetry('/api/auth/me', {
               headers: { Authorization: `Bearer ${tkn}` },
             });
             const contentType = res.headers.get('content-type') || '';
@@ -233,21 +180,6 @@ export default function App() {
               if (isMounted) {
                 setUser(data.user);
                 localStorage.setItem('tailor_user', JSON.stringify(data.user));
-
-                const savedActiveRole = localStorage.getItem('tailor_active_role') as UserRole;
-                const isIntentionalWorker = localStorage.getItem('tailor_intentional_worker_mode') === 'true';
-
-                if (data.user.role === 'Owner') {
-                  if (savedActiveRole === 'Worker' && isIntentionalWorker) {
-                    setActiveRole('Worker');
-                  } else {
-                    setActiveRole('Owner');
-                    localStorage.setItem('tailor_active_role', 'Owner');
-                  }
-                } else {
-                  setActiveRole('Worker');
-                  localStorage.setItem('tailor_active_role', 'Worker');
-                }
               }
             } else {
               await handleLogout();
@@ -287,9 +219,9 @@ export default function App() {
       const settingsContentType = settingsRes.headers.get('content-type') || '';
       if (settingsRes.ok && settingsContentType.includes('application/json')) {
         const settingsData = await settingsRes.json();
-        setShopName(settingsData.shop_name || 'Classic Tailors');
-        setShopPhone(settingsData.phone || '+1 (555) 123-4567');
-        setShopAddress(settingsData.address || '123 Elegance Lane, Fashion District');
+        setShopName(settingsData.shop_name ?? '');
+        setShopPhone(settingsData.phone ?? '');
+        setShopAddress(settingsData.address ?? '');
         setCurrency(settingsData.currency || '$');
         setMeasurementFields(settingsData.measurement_fields || []);
         setPipelineStages(settingsData.pipeline_stages || [
@@ -308,27 +240,16 @@ export default function App() {
     fetchShopMetadata();
   }, [token]);
 
-  // Handle active role tab reset if activeRole becomes Worker while viewing Owner tab
-  useEffect(() => {
-    if (activeRole === 'Worker' && activeTab === 'Owner') {
-      setActiveTab('Customers');
-    }
-  }, [activeRole, activeTab]);
+  const handleWorkersUpdated = (workersList: UserProfile[]) => {
+    // legacy hook keeping
+  };
 
   const handleLoginSuccess = (usr: UserProfile, tkn: string) => {
     setUser(usr);
     setToken(tkn);
-    setActiveRole(usr.role);
     localStorage.setItem('tailor_token', tkn);
     localStorage.setItem('tailor_user', JSON.stringify(usr));
-    localStorage.setItem('tailor_active_role', usr.role);
-    localStorage.setItem('tailor_intentional_worker_mode', 'false');
-    
-    if (usr.role === 'Owner') {
-      setActiveTab('Owner');
-    } else {
-      setActiveTab('Customers');
-    }
+    setActiveTab('Customers');
   };
 
   const handleLogout = async () => {
@@ -343,7 +264,6 @@ export default function App() {
     }
     setUser(null);
     setToken(null);
-    setActiveRole('Worker');
     localStorage.removeItem('tailor_token');
     localStorage.removeItem('tailor_user');
     localStorage.removeItem('tailor_active_role');
@@ -352,47 +272,6 @@ export default function App() {
 
   const handleSettingsUpdated = () => {
     fetchShopMetadata();
-  };
-
-  // Secure Password Verification and Role Switch
-  const handleVerifyPasswordAndSwitch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!passwordInput) {
-      setPasswordVerificationError('Password is required.');
-      return;
-    }
-
-    setVerifyPasswordLoading(true);
-    setPasswordVerificationError(null);
-
-    try {
-      const res = await fetch('/api/auth/verify-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ password: passwordInput }),
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setActiveRole('Owner');
-        localStorage.setItem('tailor_active_role', 'Owner');
-        localStorage.setItem('tailor_intentional_worker_mode', 'false');
-        setIsPasswordModalOpen(false);
-        setPasswordInput('');
-        setActiveTab('Owner');
-      } else {
-        // Generic failure message protecting security details
-        setPasswordVerificationError(data.error || 'Password verification failed. Stayed in Worker mode.');
-      }
-    } catch (err: any) {
-      console.error('Password verification error:', err);
-      setPasswordVerificationError('An error occurred during verification. Stayed in Worker mode.');
-    } finally {
-      setVerifyPasswordLoading(false);
-    }
   };
 
   if (isVerifyingSession) {
@@ -417,18 +296,19 @@ export default function App() {
     },
     {
       id: 'Orders' as const,
-      label: 'Garment Orders',
+      label: 'Orders',
       icon: ShoppingBag,
     },
-    ...(activeRole === 'Owner'
-      ? [
-          {
-            id: 'Owner' as const,
-            label: 'Administration Portal',
-            icon: Settings,
-          },
-        ]
-      : []),
+    {
+      id: 'Financials' as const,
+      label: 'Financial Reports',
+      icon: DollarSign,
+    },
+    {
+      id: 'Owner' as const,
+      label: 'Administration Portal',
+      icon: Settings,
+    },
   ];
 
   return (
@@ -444,7 +324,7 @@ export default function App() {
               <Shield className="w-6 h-6 text-[#38BDF8] shrink-0" />
             </div>
             <div>
-              <span className="text-xl font-extrabold tracking-tight block text-[#38BDF8] font-display uppercase">{shopName}</span>
+              <span className="text-xl font-extrabold tracking-tight block text-[#38BDF8] font-display uppercase">{shopName || 'Unnamed Tailor Shop'}</span>
               <span className="text-2xs font-bold text-slate-400 block uppercase tracking-wider">
                 Staff Workspace
               </span>
@@ -481,39 +361,6 @@ export default function App() {
 
         {/* Footer/Logout Area */}
         <div className="pt-6 border-t border-slate-800 mt-auto space-y-3.5">
-          <div className="flex flex-col gap-1 px-2">
-            <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Staff Member</span>
-            <div className="flex items-center gap-2 justify-between">
-              <span className="text-sm font-semibold text-slate-300 truncate max-w-[130px]">{user.name}</span>
-              <span className="text-2xs font-extrabold px-2 py-0.5 bg-[#E0F2FE] text-[#0369A1] rounded uppercase">
-                {user.role}
-              </span>
-            </div>
-          </div>
-
-          {/* Role switcher for accounts with Owner permissions */}
-          {user.role === 'Owner' && (
-            <button
-              onClick={() => {
-                if (activeRole === 'Owner') {
-                  // Instant switch to worker mode, no password needed
-                  setActiveRole('Worker');
-                  localStorage.setItem('tailor_active_role', 'Worker');
-                  localStorage.setItem('tailor_intentional_worker_mode', 'true');
-                } else {
-                  // Password verification required to switch back to Owner
-                  setPasswordInput('');
-                  setPasswordVerificationError(null);
-                  setIsPasswordModalOpen(true);
-                }
-              }}
-              className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 text-[#38BDF8] border border-[#38BDF8]/20 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-[#38BDF8]" />
-              <span>Switch to {activeRole === 'Owner' ? 'Worker' : 'Owner'}</span>
-            </button>
-          )}
-
           <button
             onClick={handleLogout}
             className="w-full py-2 px-3 bg-red-950/40 hover:bg-red-950/60 text-red-400 border border-red-900/30 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
@@ -568,37 +415,6 @@ export default function App() {
           </nav>
 
           <div className="pt-6 border-t border-slate-800 mt-auto space-y-4">
-            <div className="flex items-center justify-between px-2 text-slate-300">
-              <div>
-                <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Active Staff</p>
-                <p className="font-bold text-sm mt-0.5">{user.name}</p>
-              </div>
-              <span className="text-2xs font-extrabold px-2 py-0.5 bg-[#E0F2FE] text-[#0369A1] rounded uppercase">
-                {user.role}
-              </span>
-            </div>
-
-            {user.role === 'Owner' && (
-              <button
-                onClick={() => {
-                  setIsMobileMenuOpen(false);
-                  if (activeRole === 'Owner') {
-                    setActiveRole('Worker');
-                    localStorage.setItem('tailor_active_role', 'Worker');
-                    localStorage.setItem('tailor_intentional_worker_mode', 'true');
-                  } else {
-                    setPasswordInput('');
-                    setPasswordVerificationError(null);
-                    setIsPasswordModalOpen(true);
-                  }
-                }}
-                className="w-full py-2.5 px-3 bg-[#1E293B] hover:bg-slate-800 text-[#38BDF8] border border-[#38BDF8]/25 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
-              >
-                <ShieldCheck className="w-3.5 h-3.5 text-[#38BDF8]" />
-                <span>Switch to {activeRole === 'Owner' ? 'Worker' : 'Owner'}</span>
-              </button>
-            )}
-
             <button
               onClick={() => {
                 setIsMobileMenuOpen(false);
@@ -620,26 +436,18 @@ export default function App() {
         <header className="hidden md:flex items-center justify-between bg-white h-20 px-8 border-b border-slate-200 shrink-0 print:hidden">
           <div>
             <h2 className="text-xl font-bold text-[#0F172A] tracking-tight font-display">
-              {activeTab === 'Customers' ? 'Customer Profiles & Measurements' : activeTab === 'Orders' ? 'Garment Bookings & Queue' : 'Administration Settings'}
+              {activeTab === 'Customers' 
+                ? 'Customer Profiles & Measurements' 
+                : activeTab === 'Orders' 
+                ? 'Garment Bookings & Queue' 
+                : activeTab === 'Financials' 
+                ? 'Financial Reports & Insights' 
+                : 'Administration Settings'}
             </h2>
             <p className="text-xs text-slate-400 font-medium mt-0.5">Manage tailor operations and customer specifications</p>
           </div>
 
           <div className="flex items-center gap-4">
-            
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-[#E0F2FE] border border-sky-100 text-[#0369A1] rounded-full text-xs font-bold uppercase tracking-wider">
-              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-              <span>Supabase Cloud Synced</span>
-            </div>
-
-            {/* Profile widget */}
-            <div className="flex items-center gap-2.5 bg-slate-50 border border-slate-200 rounded-full py-1 px-3.5 text-sm font-bold text-slate-800">
-              <span>{user.name}</span>
-              <span className="text-3xs font-extrabold bg-[#E0F2FE] text-[#0369A1] px-1.5 py-0.5 rounded uppercase">
-                Active: {activeRole}
-              </span>
-            </div>
-
           </div>
         </header>
 
@@ -659,6 +467,7 @@ export default function App() {
                   setActiveCustomerIdForNewOrder(cust.id);
                   setActiveTab('Orders');
                 }}
+                shopName={shopName}
               />
             )}
 
@@ -679,11 +488,19 @@ export default function App() {
               />
             )}
 
-            {activeTab === 'Owner' && activeRole === 'Owner' && (
+            {activeTab === 'Financials' && (
+              <FinancialReports
+                token={token}
+                currency={currency}
+              />
+            )}
+
+            {activeTab === 'Owner' && (
               <OwnerDashboard
                 token={token}
                 currency={currency}
                 onSettingsUpdated={handleSettingsUpdated}
+                onWorkersUpdated={handleWorkersUpdated}
               />
             )}
           </div>
@@ -692,7 +509,7 @@ export default function App() {
 
         {/* COMPACT FOOTER */}
         <footer className="mt-auto py-5 px-8 border-t border-slate-200 bg-white text-center text-slate-400 text-xs print:hidden flex flex-col sm:flex-row justify-between items-center gap-2">
-          <p className="font-medium">&copy; {new Date().getFullYear()} {shopName} StitchMaster. All rights reserved.</p>
+          <p className="font-medium">&copy; {new Date().getFullYear()} {shopName || 'Unnamed Tailor Shop'} StitchMaster. All rights reserved.</p>
           <div className="flex gap-4 text-slate-400">
             <span className="font-semibold uppercase tracking-wider text-3xs">Tailored Suite Pro</span>
             <span className="text-slate-300">|</span>
@@ -701,65 +518,6 @@ export default function App() {
         </footer>
 
       </div>
-
-      {/* PASSWORD VERIFICATION DIALOG MODAL */}
-      {isPasswordModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden">
-            <div className="bg-[#0F172A] p-6 text-center border-b border-slate-800 text-white">
-              <div className="inline-flex items-center justify-center p-3 bg-slate-800 rounded-xl mb-3 border border-slate-700">
-                <Key className="w-6 h-6 text-[#38BDF8]" />
-              </div>
-              <h3 className="text-lg font-bold tracking-tight">Switch to Owner Mode</h3>
-              <p className="text-slate-400 text-xs font-semibold uppercase mt-0.5 tracking-wider">Password Verification Required</p>
-            </div>
-
-            <form onSubmit={handleVerifyPasswordAndSwitch} className="p-6 space-y-4">
-              {passwordVerificationError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold leading-relaxed">
-                  {passwordVerificationError}
-                </div>
-              )}
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-650 uppercase tracking-wider">Account Password</label>
-                <input
-                  type="password"
-                  value={passwordInput}
-                  onChange={(e) => setPasswordInput(e.target.value)}
-                  placeholder="Enter your account password"
-                  required
-                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-sm font-semibold focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all"
-                  disabled={verifyPasswordLoading}
-                />
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsPasswordModalOpen(false);
-                    setPasswordVerificationError(null);
-                    setPasswordInput('');
-                  }}
-                  className="flex-1 py-2.5 border-2 border-slate-200 rounded-xl font-bold text-xs uppercase tracking-wider text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors"
-                  disabled={verifyPasswordLoading}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 bg-[#0F172A] hover:bg-slate-800 text-white font-bold text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-1 cursor-pointer transition-all disabled:opacity-50"
-                  disabled={verifyPasswordLoading}
-                >
-                  {verifyPasswordLoading ? 'Verifying...' : 'Verify & Switch'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }
