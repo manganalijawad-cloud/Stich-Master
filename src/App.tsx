@@ -77,6 +77,7 @@ export default function App() {
   const [currency, setCurrency] = useState('$');
   const [measurementFields, setMeasurementFields] = useState<string[]>([]);
   const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
+  const [measurementUnit, setMeasurementUnit] = useState<'Inches' | 'Centimeters' | 'Feet'>('Inches');
   const [supabaseConfig, setSupabaseConfig] = useState<{ supabaseConnected: boolean; supabaseUrl: string | null }>({
     supabaseConnected: true,
     supabaseUrl: null,
@@ -224,6 +225,7 @@ export default function App() {
         setShopAddress(settingsData.address ?? '');
         setCurrency(settingsData.currency || '$');
         setMeasurementFields(settingsData.measurement_fields || []);
+        setMeasurementUnit(settingsData.measurement_unit || 'Inches');
         setPipelineStages(settingsData.pipeline_stages || [
           { id: 'Pending', name: 'Getting Ready', enabled: true },
           { id: 'Ready to Deliver', name: 'Ready to Deliver', enabled: true },
@@ -468,6 +470,7 @@ export default function App() {
                   setActiveTab('Orders');
                 }}
                 shopName={shopName}
+                measurementUnit={measurementUnit}
               />
             )}
 

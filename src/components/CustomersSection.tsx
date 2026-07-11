@@ -4,8 +4,28 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Search, UserPlus, Phone, Mail, FileText, Check, ChevronRight, Edit2, ShieldAlert, ShoppingCart, MessageCircle, MapPin, AlertTriangle, Printer } from 'lucide-react';
-import { Customer, UserRole, Order } from '../types';
+import { 
+  Search, 
+  UserPlus, 
+  Phone, 
+  Mail, 
+  FileText, 
+  Check, 
+  ChevronRight, 
+  Edit2, 
+  ShieldAlert, 
+  ShoppingCart, 
+  MessageCircle, 
+  MapPin, 
+  AlertTriangle, 
+  Printer,
+  Trash2,
+  Plus,
+  X,
+  Sparkles,
+  Layers
+} from 'lucide-react';
+import { Customer, UserRole, Order, GarmentType, MeasurementProfile } from '../types';
 
 interface CustomersSectionProps {
   token: string;
@@ -15,6 +35,7 @@ interface CustomersSectionProps {
   onBookOrder: (customer: Customer) => void;
   selectedCustomerId?: string;
   shopName?: string;
+  measurementUnit?: 'Inches' | 'Centimeters' | 'Feet';
 }
 
 export default function CustomersSection({
@@ -25,13 +46,18 @@ export default function CustomersSection({
   onBookOrder,
   selectedCustomerId,
   shopName,
+  measurementUnit = 'Inches',
 }: CustomersSectionProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
-  
+
+  // Garment Types state
+  const [garmentTypes, setGarmentTypes] = useState<GarmentType[]>([]);
+  const [garmentsLoading, setGarmentsLoading] = useState(false);
+
   // Create customer form state
   const [isCreating, setIsCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -40,24 +66,50 @@ export default function CustomersSection({
   const [newAddress, setNewAddress] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newNotes, setNewNotes] = useState('');
+  
+  // Selected garment type for NEW customer
+  const [selectedGarmentTypeId, setSelectedGarmentTypeId] = useState<string>('');
   const [initialMeasurements, setInitialMeasurements] = useState<Record<string, string | number>>({});
+
   const [createError, setCreateError] = useState<string | null>(null);
   const [createSuccess, setCreateSuccess] = useState(false);
   const [duplicateAlert, setDuplicateAlert] = useState<string | null>(null);
 
-  // Selected customer measurements state
+  // Selected customer measurements/profiles state
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [measurements, setMeasurements] = useState<Record<string, string | number>>({});
-  const [isEditingMeasurements, setIsEditingMeasurements] = useState(false);
-  const [editedMeasurements, setEditedMeasurements] = useState<Record<string, string | number>>({});
+  const [profiles, setProfiles] = useState<MeasurementProfile[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
+  const [measurementsUpdatedAt, setMeasurementsUpdatedAt] = useState<string | null>(null);
+
+  // Adding profile state
+  const [isAddingProfile, setIsAddingProfile] = useState(false);
+  const [newProfileGarmentTypeId, setNewProfileGarmentTypeId] = useState('');
+  const [newProfileMeasurements, setNewProfileMeasurements] = useState<Record<string, string | number>>({});
+
+  // Editing profile state
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+  const [editingProfileMeasurements, setEditingProfileMeasurements] = useState<Record<string, string | number>>({});
+
+  // Print single profile state
+  const [printProfileId, setPrintProfileId] = useState<string | null>(null);
+
+  // Error/Success state for measurements/profiles edits
   const [measError, setMeasError] = useState<string | null>(null);
   const [measSuccess, setMeasSuccess] = useState(false);
 
-  // Additional customer details states
-  const [measurementsUpdatedAt, setMeasurementsUpdatedAt] = useState<string | null>(null);
+  // Order history
   const [orderHistory, setOrderHistory] = useState<Order[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+
+  // Helper unit abbreviation
+  const getUnitAbbreviation = (unit?: string) => {
+    if (!unit) return '';
+    if (unit === 'Inches') return 'in';
+    if (unit === 'Centimeters') return 'cm';
+    if (unit === 'Feet') return 'ft';
+    return unit;
+  };
 
   const getLastUpdated = () => {
     const customerDate = new Date(selectedCustomer?.updated_at || Date.now());
@@ -67,6 +119,35 @@ export default function CustomersSection({
     }
     return customerDate;
   };
+
+  // Fetch Garment Types on load
+  useEffect(() => {
+    const fetchGarmentTypes = async () => {
+      setGarmentsLoading(true);
+      try {
+        const res = await fetch('/api/garment-types', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setGarmentTypes(data);
+          
+          // Auto-select first active garment
+          const enabledGarments = data.filter((g: GarmentType) => g.enabled);
+          if (enabledGarments.length > 0) {
+            setSelectedGarmentTypeId(enabledGarments[0].id);
+            setNewProfileGarmentTypeId(enabledGarments[0].id);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching garment types:', err);
+      } finally {
+        setGarmentsLoading(false);
+      }
+    };
+
+    fetchGarmentTypes();
+  }, [token]);
 
   // Search Customers on input change
   useEffect(() => {
@@ -124,10 +205,14 @@ export default function CustomersSection({
   // Fetch measurements and order history when selected customer changes
   useEffect(() => {
     if (!selectedCustomer) {
-      setMeasurements({});
+      setProfiles([]);
+      setActiveProfileId(null);
       setMeasurementsUpdatedAt(null);
       setOrderHistory([]);
       setShowHistory(false);
+      setIsAddingProfile(false);
+      setEditingProfileId(null);
+      setPrintProfileId(null);
       return;
     }
 
@@ -136,10 +221,37 @@ export default function CustomersSection({
         const res = await fetch(`/api/customers/${selectedCustomer.id}/measurements`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const data = await res.json();
         if (res.ok) {
-          setMeasurements(data.data || {});
-          setEditedMeasurements(data.data || {});
+          const data = await res.json();
+          const rawData = data.data || {};
+          
+          let parsedProfiles: MeasurementProfile[] = [];
+          if (Array.isArray(rawData.profiles)) {
+            parsedProfiles = rawData.profiles;
+          } else if (Object.keys(rawData).length > 0) {
+            // Migrate legacy flat measurements to customer's first default garment type
+            const activeGarments = garmentTypes.filter(g => g.enabled);
+            const defaultGarment = activeGarments.length > 0 ? activeGarments[0] : garmentTypes[0];
+            if (defaultGarment) {
+              parsedProfiles = [
+                {
+                  id: 'legacy-migrated',
+                  garment_type_id: defaultGarment.id,
+                  garment_name: defaultGarment.name,
+                  values: rawData,
+                  created_at: data.created_at || new Date().toISOString(),
+                  updated_at: data.updated_at || new Date().toISOString()
+                }
+              ];
+            }
+          }
+          
+          setProfiles(parsedProfiles);
+          if (parsedProfiles.length > 0) {
+            setActiveProfileId(parsedProfiles[0].id);
+          } else {
+            setActiveProfileId(null);
+          }
           setMeasurementsUpdatedAt(data.updated_at || null);
         }
       } catch (err) {
@@ -166,14 +278,16 @@ export default function CustomersSection({
 
     fetchMeasurements();
     fetchOrderHistory();
-    setIsEditingMeasurements(false);
     setMeasSuccess(false);
     setMeasError(null);
     setShowHistory(false);
-  }, [selectedCustomer, token]);
+    setIsAddingProfile(false);
+    setEditingProfileId(null);
+    setPrintProfileId(null);
+  }, [selectedCustomer, token, garmentTypes]);
 
-  // Handle Customer Creation
-  const handleCreateCustomer = async (e: React.FormEvent) => {
+  // Handle Customer Creation with first Measurement Profile automatically created
+  const handleCreateCustomer = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     if (!newName || newName.trim() === '') {
       setCreateError('Customer Name is required.');
@@ -185,6 +299,34 @@ export default function CustomersSection({
     setDuplicateAlert(null);
 
     try {
+      const selectedGarment = garmentTypes.find(g => g.id === selectedGarmentTypeId);
+      if (!selectedGarment) {
+        throw new Error('Please select an active garment type to define measurements.');
+      }
+
+      // Validate required measurement fields
+      const missingRequired = selectedGarment.measurement_fields
+        .filter(f => f.required)
+        .find(f => !initialMeasurements[f.name] || String(initialMeasurements[f.name]).trim() === '');
+      
+      if (missingRequired) {
+        throw new Error(`Measurement field "${missingRequired.name}" is required.`);
+      }
+
+      // Automatically construct first Measurement Profile
+      const firstProfile: MeasurementProfile = {
+        id: Math.random().toString(36).substring(2, 11),
+        garment_type_id: selectedGarment.id,
+        garment_name: selectedGarment.name,
+        values: initialMeasurements,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      const payloadMeasurements = {
+        profiles: [firstProfile]
+      };
+
       const res = await fetch('/api/customers', {
         method: 'POST',
         headers: {
@@ -198,7 +340,7 @@ export default function CustomersSection({
           address: newAddress.trim(),
           email: newEmail.trim(),
           notes: newNotes.trim(),
-          measurements: initialMeasurements,
+          measurements: payloadMeasurements,
         }),
       });
 
@@ -245,8 +387,8 @@ export default function CustomersSection({
     }
   };
 
-  // Handle Measurements Edit (Owner Only)
-  const handleSaveMeasurements = async () => {
+  // Helper to persist profiles state to backend
+  const handleSaveProfiles = async (updatedProfiles: MeasurementProfile[]) => {
     if (!selectedCustomer) return;
     setMeasError(null);
     setMeasSuccess(false);
@@ -258,27 +400,99 @@ export default function CustomersSection({
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ data: editedMeasurements }),
+        body: JSON.stringify({
+          data: {
+            profiles: updatedProfiles
+          }
+        }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to save measurements.');
+        throw new Error(data.error || 'Failed to save measurement profiles.');
       }
 
-      setMeasurements(data.data || {});
+      setProfiles(updatedProfiles);
+      setMeasurementsUpdatedAt(data.updated_at || new Date().toISOString());
       setMeasSuccess(true);
-      setIsEditingMeasurements(false);
+      setTimeout(() => setMeasSuccess(false), 4000);
     } catch (err: any) {
       setMeasError(err.message);
     }
   };
 
-  const handleMeasChange = (field: string, val: string) => {
-    setEditedMeasurements((prev) => ({
-      ...prev,
-      [field]: val,
-    }));
+  // Add another garment profile
+  const handleAddProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProfileGarmentTypeId) return;
+
+    const selectedGarment = garmentTypes.find(g => g.id === newProfileGarmentTypeId);
+    if (!selectedGarment) return;
+
+    const newProfile: MeasurementProfile = {
+      id: Math.random().toString(36).substring(2, 11),
+      garment_type_id: selectedGarment.id,
+      garment_name: selectedGarment.name,
+      values: newProfileMeasurements,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const updatedProfiles = [...profiles, newProfile];
+    await handleSaveProfiles(updatedProfiles);
+    setActiveProfileId(newProfile.id);
+    setIsAddingProfile(false);
+    setNewProfileMeasurements({});
+  };
+
+  // Edit measurements
+  const handleEditProfileSave = async (profileId: string) => {
+    const updatedProfiles = profiles.map(p => {
+      if (p.id === profileId) {
+        return {
+          ...p,
+          values: editingProfileMeasurements,
+          updated_at: new Date().toISOString()
+        };
+      }
+      return p;
+    });
+
+    await handleSaveProfiles(updatedProfiles);
+    setEditingProfileId(null);
+  };
+
+  // Delete profile
+  const handleDeleteProfile = async (profileId: string, garmentName: string) => {
+    if (!confirm(`Are you absolutely sure you want to delete the "${garmentName}" measurement profile? This action is irreversible.`)) {
+      return;
+    }
+
+    const updatedProfiles = profiles.filter(p => p.id !== profileId);
+    await handleSaveProfiles(updatedProfiles);
+
+    if (activeProfileId === profileId) {
+      if (updatedProfiles.length > 0) {
+        setActiveProfileId(updatedProfiles[0].id);
+      } else {
+        setActiveProfileId(null);
+      }
+    }
+  };
+
+  // Print Profile helper
+  const handlePrintSingleProfile = (profileId: string) => {
+    setPrintProfileId(profileId);
+    setTimeout(() => {
+      window.print();
+    }, 150);
+  };
+
+  const handlePrintAllProfiles = () => {
+    setPrintProfileId(null);
+    setTimeout(() => {
+      window.print();
+    }, 150);
   };
 
   const handleInitMeasChange = (field: string, val: string) => {
@@ -287,6 +501,10 @@ export default function CustomersSection({
       [field]: val,
     }));
   };
+
+  const activeProfile = profiles.find(p => p.id === activeProfileId) || null;
+  const activeGarmentType = activeProfile ? garmentTypes.find(gt => gt.id === activeProfile.garment_type_id) : null;
+  const selectedGarmentTypeForNewCustomer = garmentTypes.find(g => g.id === selectedGarmentTypeId);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -300,6 +518,12 @@ export default function CustomersSection({
               onClick={() => {
                 setIsCreating(true);
                 setSelectedCustomer(null);
+                // Pre-populate with first enabled garment type
+                const enabled = garmentTypes.filter(g => g.enabled);
+                if (enabled.length > 0) {
+                  setSelectedGarmentTypeId(enabled[0].id);
+                }
+                setInitialMeasurements({});
               }}
               className="px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold rounded-xl flex items-center gap-2 cursor-pointer transition-colors text-xs uppercase tracking-wider"
             >
@@ -330,7 +554,7 @@ export default function CustomersSection({
             )}
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">Customer Name *</label>
+              <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">NAME*</label>
               <input
                 type="text"
                 required
@@ -342,7 +566,7 @@ export default function CustomersSection({
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">Mobile Number (Optional)</label>
+              <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">MOBILE NUMBER</label>
               <input
                 type="tel"
                 value={newPhone}
@@ -353,18 +577,7 @@ export default function CustomersSection({
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">Whatsapp Number (Optional)</label>
-              <input
-                type="tel"
-                value={newWhatsapp}
-                onChange={(e) => setNewWhatsapp(e.target.value)}
-                placeholder="e.g. +1 (555) 019-2834"
-                className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-sm font-medium focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">Address (Optional)</label>
+              <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">ADDRESS</label>
               <input
                 type="text"
                 value={newAddress}
@@ -375,41 +588,17 @@ export default function CustomersSection({
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">Customer Notes (Optional)</label>
+              <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">NOTE</label>
               <textarea
                 value={newNotes}
                 onChange={(e) => setNewNotes(e.target.value)}
-                placeholder="Stature details, preferred fittings, specific styles..."
+                placeholder="Preferred fits, specific styling instructions..."
                 rows={2}
                 className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-sm font-medium focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all"
               />
             </div>
 
-            <div className="pt-2">
-              <p className="font-bold text-slate-700 text-xs uppercase tracking-wider mb-2">Initial Measurements (Optional)</p>
-              <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border border-slate-200 rounded-xl bg-slate-50">
-                {measurementFields.map((field) => (
-                  <div key={field} className="flex flex-col">
-                    <span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wide truncate">{field}</span>
-                    <input
-                      type="text"
-                      placeholder="--"
-                      value={initialMeasurements[field] || ''}
-                      onChange={(e) => handleInitMeasChange(field, e.target.value)}
-                      className="mt-0.5 px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-800 text-xs focus:outline-none focus:border-[#38BDF8]"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
 
-            <button
-              type="submit"
-              className="w-full py-3 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-colors mt-4"
-            >
-              <Check className="w-4 h-4" />
-              Save Customer Profile
-            </button>
           </form>
         ) : (
           /* SEARCH & CUSTOMER LIST */
@@ -495,7 +684,7 @@ export default function CustomersSection({
                 <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight font-display uppercase">{selectedCustomer.name}</h1>
               </div>
 
-              {/* CORE DISPLAY ATTRIBUTES AS REQUESTED */}
+              {/* Attributes display */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
                 <div className="space-y-3">
                   <div>
@@ -543,20 +732,10 @@ export default function CustomersSection({
                   </div>
 
                   <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Measurement Status</span>
-                    <div className="mt-1">
-                      {Object.values(measurements).some(v => v !== undefined && v !== '') ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-2xs font-extrabold uppercase tracking-wider bg-[#DCFCE7] text-[#15803D] border border-green-200">
-                          <Check className="w-3.5 h-3.5" />
-                          Complete
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-2xs font-extrabold uppercase tracking-wider bg-[#FEF9C3] text-[#854D0E] border border-yellow-200">
-                          <AlertTriangle className="w-3.5 h-3.5" />
-                          Pending
-                        </span>
-                      )}
-                    </div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Measurement Unit</span>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-2xs font-extrabold uppercase tracking-wider bg-sky-50 text-sky-800 border border-sky-200 mt-1">
+                      {measurementUnit}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -585,29 +764,8 @@ export default function CustomersSection({
                 </div>
               )}
 
-              {/* CORE ACTIONS BUTTON PANEL AS REQUESTED */}
+              {/* Actions panel */}
               <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100">
-                {/* 1. Edit Measurements */}
-                {!isEditingMeasurements ? (
-                  <button
-                    onClick={() => {
-                      setEditedMeasurements({ ...measurements });
-                      setIsEditingMeasurements(true);
-                      setMeasSuccess(false);
-                    }}
-                    className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-colors border border-slate-200"
-                  >
-                    <Edit2 className="w-4 h-4 text-slate-500" />
-                    Edit Measurements
-                  </button>
-                ) : (
-                  <div className="px-4 py-3 bg-slate-50 text-slate-400 font-semibold rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 border border-slate-200/50 cursor-not-allowed">
-                    <Edit2 className="w-4 h-4 opacity-55" />
-                    Edit Measurements
-                  </div>
-                )}
-
-                {/* 2. Create New Order */}
                 <button
                   onClick={() => onBookOrder(selectedCustomer)}
                   className="px-4 py-3 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all border border-slate-900 shadow-sm"
@@ -616,7 +774,6 @@ export default function CustomersSection({
                   Create New Order
                 </button>
 
-                {/* 3. Order History */}
                 <button
                   onClick={() => setShowHistory(!showHistory)}
                   className={`px-4 py-3 font-bold rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-colors border ${
@@ -627,15 +784,6 @@ export default function CustomersSection({
                 >
                   <FileText className="w-4 h-4 text-sky-500" />
                   Order History ({orderHistory.length})
-                </button>
-
-                {/* 4. Print Measurement Sheet */}
-                <button
-                  onClick={() => window.print()}
-                  className="px-4 py-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-colors"
-                >
-                  <Printer className="w-4 h-4 text-slate-500" />
-                  Print Measurement Sheet
                 </button>
               </div>
             </div>
@@ -704,75 +852,421 @@ export default function CustomersSection({
               </div>
             )}
 
-            {/* MEASUREMENTS GRID */}
-            <div className="space-y-4 pt-4 border-t border-slate-100">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-extrabold text-slate-900 uppercase tracking-wider font-display block">Spec Specification Card</span>
-                {isEditingMeasurements && (
+            {/* MEASUREMENT PROFILES COMPONENT SECTION */}
+            <div className="space-y-6 pt-4 border-t border-slate-100">
+              
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                <div>
+                  <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-display flex items-center gap-1.5">
+                    <Layers className="w-5 h-5 text-[#38BDF8]" />
+                    Measurement Profiles
+                  </h3>
+                  <p className="text-3xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">
+                    {profiles.length} profiles listed for this customer
+                  </p>
+                </div>
+
+                {!isAddingProfile && (
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => setIsEditingMeasurements(false)}
-                      className="px-3 py-1.5 text-slate-500 hover:text-slate-800 font-bold text-xs uppercase tracking-wider cursor-pointer"
+                      onClick={() => {
+                        setIsAddingProfile(true);
+                        const enabled = garmentTypes.filter(g => g.enabled);
+                        if (enabled.length > 0) {
+                          setNewProfileGarmentTypeId(enabled[0].id);
+                        }
+                        setNewProfileMeasurements({});
+                      }}
+                      className="px-3 py-1.5 bg-slate-950 hover:bg-slate-850 text-white font-extrabold text-3xs uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer transition-all"
                     >
-                      Cancel
+                      <Plus className="w-3.5 h-3.5 text-[#38BDF8]" />
+                      Add Profile
                     </button>
-                    <button
-                      onClick={handleSaveMeasurements}
-                      className="px-3.5 py-1.5 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold rounded-lg text-xs uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      <Check className="w-3.5 h-3.5 text-[#38BDF8]" />
-                      Save
-                    </button>
+                    {profiles.length > 0 && (
+                      <button
+                        onClick={handlePrintAllProfiles}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-3xs uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer transition-all border border-slate-200"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-slate-500" />
+                        Print All
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
 
               {measSuccess && (
-                <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold">
-                  Measurements updated successfully! Previous orders remain completely unaffected.
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold animate-fade-in">
+                  Measurement Profiles synchronized successfully! Previous frozen orders remain safe.
                 </div>
               )}
 
               {measError && (
-                <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-red-800 text-xs font-semibold">
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-800 text-xs font-semibold">
                   {measError}
                 </div>
               )}
 
-              {isEditingMeasurements ? (
-                /* EDIT VIEW */
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-150">
-                  {measurementFields.map((field) => (
-                    <div key={field} className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block truncate">{field}</label>
-                      <input
-                        type="text"
-                        value={editedMeasurements[field] || ''}
-                        onChange={(e) => handleMeasChange(field, e.target.value)}
-                        placeholder="--"
-                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 font-bold text-sm focus:outline-none focus:border-[#38BDF8]"
-                      />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                /* VIEW DISPLAY */
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                  {measurementFields.map((field) => (
-                    <div key={field} className="p-3 bg-[#FFFFFF] border border-slate-200/65 rounded-xl flex flex-col">
-                      <span className="text-[10px] font-extrabold text-slate-400 truncate uppercase tracking-wider">{field}</span>
-                      <span className="text-lg font-extrabold text-slate-800 mt-0.5">
-                        {measurements[field] !== undefined && measurements[field] !== '' ? (
-                          <span>{measurements[field]}</span>
+              {/* Inline form: Add Another Garment Profile */}
+              {isAddingProfile ? (
+                <form onSubmit={handleAddProfile} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 shadow-3xs animate-fade-in">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                    <span className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-amber-500" />
+                      Add Garment Profile
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingProfile(false)}
+                      className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-3xs font-black text-slate-500 block uppercase tracking-wider">Garment Type *</label>
+                    <select
+                      value={newProfileGarmentTypeId}
+                      onChange={(e) => {
+                        setNewProfileGarmentTypeId(e.target.value);
+                        setNewProfileMeasurements({});
+                      }}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 bg-white uppercase tracking-wider"
+                    >
+                      {garmentTypes.filter(g => g.enabled).map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {(() => {
+                    const chosen = garmentTypes.find(gt => gt.id === newProfileGarmentTypeId);
+                    if (!chosen) return null;
+                    return (
+                      <div className="space-y-3">
+                        <span className="text-3xs font-black text-slate-500 block uppercase tracking-wider">
+                          Measurements ({chosen.name})
+                        </span>
+                        {chosen.measurement_fields.length === 0 ? (
+                          <p className="text-2xs text-slate-400 italic text-center py-2">
+                            No parameter fields declared for this garment type.
+                          </p>
                         ) : (
-                          <span className="text-slate-300 font-normal">--</span>
+                          <div className="grid grid-cols-2 gap-3 max-h-48 overflow-y-auto p-2 bg-white rounded-xl border border-slate-150">
+                            {chosen.measurement_fields.map((field) => (
+                              <div key={field.name} className="flex flex-col">
+                                <label className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wide truncate">
+                                  {field.name} {field.required ? '*' : ''} ({getUnitAbbreviation(measurementUnit)})
+                                </label>
+                                <input
+                                  type="text"
+                                  required={field.required}
+                                  placeholder={field.required ? 'Required' : '--'}
+                                  value={newProfileMeasurements[field.name] || ''}
+                                  onChange={(e) => {
+                                    setNewProfileMeasurements(prev => ({
+                                      ...prev,
+                                      [field.name]: e.target.value
+                                    }));
+                                  }}
+                                  className="mt-0.5 px-2.5 py-1.5 border border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:border-[#38BDF8]"
+                                />
+                              </div>
+                            ))}
+                          </div>
                         )}
-                      </span>
-                    </div>
-                  ))}
+                      </div>
+                    );
+                  })()}
+
+                  <div className="flex gap-2 justify-end pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingProfile(false)}
+                      className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 font-bold text-3xs uppercase tracking-wider rounded-lg cursor-pointer transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-3xs uppercase tracking-wider rounded-lg cursor-pointer transition-colors"
+                    >
+                      Save Profile
+                    </button>
+                  </div>
+                </form>
+              ) : null}
+
+              {/* Profiles Selector tabs */}
+              {!isAddingProfile && profiles.length > 0 && (
+                <div className="flex flex-wrap gap-2 pb-2 border-b border-slate-100">
+                  {profiles.map((p) => {
+                    const isSelected = p.id === activeProfileId;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveProfileId(p.id);
+                          setEditingProfileId(null);
+                        }}
+                        className={`px-4 py-2 rounded-xl text-xs font-extrabold uppercase tracking-wider border-2 transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-sky-50 border-[#38BDF8] text-[#0369A1] shadow-2xs'
+                            : 'bg-white border-slate-150 text-slate-500 hover:text-slate-800 hover:border-slate-300'
+                        }`}
+                      >
+                        {p.garment_name}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
+
+              {/* Opened Profile View Area */}
+              {!isAddingProfile && activeProfile && (
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 animate-fade-in">
+                  
+                  {/* Title and specific action toolbar */}
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-2 flex-wrap gap-2">
+                    <div>
+                      <span className="text-3xs font-extrabold text-slate-400 uppercase tracking-widest block">Active Garment Profile</span>
+                      <span className="text-sm font-black text-slate-800 uppercase tracking-wider block font-display">
+                        {activeProfile.garment_name} Specification
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      {editingProfileId === activeProfile.id ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setEditingProfileId(null)}
+                            className="px-2.5 py-1.5 text-slate-500 hover:text-slate-800 font-extrabold text-3xs uppercase tracking-wider cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleEditProfileSave(activeProfile.id)}
+                            className="px-3 py-1.5 bg-[#0F172A] hover:bg-[#1E293B] text-white font-black text-3xs uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                          >
+                            <Check className="w-3.5 h-3.5 text-[#38BDF8]" />
+                            Save
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingProfileId(activeProfile.id);
+                              setEditingProfileMeasurements({ ...activeProfile.values });
+                            }}
+                            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-250/50 rounded-lg cursor-pointer transition-colors"
+                            title="Edit measurements"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePrintSingleProfile(activeProfile.id)}
+                            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-250/50 rounded-lg cursor-pointer transition-colors"
+                            title="Print profile sheet"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteProfile(activeProfile.id, activeProfile.garment_name)}
+                            className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg cursor-pointer transition-colors"
+                            title="Delete profile"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Render fields inside profile */}
+                  {editingProfileId === activeProfile.id ? (
+                    /* EDITING MEASUREMENTS FOR THIS PROFILE */
+                    activeGarmentType ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-white p-4 rounded-xl border border-slate-200">
+                        {activeGarmentType.measurement_fields.map((field) => (
+                          <div key={field.name} className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block truncate">
+                              {field.name} {field.required ? '*' : ''} ({getUnitAbbreviation(measurementUnit)})
+                            </label>
+                            <input
+                              type="text"
+                              required={field.required}
+                              value={editingProfileMeasurements[field.name] || ''}
+                              onChange={(e) => {
+                                setEditingProfileMeasurements(prev => ({
+                                  ...prev,
+                                  [field.name]: e.target.value
+                                }));
+                              }}
+                              placeholder={field.required ? 'Required' : '--'}
+                              className="w-full px-3 py-2 bg-[#F8FAFC] border border-slate-200 rounded-lg text-slate-800 font-bold text-sm focus:outline-none focus:border-[#38BDF8]"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-2xs text-slate-400">Garment Type specification was deleted or modified.</p>
+                    )
+                  ) : (
+                    /* READ-ONLY DISPLAY */
+                    activeGarmentType ? (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {activeGarmentType.measurement_fields.map((field) => {
+                          const val = activeProfile.values[field.name];
+                          return (
+                            <div key={field.name} className="p-3.5 bg-white border border-slate-150 rounded-xl flex flex-col justify-between shadow-2xs">
+                              <span className="text-[10px] font-extrabold text-slate-400 truncate uppercase tracking-wider">
+                                {field.name}
+                              </span>
+                              <span className="text-base font-black text-slate-800 mt-1 block">
+                                {val !== undefined && val !== '' ? (
+                                  <span className="flex items-baseline gap-0.5">
+                                    {val}
+                                    <span className="text-3xs font-extrabold text-slate-400 ml-0.5">
+                                      {getUnitAbbreviation(measurementUnit)}
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300 font-normal">--</span>
+                                )}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-2xs text-slate-400 italic">This profile uses a custom form. Edit parameters directly or view fields.</p>
+                    )
+                  )}
+
+                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider pt-2 flex justify-between">
+                    <span>Created: {new Date(activeProfile.created_at).toLocaleDateString()}</span>
+                    <span>Updated: {new Date(activeProfile.updated_at).toLocaleDateString()}</span>
+                  </div>
+
+                </div>
+              )}
+
+              {/* No profiles placeholder */}
+              {!isAddingProfile && profiles.length === 0 && (
+                <div className="flex flex-col items-center justify-center p-12 text-center border-2 border-dashed border-slate-200 bg-slate-50/50 rounded-2xl">
+                  <Layers className="w-10 h-10 text-slate-300 animate-pulse mb-3" />
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">No Measurement Profiles</h4>
+                  <p className="text-slate-400 text-3xs font-bold uppercase tracking-widest max-w-xs mt-1 leading-relaxed">
+                    Create the first profile to register tailored specifications.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setIsAddingProfile(true);
+                      const enabled = garmentTypes.filter(g => g.enabled);
+                      if (enabled.length > 0) {
+                        setNewProfileGarmentTypeId(enabled[0].id);
+                      }
+                      setNewProfileMeasurements({});
+                    }}
+                    className="mt-4 px-4 py-2 bg-[#0F172A] hover:bg-slate-850 text-white font-extrabold text-3xs uppercase tracking-wider rounded-xl flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-[#38BDF8]" />
+                    Create First Profile
+                  </button>
+                </div>
+              )}
+
             </div>
+          </div>
+        ) : isCreating ? (
+          <div className="space-y-6 animate-fade-in print:hidden">
+            {/* Header */}
+            <div className="border-b border-slate-100 pb-4">
+              <h3 className="text-lg font-black text-slate-900 uppercase tracking-wider font-display flex items-center gap-1.5">
+                <Sparkles className="w-5 h-5 text-[#38BDF8]" />
+                Garment Specification & Measurements
+              </h3>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
+                Define the first garment profile and corresponding measurement details for this customer.
+              </p>
+            </div>
+
+            {/* Garment Type Selector */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">First Garment Profile *</label>
+              <select
+                id="garment-profile-selector"
+                value={selectedGarmentTypeId}
+                onChange={(e) => {
+                  setSelectedGarmentTypeId(e.target.value);
+                  setInitialMeasurements({});
+                }}
+                className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-sm font-semibold bg-white focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all uppercase tracking-wider cursor-pointer"
+              >
+                {garmentTypes.filter(g => g.enabled).map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] text-slate-400 font-semibold tracking-wide uppercase">
+                Showing only active garment specifications.
+              </p>
+            </div>
+
+            {/* Dynamic Initial Measurements */}
+            {selectedGarmentTypeForNewCustomer && (
+              <div className="pt-2">
+                <p className="font-bold text-slate-700 text-xs uppercase tracking-wider mb-2">
+                  Initial Measurements ({selectedGarmentTypeForNewCustomer.name})
+                </p>
+                {selectedGarmentTypeForNewCustomer.measurement_fields.length === 0 ? (
+                  <div className="p-4 border border-slate-200 rounded-xl bg-slate-50 text-center text-xs text-slate-400 font-bold uppercase tracking-wide">
+                    No custom fields defined for this garment type.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-4 max-h-[360px] overflow-y-auto p-4 border border-slate-200 rounded-xl bg-slate-50 shadow-3xs">
+                    {selectedGarmentTypeForNewCustomer.measurement_fields.map((field) => (
+                      <div key={field.name} className="flex flex-col">
+                        <span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wide truncate">
+                          {field.name} {field.required ? '*' : ''} ({getUnitAbbreviation(measurementUnit)})
+                        </span>
+                        <input
+                          id={`input-meas-${field.name.toLowerCase().replace(/\s+/g, '-')}`}
+                          type="text"
+                          required={field.required}
+                          placeholder={field.required ? 'Required' : '--'}
+                          value={initialMeasurements[field.name] || ''}
+                          onChange={(e) => handleInitMeasChange(field.name, e.target.value)}
+                          className="mt-1 px-3 py-2 border-2 border-slate-200 rounded-xl bg-white text-slate-800 text-sm font-semibold focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button
+              id="btn-save-customer-profile-right"
+              type="button"
+              onClick={(e) => handleCreateCustomer(e)}
+              className="w-full py-3 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-colors mt-4"
+            >
+              <Check className="w-4 h-4" />
+              Save Customer Profile
+            </button>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-24 text-center print:hidden">
@@ -804,15 +1298,8 @@ export default function CustomersSection({
             </div>
             <div className="space-y-1 text-right">
               <p><strong>Address:</strong> {selectedCustomer.address || 'Not Provided'}</p>
-              <p><strong>Last Updated:</strong> {(() => {
-                const customerDate = new Date(selectedCustomer.updated_at);
-                if (measurementsUpdatedAt) {
-                  const measDate = new Date(measurementsUpdatedAt);
-                  return (measDate > customerDate ? measDate : customerDate).toLocaleString();
-                }
-                return customerDate.toLocaleString();
-              })()}</p>
-              <p><strong>Measurement Status:</strong> {Object.values(measurements).some(v => v !== undefined && v !== '') ? 'Complete' : 'Pending'}</p>
+              <p><strong>Measurement Unit:</strong> {measurementUnit}</p>
+              <p><strong>Measurement Status:</strong> {profiles.length > 0 ? 'Active Profiles Available' : 'No Profiles'}</p>
             </div>
           </div>
 
@@ -823,18 +1310,33 @@ export default function CustomersSection({
             </div>
           )}
 
-          <div className="space-y-3">
-            <h3 className="font-extrabold text-base uppercase border-b border-slate-300 pb-1">Spec Specifications</h3>
-            <div className="grid grid-cols-2 gap-4">
-              {measurementFields.map((field) => (
-                <div key={field} className="flex justify-between items-center py-2 border-b border-slate-100 text-sm">
-                  <span className="font-semibold text-slate-600 uppercase tracking-wider text-xs">{field}</span>
-                  <span className="font-black text-slate-900 border-b border-slate-300 px-4 min-w-[80px] text-center">
-                    {measurements[field] !== undefined && measurements[field] !== '' ? measurements[field] : '--'}
-                  </span>
-                </div>
-              ))}
-            </div>
+          {/* Profiles printable content */}
+          <div className="space-y-6">
+            {profiles
+              .filter(p => !printProfileId || p.id === printProfileId)
+              .map((p) => {
+                const gt = garmentTypes.find(g => g.id === p.garment_type_id);
+                const fields = gt?.measurement_fields || [];
+                return (
+                  <div key={p.id} className="space-y-3 border border-slate-300 p-4 rounded-xl page-break-inside-avoid">
+                    <h3 className="font-black text-base uppercase border-b border-slate-300 pb-1 text-slate-800">
+                      Garment Profile: {p.garment_name}
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      {fields.map((field) => (
+                        <div key={field.name} className="flex justify-between items-center py-2 border-b border-slate-100 text-sm">
+                          <span className="font-semibold text-slate-600 uppercase tracking-wider text-xs">{field.name}</span>
+                          <span className="font-black text-slate-900 border-b border-slate-300 px-4 min-w-[80px] text-center">
+                            {p.values[field.name] !== undefined && p.values[field.name] !== '' 
+                              ? `${p.values[field.name]} ${getUnitAbbreviation(measurementUnit)}` 
+                              : '--'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
           </div>
 
           <div className="pt-16 flex justify-between text-xs border-t border-dashed border-slate-300">

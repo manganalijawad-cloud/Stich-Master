@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type UserRole = 'Owner' | 'Manager';
+export type UserRole = 'Owner' | 'Worker';
 
 export interface UserProfile {
   id: string;
@@ -50,6 +50,9 @@ export interface OrderItem {
   type: string; // e.g., Suit, Shirt, Trouser, Sherwani
   price: number;
   notes?: string;
+  delivery_date?: string; // Optional for backward compatibility, required for new items
+  measurement_snapshot?: Record<string, string | number>;
+  styling_snapshot?: Record<string, string>;
 }
 
 export interface Order {
@@ -97,6 +100,57 @@ export interface ShopSettings {
   measurement_fields: string[]; // customizable measurement parameters
   pipeline_stages?: PipelineStage[]; // customizable pipeline stages
   auto_archive_days?: number; // default: 30 days
+  measurement_unit?: 'Inches' | 'Centimeters' | 'Feet';
   updated_at: string;
   updated_by: string;
 }
+
+export interface MeasurementField {
+  name: string;
+  required: boolean;
+  display_order: number;
+}
+
+export interface GarmentType {
+  id: string;
+  shop_id?: string;
+  name: string;
+  enabled: boolean;
+  display_order: number;
+  measurement_fields: MeasurementField[];
+  created_at?: string;
+  updated_at?: string;
+  created_by?: string;
+  updated_by?: string;
+}
+
+export interface MeasurementProfile {
+  id: string;
+  garment_type_id: string;
+  garment_name: string;
+  values: Record<string, string | number>;
+  styling_preferences?: Record<string, string>; // Category ID/Name -> Option ID/Name
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StylingOption {
+  id: string;
+  name: string;
+  enabled: boolean;
+  display_order: number;
+}
+
+export interface StylingCategory {
+  id: string;
+  shop_id?: string;
+  garment_type_id?: string;
+  name: string;
+  display_order: number;
+  options: StylingOption[];
+  created_at?: string;
+  updated_at?: string;
+  created_by?: string;
+  updated_by?: string;
+}
+

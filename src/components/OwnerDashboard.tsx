@@ -4,8 +4,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { DollarSign, Users, Settings, Database, Activity, Plus, Trash2, ShieldAlert, ArrowDown, ArrowUp, Calendar, AlertTriangle, Save, ListTodo } from 'lucide-react';
+import { DollarSign, Users, Settings, Database, Activity, Plus, Trash2, ShieldAlert, ArrowDown, ArrowUp, Calendar, AlertTriangle, Save, ListTodo, Sparkles, Sliders } from 'lucide-react';
 import { UserProfile, AuditLog, ShopSettings, PipelineStage } from '../types';
+import GarmentConfiguration from './GarmentConfiguration';
 
 interface OwnerDashboardProps {
   token: string;
@@ -15,20 +16,14 @@ interface OwnerDashboardProps {
 }
 
 export default function OwnerDashboard({ token, currency, onSettingsUpdated, onWorkersUpdated }: OwnerDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'Settings' | 'Backup' | 'Logs'>('Settings');
+  const [activeTab, setActiveTab] = useState<'Settings' | 'GarmentConfig' | 'Backup' | 'Logs'>('Settings');
 
-  // Managers State
-  const [managers, setManagers] = useState<any[]>([]);
-  const [managersLoading, setManagersLoading] = useState(false);
-  const [editingManager, setEditingManager] = useState<any | null>(null);
-
-  // Form fields for adding/editing manager
-  const [mgrName, setMgrName] = useState('');
-  const [mgrPhone, setMgrPhone] = useState('');
-  const [mgrPhoto, setMgrPhoto] = useState('');
-  const [mgrActive, setMgrActive] = useState(true);
-  const [mgrError, setMgrError] = useState<string | null>(null);
-  const [mgrSuccess, setMgrSuccess] = useState<string | null>(null);
+  // Workers State
+  const [workers, setWorkers] = useState<UserProfile[]>([]);
+  const [workersLoading, setWorkersLoading] = useState(false);
+  const [newWorkerName, setNewWorkerName] = useState('');
+  const [workerError, setWorkerError] = useState<string | null>(null);
+  const [workerSuccess, setWorkerSuccess] = useState<string | null>(null);
 
   // Settings State
   const [settings, setSettings] = useState<ShopSettings | null>(null);
@@ -38,10 +33,10 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
   const [editedAddress, setEditedAddress] = useState('');
   const [editedCurrency, setEditedCurrency] = useState('$');
   const [editedFields, setEditedFields] = useState<string[]>([]);
-  const [newField, setNewField] = useState('');
   const [editedStages, setEditedStages] = useState<PipelineStage[]>([]);
   const [newStageName, setNewStageName] = useState('');
   const [editedAutoArchiveDays, setEditedAutoArchiveDays] = useState<number>(30);
+  const [editedMeasurementUnit, setEditedMeasurementUnit] = useState<'Inches' | 'Centimeters' | 'Feet'>('Inches');
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [settingsSuccess, setSettingsSuccess] = useState(false);
 
@@ -56,21 +51,24 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
 
-  // Fetch Managers
-  const fetchManagers = async () => {
-    setManagersLoading(true);
+  // Fetch Workers
+  const fetchWorkers = async () => {
+    setWorkersLoading(true);
     try {
-      const res = await fetch('/api/managers', {
+      const res = await fetch('/api/workers', {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       if (res.ok) {
-        setManagers(data);
+        setWorkers(data);
+        if (onWorkersUpdated) {
+          onWorkersUpdated(data);
+        }
       }
     } catch (err) {
       console.error(err);
     } finally {
-      setManagersLoading(false);
+      setWorkersLoading(false);
     }
   };
 
@@ -89,6 +87,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
         setEditedAddress(data.address || '');
         setEditedCurrency(data.currency || '$');
         setEditedAutoArchiveDays(data.auto_archive_days !== undefined ? Number(data.auto_archive_days) : 30);
+        setEditedMeasurementUnit(data.measurement_unit || 'Inches');
         setEditedFields(data.measurement_fields || []);
         setEditedStages(data.pipeline_stages || [
           { id: 'Pending', name: 'Getting Ready', enabled: true },
@@ -124,10 +123,8 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
 
   // Load appropriate data on tab click
   useEffect(() => {
-    if (activeTab === 'Settings') {
-      fetchSettings();
-      fetchManagers();
-    }
+    if (activeTab === 'Workers') fetchWorkers();
+    if (activeTab === 'Settings') fetchSettings();
     if (activeTab === 'Backup') {
       const d = new Date();
       d.setDate(d.getDate() - 30);
@@ -136,103 +133,66 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
     if (activeTab === 'Logs') fetchLogs();
   }, [activeTab, token]);
 
-  // Handle Save Manager
-  const handleSaveManager = async (e: React.FormEvent) => {
+  // Handle Create Worker
+  const handleCreateWorker = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!mgrName || mgrName.trim() === '') {
-      setMgrError('Full Name is required.');
+    if (!newWorkerName || newWorkerName.trim() === '') {
+      setWorkerError('Worker name is required.');
       return;
     }
 
-    setMgrError(null);
-    setMgrSuccess(null);
+    setWorkerError(null);
+    setWorkerSuccess(null);
 
     try {
-      const method = editingManager ? 'PUT' : 'POST';
-      const url = editingManager ? `/api/managers/${editingManager.id}` : '/api/managers';
-
-      const res = await fetch(url, {
-        method,
+      const res = await fetch('/api/workers', {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          name: mgrName.trim(),
-          phone: mgrPhone.trim(),
-          photo: mgrPhoto.trim(),
-          active: mgrActive,
+          name: newWorkerName,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to save manager.');
+        throw new Error(data.error || 'Failed to create worker.');
       }
 
-      setMgrSuccess(editingManager ? 'Manager profile updated successfully!' : 'Manager profile created successfully!');
-      
-      // Reset form
-      setMgrName('');
-      setMgrPhone('');
-      setMgrPhoto('');
-      setMgrActive(true);
-      setEditingManager(null);
-      
-      fetchManagers();
-      if (onWorkersUpdated) {
-        onWorkersUpdated([]);
-      }
+      setWorkerSuccess(`Successfully created worker profile for ${newWorkerName}!`);
+      setNewWorkerName('');
+      fetchWorkers();
     } catch (err: any) {
-      setMgrError(err.message);
+      setWorkerError(err.message);
     }
   };
 
-  const handleEditClick = (mgr: any) => {
-    setEditingManager(mgr);
-    setMgrName(mgr.name);
-    setMgrPhone(mgr.phone || '');
-    setMgrPhoto(mgr.photo || '');
-    setMgrActive(mgr.active !== false);
-    setMgrError(null);
-    setMgrSuccess(null);
-  };
-
-  const handleCancelEdit = () => {
-    setEditingManager(null);
-    setMgrName('');
-    setMgrPhone('');
-    setMgrPhoto('');
-    setMgrActive(true);
-    setMgrError(null);
-  };
-
-  const handleDeleteManager = async (mgrId: string) => {
-    if (!confirm('Are you absolutely sure you want to permanently delete this manager? This cannot be undone.')) {
+  // Handle Delete Worker
+  const handleDeleteWorker = async (workerId: string) => {
+    if (!confirm('Are you absolutely sure you want to permanently delete this worker account? This will block their login immediately.')) {
       return;
     }
 
-    setMgrError(null);
-    setMgrSuccess(null);
+    setWorkerError(null);
+    setWorkerSuccess(null);
 
     try {
-      const res = await fetch(`/api/managers/${mgrId}`, {
+      const res = await fetch(`/api/workers/${workerId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to delete manager.');
+        throw new Error(data.error || 'Failed to delete worker.');
       }
 
-      setMgrSuccess('Manager profile deleted successfully.');
-      fetchManagers();
-      if (onWorkersUpdated) {
-        onWorkersUpdated([]);
-      }
+      setWorkerSuccess('Worker account deleted successfully.');
+      fetchWorkers();
     } catch (err: any) {
-      setMgrError(err.message);
+      setWorkerError(err.message);
     }
   };
 
@@ -257,6 +217,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
           measurement_fields: editedFields,
           pipeline_stages: editedStages,
           auto_archive_days: editedAutoArchiveDays,
+          measurement_unit: editedMeasurementUnit,
         }),
       });
 
@@ -322,22 +283,6 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
     updated[targetIndex] = temp;
     
     setEditedStages(updated);
-  };
-
-  // Handle add measurement parameter
-  const handleAddField = () => {
-    const field = newField.trim();
-    if (!field) return;
-    if (editedFields.includes(field)) {
-      alert('This parameter already exists.');
-      return;
-    }
-    setEditedFields(prev => [...prev, field]);
-    setNewField('');
-  };
-
-  const handleRemoveField = (field: string) => {
-    setEditedFields(prev => prev.filter(f => f !== field));
   };
 
   // Handle Database Backup download
@@ -438,6 +383,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
       <div className="flex flex-wrap gap-1.5 border-b border-slate-200 pb-3">
         {[
           { id: 'Settings', label: 'Shop Settings', icon: Settings },
+          { id: 'GarmentConfig', label: 'Garment Configuration', icon: Sliders },
           { id: 'Backup', label: 'Backup & Archiving', icon: Database },
           { id: 'Logs', label: 'Audit Logs', icon: Activity },
         ].map((tab) => {
@@ -480,7 +426,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="max-w-xl">
               <div className="space-y-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Shop / Company Name *</label>
@@ -544,41 +490,18 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
                     <option value={90}>90 Days</option>
                   </select>
                 </div>
-              </div>
 
-              {/* Customize Measurement Parameter Fields */}
-              <div className="space-y-4">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Custom Body Card Measurement Parameters</span>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newField}
-                    onChange={(e) => setNewField(e.target.value)}
-                    placeholder="Add e.g. Hip-Width"
-                    className="flex-1 px-3 py-2 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#38BDF8]"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddField}
-                    className="px-4 py-2 bg-[#0F172A] text-white font-bold rounded-lg text-2xs uppercase tracking-wider cursor-pointer hover:bg-slate-800"
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Default Measurement Unit</label>
+                  <select
+                    value={editedMeasurementUnit}
+                    onChange={(e) => setEditedMeasurementUnit(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-lg font-bold text-slate-800 text-xs focus:outline-none focus:border-[#38BDF8]"
                   >
-                    Add Parameter
-                  </button>
-                </div>
-
-                <div className="max-h-60 overflow-y-auto p-4 border border-slate-200 rounded-xl bg-slate-50 space-y-1.5 shadow-2xs">
-                  {editedFields.map((field) => (
-                    <div key={field} className="flex justify-between items-center p-2.5 bg-white rounded-lg border border-slate-200/60 shadow-3xs">
-                      <span className="font-bold text-slate-700 text-xs uppercase tracking-wider">{field}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveField(field)}
-                        className="text-red-500 hover:text-red-700 cursor-pointer p-1"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
+                    <option value="Inches">Inches</option>
+                    <option value="Centimeters">Centimeters (cm)</option>
+                    <option value="Feet">Feet (ft)</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -784,6 +707,13 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* TAB 4: UNIFIED GARMENT CONFIGURATION */}
+        {activeTab === 'GarmentConfig' && (
+          <div className="animate-fade-in">
+            <GarmentConfiguration token={token} />
           </div>
         )}
 

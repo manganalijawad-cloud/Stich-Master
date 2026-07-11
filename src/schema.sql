@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     email TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('Owner', 'Manager')),
+    role TEXT NOT NULL CHECK (role IN ('Owner', 'Worker')),
     shop_id UUID REFERENCES public.shops(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
@@ -274,3 +274,65 @@ CREATE INDEX IF NOT EXISTS orders_created_by_idx ON public.orders (created_by);
 CREATE INDEX IF NOT EXISTS audit_logs_user_id_idx ON public.audit_logs (user_id);
 CREATE INDEX IF NOT EXISTS shop_settings_user_id_idx ON public.shop_settings (user_id);
 CREATE INDEX IF NOT EXISTS inventory_created_by_idx ON public.inventory (created_by);
+
+
+-- 10. GARMENT TYPES TABLE
+CREATE TABLE IF NOT EXISTS public.garment_types (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    shop_id UUID REFERENCES public.shops(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    enabled BOOLEAN DEFAULT true NOT NULL,
+    display_order INTEGER DEFAULT 0 NOT NULL,
+    measurement_fields JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    created_by UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
+    updated_by UUID REFERENCES auth.users(id) DEFAULT auth.uid()
+);
+
+-- Enable RLS on Garment Types
+ALTER TABLE public.garment_types ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Restrict garment_types to authenticated user's own records only" ON public.garment_types;
+CREATE POLICY "Restrict garment_types to authenticated user's own records only"
+    ON public.garment_types FOR ALL
+    TO authenticated
+    USING (created_by = auth.uid())
+    WITH CHECK (created_by = auth.uid());
+
+-- Indexes for Garment Types
+CREATE INDEX IF NOT EXISTS garment_types_shop_id_idx ON public.garment_types (shop_id);
+CREATE INDEX IF NOT EXISTS garment_types_created_by_idx ON public.garment_types (created_by);
+CREATE INDEX IF NOT EXISTS garment_types_display_order_idx ON public.garment_types (display_order);
+
+
+-- 11. STYLING CATEGORIES TABLE
+CREATE TABLE IF NOT EXISTS public.styling_categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    shop_id UUID REFERENCES public.shops(id) ON DELETE CASCADE,
+    garment_type_id UUID REFERENCES public.garment_types(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    display_order INTEGER DEFAULT 0 NOT NULL,
+    options JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    created_by UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
+    updated_by UUID REFERENCES auth.users(id) DEFAULT auth.uid()
+);
+
+-- Enable RLS on Styling Categories
+ALTER TABLE public.styling_categories ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Restrict styling_categories to authenticated user's own records only" ON public.styling_categories;
+CREATE POLICY "Restrict styling_categories to authenticated user's own records only"
+    ON public.styling_categories FOR ALL
+    TO authenticated
+    USING (created_by = auth.uid())
+    WITH CHECK (created_by = auth.uid());
+
+-- Indexes for Styling Categories
+CREATE INDEX IF NOT EXISTS styling_categories_shop_id_idx ON public.styling_categories (shop_id);
+CREATE INDEX IF NOT EXISTS styling_categories_created_by_idx ON public.styling_categories (created_by);
+CREATE INDEX IF NOT EXISTS styling_categories_display_order_idx ON public.styling_categories (display_order);
+
+
