@@ -114,7 +114,7 @@ export default function OrdersSection({
   // Create Order Form State
   const [isCreating, setIsCreating] = useState(false);
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [items, setItems] = useState<OrderItem[]>([{ type: 'Suit', price: 0, notes: '' }]);
+  const [items, setItems] = useState<OrderItem[]>([{ type: 'Suit', price: 0, notes: '', color: '' }]);
   const [totalAmount, setTotalAmount] = useState(0);
   const [paidAmount, setPaidAmount] = useState(0);
   const [dueDate, setDueDate] = useState('');
@@ -131,6 +131,7 @@ export default function OrdersSection({
     measurement_snapshot: Record<string, string | number>;
     styling_snapshot: Record<string, string>; // categoryId -> optionId
     notes?: string;
+    color?: string;
   }
 
   const [bookingStep, setBookingStep] = useState<'customer' | 'garments' | 'summary'>('customer');
@@ -142,6 +143,7 @@ export default function OrdersSection({
   // inline customer fields
   const [newCustName, setNewCustName] = useState('');
   const [newCustPhone, setNewCustPhone] = useState('');
+  const [isNameDuplicate, setIsNameDuplicate] = useState(false);
   const [newCustWhatsapp, setNewCustWhatsapp] = useState('');
   const [newCustAddress, setNewCustAddress] = useState('');
   const [newCustEmail, setNewCustEmail] = useState('');
@@ -406,6 +408,30 @@ export default function OrdersSection({
     return () => clearTimeout(delayDebounce);
   }, [customerSearch, bookingStep, token]);
 
+  // Debounced check if inline new customer name already exists in database
+  useEffect(() => {
+    if (!newCustName.trim()) {
+      setIsNameDuplicate(false);
+      return;
+    }
+    const checkDuplicate = async () => {
+      try {
+        const res = await fetch(`/api/customers?q=${encodeURIComponent(newCustName.trim())}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const hasMatch = data.some((c: Customer) => c.name.toLowerCase() === newCustName.trim().toLowerCase());
+          setIsNameDuplicate(hasMatch);
+        }
+      } catch (err) {
+        console.error('Error checking duplicate name:', err);
+      }
+    };
+    const delay = setTimeout(checkDuplicate, 450);
+    return () => clearTimeout(delay);
+  }, [newCustName, token]);
+
   // Load customer profiles and initialize booking items when customer selected
   useEffect(() => {
     if (!customer) {
@@ -536,7 +562,8 @@ export default function OrdersSection({
       delivery_date: sharedDeliveryDate || d.toISOString().split('T')[0],
       measurement_snapshot,
       styling_snapshot,
-      notes: ''
+      notes: '',
+      color: ''
     };
   };
 
@@ -567,6 +594,11 @@ export default function OrdersSection({
   const handleInlineCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCustName.trim()) return;
+
+    if (isNameDuplicate && (!newCustPhone || !newCustPhone.trim())) {
+      setCreateError('A customer with this name already exists. A Phone Number is required to save a duplicate name.');
+      return;
+    }
 
     setCreateError(null);
     try {
@@ -777,6 +809,7 @@ export default function OrdersSection({
             type: item.type,
             price: item.price,
             notes: item.notes,
+            color: item.color,
             delivery_date: item.delivery_date,
             measurement_snapshot: item.measurement_snapshot,
             styling_snapshot: item.styling_snapshot
@@ -1060,20 +1093,20 @@ export default function OrdersSection({
           )}
 
           {/* Search */}
-          <div className="space-y-4">
+          <div className="space-y-3">
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search order #, customer name..."
-              className="w-full px-4 py-2.5 bg-white border-2 border-slate-200 rounded-xl text-slate-805 text-sm placeholder-slate-400 font-medium focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all"
+              className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs placeholder-slate-400 font-medium focus:outline-none focus:border-[#38BDF8] focus:ring-2 focus:ring-sky-100 transition-all"
             />
 
             {/* Active List */}
-            <div className="space-y-2 max-h-[440px] overflow-y-auto pr-1">
-              {loading && <p className="text-center text-slate-400 text-xs font-bold uppercase tracking-wider py-4">Refreshing Queue...</p>}
+            <div className="space-y-1.5 max-h-[440px] overflow-y-auto pr-1">
+              {loading && <p className="text-center text-slate-400 text-[10px] font-bold uppercase tracking-wider py-3">Refreshing Queue...</p>}
               {!loading && orders.length === 0 && (
-                <p className="text-center text-slate-400 py-8 text-xs font-semibold uppercase tracking-wider">No active orders in this stage.</p>
+                <p className="text-center text-slate-400 py-6 text-[10px] font-bold uppercase tracking-wider">No active orders.</p>
               )}
               {orders.map((o) => {
                 const isSelected = selectedOrder?.id === o.id;
@@ -1081,23 +1114,23 @@ export default function OrdersSection({
                   <button
                     key={o.id}
                     onClick={() => selectOrderWithDetails(o)}
-                    className={`w-full p-4 rounded-xl text-left border transition-all flex items-center justify-between cursor-pointer ${
+                    className={`w-full p-2.5 rounded-lg text-left border transition-all flex items-center justify-between cursor-pointer ${
                       isSelected
-                        ? 'bg-[#F0F9FF] border-[#38BDF8] ring-2 ring-sky-100'
-                        : 'bg-[#FFFFFF] hover:bg-slate-50 border-slate-200/60'
+                        ? 'bg-sky-50/70 border-sky-400 text-sky-900 font-bold'
+                        : 'bg-white hover:bg-slate-50 border-slate-200'
                     }`}
                   >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-extrabold text-slate-900 text-sm font-display">{o.order_number}</span>
-                        <span className={`px-2 py-0.5 rounded text-3xs font-extrabold uppercase ${getStatusBadgeStyle(o.status)}`}>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-slate-800 text-xs">{o.order_number}</span>
+                        <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase ${getStatusBadgeStyle(o.status)}`}>
                           {stagesList.find(s => s.id === o.status)?.name || o.status}
                         </span>
                       </div>
-                      <p className="font-bold text-slate-800 text-base">{o.customer_name}</p>
-                      <p className="text-slate-400 text-2xs uppercase tracking-wider font-bold">Due: {new Date(o.due_date).toLocaleDateString()}</p>
+                      <p className="font-bold text-slate-800 text-xs">{o.customer_name}</p>
+                      <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold">Due: {new Date(o.due_date).toLocaleDateString()}</p>
                     </div>
-                    <div className="text-right space-y-1 shrink-0">
+                    <div className="text-right space-y-0.5 shrink-0">
                       <span className="text-base font-black text-slate-850 block font-display">
                         {currency}{o.total_amount}
                       </span>
@@ -1240,7 +1273,7 @@ export default function OrdersSection({
                         className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold rounded-lg text-2xs uppercase tracking-wider transition-colors cursor-pointer"
                       >
                         <UserPlus className="w-4 h-4 text-[#38BDF8]" />
-                        Create New Customer Profile
+                        Create New Customer
                       </button>
                     </div>
                   </div>
@@ -1249,7 +1282,7 @@ export default function OrdersSection({
                   <form onSubmit={handleInlineCreateCustomer} className="space-y-4 p-4 bg-slate-50 border border-slate-200/60 rounded-xl">
                     <div className="flex justify-between items-center">
                       <span className="font-extrabold text-xs text-slate-700 uppercase tracking-wider">
-                        New Customer Form
+                        New Customer
                       </span>
                       <button
                         type="button"
@@ -1271,19 +1304,20 @@ export default function OrdersSection({
                           value={newCustName}
                           onChange={(e) => setNewCustName(e.target.value)}
                           className="w-full px-2.5 py-1.5 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:border-[#38BDF8]"
-                          placeholder="John Doe"
+                          placeholder="Ali Khan"
                         />
                       </div>
 
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                          Phone Number
+                          Phone Number {isNameDuplicate && <span className="text-red-500">* (Required)</span>}
                         </label>
                         <input
                           type="tel"
+                          required={isNameDuplicate}
                           value={newCustPhone}
                           onChange={(e) => setNewCustPhone(e.target.value)}
-                          className="w-full px-2.5 py-1.5 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:border-[#38BDF8]"
+                          className={`w-full px-2.5 py-1.5 bg-white border-2 rounded-lg text-slate-800 text-xs focus:outline-none ${isNameDuplicate ? 'border-amber-300 focus:border-amber-500' : 'border-slate-200 focus:border-[#38BDF8]'}`}
                           placeholder="0300-1234567"
                         />
                       </div>
@@ -1312,7 +1346,7 @@ export default function OrdersSection({
                           value={newCustEmail}
                           onChange={(e) => setNewCustEmail(e.target.value)}
                           className="w-full px-2.5 py-1.5 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:border-[#38BDF8]"
-                          placeholder="john@example.com"
+                          placeholder="ali@example.pk"
                         />
                       </div>
                     </div>
@@ -1326,7 +1360,7 @@ export default function OrdersSection({
                         value={newCustAddress}
                         onChange={(e) => setNewCustAddress(e.target.value)}
                         className="w-full px-2.5 py-1.5 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:border-[#38BDF8]"
-                        placeholder="123 Main Street"
+                        placeholder="House 45, Tariq Road, Karachi"
                       />
                     </div>
 
@@ -1347,7 +1381,7 @@ export default function OrdersSection({
                       type="submit"
                       className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-2xs uppercase tracking-wider cursor-pointer"
                     >
-                      Save Profile & Advance
+                      Save & Continue
                     </button>
                   </form>
                 )}
@@ -1409,7 +1443,7 @@ export default function OrdersSection({
                         </div>
 
                         {/* Garment details grid */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                           <div className="space-y-1">
                             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                               Garment Type
@@ -1438,6 +1472,19 @@ export default function OrdersSection({
                               onChange={(e) => handleUpdateBookingItemField(item.id, 'price', Number(e.target.value))}
                               className="w-full px-2.5 py-1.5 bg-white border-2 border-slate-200 rounded-lg font-bold text-slate-800 text-xs focus:outline-none focus:border-[#38BDF8]"
                               placeholder="0"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                              <Palette className="w-3 h-3 text-sky-550" /> Fabric / Suit Color
+                            </label>
+                            <input
+                              type="text"
+                              value={item.color || ''}
+                              onChange={(e) => handleUpdateBookingItemField(item.id, 'color', e.target.value)}
+                              className="w-full px-2.5 py-1.5 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:border-[#38BDF8]"
+                              placeholder="e.g. Navy Blue, Black"
                             />
                           </div>
                         </div>
@@ -1550,11 +1597,16 @@ export default function OrdersSection({
                     </button>
                   </div>
 
-                  {bookingItems.map((item, idx) => (
+                   {bookingItems.map((item, idx) => (
                     <div key={item.id} className="p-3 bg-white border border-slate-200 rounded-xl space-y-2 text-2xs shadow-xs">
                       <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
-                        <span className="font-extrabold text-slate-800 uppercase">
+                        <span className="font-extrabold text-slate-800 uppercase flex items-center gap-1.5">
                           Item #{idx + 1}: {item.type}
+                          {item.color && (
+                            <span className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 text-slate-650 text-[9px] font-bold rounded">
+                              {item.color}
+                            </span>
+                          )}
                         </span>
                         <span className="font-black text-slate-900">{currency}{item.price}</span>
                       </div>
@@ -1682,7 +1734,7 @@ export default function OrdersSection({
                   <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                     {editedItems.map((item, index) => (
                       <div key={index} className="grid grid-cols-12 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200/60 items-start">
-                        <div className="col-span-4 space-y-1">
+                        <div className="col-span-3 space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Garment Type</label>
                           <input
                             type="text"
@@ -1692,7 +1744,7 @@ export default function OrdersSection({
                           />
                         </div>
 
-                        <div className="col-span-3 space-y-1">
+                        <div className="col-span-2 space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Price ({currency})</label>
                           <input
                             type="number"
@@ -1703,7 +1755,18 @@ export default function OrdersSection({
                           />
                         </div>
 
-                        <div className="col-span-4 space-y-1">
+                        <div className="col-span-3 space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Color</label>
+                          <input
+                            type="text"
+                            value={item.color || ''}
+                            onChange={(e) => handleEditItemChange(index, 'color', e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-xs focus:outline-none focus:border-[#38BDF8]"
+                            placeholder="Color"
+                          />
+                        </div>
+
+                        <div className="col-span-3 space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Styling / Cut Details</label>
                           <input
                             type="text"
@@ -1956,7 +2019,14 @@ export default function OrdersSection({
                         <div key={i} className="p-4 bg-white first:rounded-t-xl last:rounded-b-xl border-b border-slate-100 last:border-0 space-y-3">
                           <div className="flex justify-between items-start">
                             <div>
-                              <p className="font-extrabold text-slate-800 text-sm font-display">{item.type} (Piece #{i + 1})</p>
+                              <p className="font-extrabold text-slate-800 text-sm font-display flex items-center gap-1.5">
+                                {item.type} (Piece #{i + 1})
+                                {item.color && (
+                                  <span className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 text-slate-700 text-3xs font-black uppercase rounded-md inline-block">
+                                    {item.color}
+                                  </span>
+                                )}
+                              </p>
                               {item.delivery_date && (
                                 <p className="text-slate-400 text-[10px] font-bold mt-0.5">Due: {new Date(item.delivery_date).toLocaleDateString()}</p>
                               )}
@@ -2131,7 +2201,14 @@ export default function OrdersSection({
                   {selectedOrder.items.map((item, idx) => (
                     <tr key={idx} className="py-1.5">
                       <td className="py-1.5">
-                        <p className="font-bold">{item.type}</p>
+                        <p className="font-bold">
+                          {item.type}
+                          {item.color && (
+                            <span className="ml-1.5 text-3xs font-extrabold text-slate-700 bg-gray-100 border border-gray-300 px-1 rounded inline-block">
+                              Color: {item.color}
+                            </span>
+                          )}
+                        </p>
                         {item.notes && <p className="text-2xs text-gray-500 italic">*{item.notes}</p>}
                       </td>
                       <td className="py-1.5 text-right font-bold">{currency}{item.price}</td>
@@ -2214,7 +2291,14 @@ export default function OrdersSection({
                     return (
                       <div key={idx} className="p-2 bg-gray-50 border border-gray-200 rounded space-y-2">
                         <div className="flex justify-between items-center border-b border-gray-200 pb-1">
-                          <p className="font-black text-xs uppercase">{item.type} (Piece #{idx + 1})</p>
+                          <p className="font-black text-xs uppercase flex items-center gap-1.5">
+                            {item.type} (Piece #{idx + 1})
+                            {item.color && (
+                              <span className="text-3xs font-extrabold bg-gray-200 text-black border border-gray-400 px-1 rounded inline-block">
+                                Color: {item.color}
+                              </span>
+                            )}
+                          </p>
                           {item.delivery_date && (
                             <span className="text-[10px] font-bold text-red-600">Due: {new Date(item.delivery_date).toLocaleDateString()}</span>
                           )}

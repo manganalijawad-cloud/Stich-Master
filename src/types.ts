@@ -50,6 +50,7 @@ export interface OrderItem {
   type: string; // e.g., Suit, Shirt, Trouser, Sherwani
   price: number;
   notes?: string;
+  color?: string;
   delivery_date?: string; // Optional for backward compatibility, required for new items
   measurement_snapshot?: Record<string, string | number>;
   styling_snapshot?: Record<string, string>;

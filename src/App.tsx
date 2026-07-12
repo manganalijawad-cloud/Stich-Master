@@ -437,16 +437,16 @@ export default function App() {
         {/* DESKTOP TOP-BAR PANEL */}
         <header className="hidden md:flex items-center justify-between bg-white h-20 px-8 border-b border-slate-200 shrink-0 print:hidden">
           <div>
-            <h2 className="text-xl font-bold text-[#0F172A] tracking-tight font-display">
+            <h2 className="text-lg font-semibold text-slate-900 tracking-tight">
               {activeTab === 'Customers' 
-                ? 'Customer Profiles & Measurements' 
+                ? 'Customer Registry' 
                 : activeTab === 'Orders' 
-                ? 'Garment Bookings & Queue' 
+                ? 'POS Order Queue' 
                 : activeTab === 'Financials' 
-                ? 'Financial Reports & Insights' 
-                : 'Administration Settings'}
+                ? 'Financial Analytics' 
+                : 'System Config'}
             </h2>
-            <p className="text-xs text-slate-400 font-medium mt-0.5">Manage tailor operations and customer specifications</p>
+            <p className="text-2xs text-slate-450 uppercase font-bold tracking-wider mt-0.5">Tailoring SaaS Workspace</p>
           </div>
 
           <div className="flex items-center gap-4">

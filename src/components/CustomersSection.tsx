@@ -53,6 +53,9 @@ export default function CustomersSection({
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+  const [showAllPage, setShowAllPage] = useState(false);
+  const [recentCustomers, setRecentCustomers] = useState<Customer[]>([]);
+  const [recentLoading, setRecentLoading] = useState(false);
 
   // Garment Types state
   const [garmentTypes, setGarmentTypes] = useState<GarmentType[]>([]);
@@ -62,6 +65,7 @@ export default function CustomersSection({
   const [isCreating, setIsCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [isNameDuplicate, setIsNameDuplicate] = useState(false);
   const [newWhatsapp, setNewWhatsapp] = useState('');
   const [newAddress, setNewAddress] = useState('');
   const [newEmail, setNewEmail] = useState('');
@@ -182,6 +186,53 @@ export default function CustomersSection({
     return () => clearTimeout(delayDebounce);
   }, [searchQuery, token, selectedCustomerId]);
 
+  // Debounced check if name already exists in database
+  useEffect(() => {
+    if (!newName.trim()) {
+      setIsNameDuplicate(false);
+      return;
+    }
+    const checkDuplicate = async () => {
+      try {
+        const res = await fetch(`/api/customers?q=${encodeURIComponent(newName.trim())}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const hasMatch = data.some((c: Customer) => c.name.toLowerCase() === newName.trim().toLowerCase());
+          setIsNameDuplicate(hasMatch);
+        }
+      } catch (err) {
+        console.error('Error checking duplicate name:', err);
+      }
+    };
+    const delay = setTimeout(checkDuplicate, 450);
+    return () => clearTimeout(delay);
+  }, [newName, token]);
+
+  // Fetch 6 newly added customers
+  const fetchRecentCustomers = async () => {
+    if (!token) return;
+    setRecentLoading(true);
+    try {
+      const res = await fetch('/api/customers?page=1&limit=6&sort=created_at&order=desc', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRecentCustomers(data);
+      }
+    } catch (err) {
+      console.error('Error fetching recent customers:', err);
+    } finally {
+      setRecentLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRecentCustomers();
+  }, [token]);
+
   const loadMoreCustomers = async () => {
     const nextPage = page + 1;
     setLoading(true);
@@ -294,6 +345,11 @@ export default function CustomersSection({
       return;
     }
 
+    if (isNameDuplicate && (!newPhone || newPhone.trim() === '')) {
+      setCreateError('A customer with this name already exists. A Phone Number is required to save a duplicate name.');
+      return;
+    }
+
     setCreateError(null);
     setCreateSuccess(false);
     setDuplicateAlert(null);
@@ -382,6 +438,7 @@ export default function CustomersSection({
 
       // Refresh customers list
       setSearchQuery('');
+      fetchRecentCustomers();
     } catch (err: any) {
       setCreateError(err.message);
     }
@@ -506,157 +563,291 @@ export default function CustomersSection({
   const activeGarmentType = activeProfile ? garmentTypes.find(gt => gt.id === activeProfile.garment_type_id) : null;
   const selectedGarmentTypeForNewCustomer = garmentTypes.find(g => g.id === selectedGarmentTypeId);
 
+  if (showAllPage) {
+    return (
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6 animate-fade-in min-h-[500px]">
+        {/* Full Customers Page Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+          <div>
+            <button
+              onClick={() => setShowAllPage(false)}
+              className="flex items-center gap-1.5 text-xs font-bold text-sky-600 hover:text-sky-800 transition-colors uppercase tracking-wider mb-2 cursor-pointer bg-transparent border-none p-0"
+            >
+              ← Back to Dashboard / Profiles
+            </button>
+            <h1 className="text-2xl font-black text-[#0F172A] tracking-tight font-display uppercase">Customer Database</h1>
+            <p className="text-xs text-slate-400 font-medium mt-0.5">Search, filter, and select from the complete customer directory</p>
+          </div>
+          
+          <button
+            onClick={() => {
+              setShowAllPage(false);
+              setIsCreating(true);
+              setSelectedCustomer(null);
+              // Pre-populate with first enabled garment type
+              const enabled = garmentTypes.filter(g => g.enabled);
+              if (enabled.length > 0) {
+                setSelectedGarmentTypeId(enabled[0].id);
+              }
+              setInitialMeasurements({});
+            }}
+            className="px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold rounded-xl flex items-center gap-2 cursor-pointer transition-colors text-xs uppercase tracking-wider self-start sm:self-auto"
+          >
+            <UserPlus className="w-4 h-4 text-[#38BDF8]" />
+            Add Customer
+          </button>
+        </div>
+
+        {/* Search Bar */}
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by name, phone..."
+            className="w-full pl-10 pr-4 py-2 bg-white border-2 border-slate-200 rounded-xl text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all font-medium"
+          />
+        </div>
+
+        {/* Database List Table/Grid */}
+        <div className="overflow-x-auto border border-slate-150 rounded-xl">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-150 text-slate-400 uppercase tracking-wider font-extrabold text-[10px]">
+                <th className="p-4">Customer Name</th>
+                <th className="p-4">Mobile Number</th>
+                <th className="p-4">Address</th>
+                <th className="p-4">WhatsApp</th>
+                <th className="p-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+              {loading && customers.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-slate-400 font-bold uppercase tracking-wider">
+                    Searching Database...
+                  </td>
+                </tr>
+              ) : customers.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-slate-400 font-bold uppercase tracking-wider">
+                    No customers found. Try a different search.
+                  </td>
+                </tr>
+              ) : (
+                customers.map((c) => (
+                  <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="p-4 font-bold text-slate-900">{c.name}</td>
+                    <td className="p-4">
+                      {c.phone && !c.phone.startsWith('NO-PHONE-') ? (
+                        <span className="flex items-center gap-1.5 text-slate-600 font-semibold">
+                          <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          {c.phone}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 italic">No phone</span>
+                      )}
+                    </td>
+                    <td className="p-4 truncate max-w-[200px]">{c.address || <span className="text-slate-400 italic">No address</span>}</td>
+                    <td className="p-4">
+                      {c.whatsapp ? (
+                        <span className="text-emerald-600 font-semibold flex items-center gap-1">
+                          <MessageCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                          {c.whatsapp}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 italic">-</span>
+                      )}
+                    </td>
+                    <td className="p-4 text-right">
+                      <button
+                        onClick={() => {
+                          setSelectedCustomer(c);
+                          setShowAllPage(false);
+                        }}
+                        className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold uppercase tracking-wider rounded-lg text-[10px] transition-all cursor-pointer border border-sky-100"
+                      >
+                        View Profile &amp; Measure
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Load More Button inside full page */}
+        {hasMore && (
+          <div className="flex justify-center pt-2">
+            <button
+              onClick={loadMoreCustomers}
+              disabled={loading}
+              className="px-6 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-200 cursor-pointer text-center flex items-center justify-center gap-1.5 transition-all shadow-3xs"
+            >
+              {loading ? 'Loading...' : 'Load More Customers'}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
       
       {/* LEFT COLUMN: Customer Search & List */}
-      <div className="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-slate-900 tracking-tight font-display uppercase">Customers</h2>
-          {!isCreating && (
-            <button
-              onClick={() => {
-                setIsCreating(true);
-                setSelectedCustomer(null);
-                // Pre-populate with first enabled garment type
-                const enabled = garmentTypes.filter(g => g.enabled);
-                if (enabled.length > 0) {
-                  setSelectedGarmentTypeId(enabled[0].id);
-                }
-                setInitialMeasurements({});
-              }}
-              className="px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold rounded-xl flex items-center gap-2 cursor-pointer transition-colors text-xs uppercase tracking-wider"
-            >
-              <UserPlus className="w-4 h-4 text-[#38BDF8]" />
-              Add Customer
-            </button>
+      <div className="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6 flex flex-col justify-between min-h-[480px]">
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight font-display uppercase">Customers</h2>
+            {!isCreating && (
+              <button
+                onClick={() => {
+                  setIsCreating(true);
+                  setSelectedCustomer(null);
+                  // Pre-populate with first enabled garment type
+                  const enabled = garmentTypes.filter(g => g.enabled);
+                  if (enabled.length > 0) {
+                    setSelectedGarmentTypeId(enabled[0].id);
+                  }
+                  setInitialMeasurements({});
+                }}
+                className="px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold rounded-xl flex items-center gap-2 cursor-pointer transition-colors text-xs uppercase tracking-wider"
+              >
+                <UserPlus className="w-4 h-4 text-[#38BDF8]" />
+                Add Customer
+              </button>
+            )}
+          </div>
+
+          {isCreating ? (
+            /* CREATE CUSTOMER FORM */
+            <form onSubmit={handleCreateCustomer} className="space-y-4">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                <span className="font-bold text-base text-slate-800 font-display">New Customer</span>
+                <button
+                  type="button"
+                  onClick={() => setIsCreating(false)}
+                  className="text-slate-500 hover:text-slate-800 text-xs font-bold uppercase tracking-wider cursor-pointer bg-transparent border-none"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              {createError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold">
+                  {createError}
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">NAME*</label>
+                <input
+                  type="text"
+                  required
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="e.g. Ali Khan"
+                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-sm font-medium focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">
+                  MOBILE NUMBER{isNameDuplicate && <span className="text-red-500">* (Required - Name already exists)</span>}
+                </label>
+                <input
+                  type="tel"
+                  required={isNameDuplicate}
+                  value={newPhone}
+                  onChange={(e) => setNewPhone(e.target.value)}
+                  placeholder="e.g. 0300-1234567"
+                  className={`w-full px-4 py-2.5 border-2 rounded-xl text-slate-800 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-sky-100 transition-all ${isNameDuplicate ? 'border-amber-300 focus:border-amber-500' : 'border-slate-200 focus:border-[#38BDF8]'}`}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">ADDRESS</label>
+                <input
+                  type="text"
+                  value={newAddress}
+                  onChange={(e) => setNewAddress(e.target.value)}
+                  placeholder="e.g. House 45, Tariq Road, Karachi"
+                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-sm font-medium focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">NOTE</label>
+                <textarea
+                  value={newNotes}
+                  onChange={(e) => setNewNotes(e.target.value)}
+                  placeholder="Preferred fits, specific styling instructions..."
+                  rows={2}
+                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-sm font-medium focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all"
+                />
+              </div>
+            </form>
+          ) : (
+            /* RECENT CUSTOMER LIST (LIMIT 6) */
+            <div className="space-y-3">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
+                Newly Added Customers
+              </span>
+
+              <div className="space-y-1 max-h-[380px] overflow-y-auto pr-1">
+                {recentLoading && recentCustomers.length === 0 && (
+                  <p className="text-center text-slate-400 py-3 text-[10px] font-bold uppercase tracking-wider animate-pulse">Loading...</p>
+                )}
+                {!recentLoading && recentCustomers.length === 0 && (
+                  <p className="text-center text-slate-400 py-6 text-[10px] font-bold uppercase tracking-wider">No customers found.</p>
+                )}
+                {recentCustomers.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => {
+                      setSelectedCustomer(c);
+                    }}
+                    className={`w-full p-2.5 rounded-lg text-left border transition-all flex items-center justify-between cursor-pointer ${
+                      selectedCustomer?.id === c.id
+                        ? 'bg-sky-50/70 border-sky-400 text-sky-900 font-bold'
+                        : 'bg-white hover:bg-slate-50 border-slate-200'
+                    }`}
+                  >
+                    <div className="space-y-0.5">
+                      <p className="font-bold text-slate-800 text-xs">{c.name}</p>
+                      {c.phone && !c.phone.startsWith('NO-PHONE-') ? (
+                        <div className="flex items-center gap-1 text-slate-500 text-[10px] font-semibold">
+                          <Phone className="w-3 h-3 shrink-0" />
+                          <span>{c.phone}</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 text-slate-400 text-[10px] font-medium italic">
+                          No phone
+                        </div>
+                      )}
+                    </div>
+                    <ChevronRight className={`w-4 h-4 shrink-0 ${selectedCustomer?.id === c.id ? 'text-sky-500' : 'text-slate-400'}`} />
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 
-        {isCreating ? (
-          /* CREATE CUSTOMER FORM */
-          <form onSubmit={handleCreateCustomer} className="space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <span className="font-bold text-base text-slate-800 font-display">New Customer Details</span>
-              <button
-                type="button"
-                onClick={() => setIsCreating(false)}
-                className="text-slate-500 hover:text-slate-800 text-xs font-bold uppercase tracking-wider cursor-pointer"
-              >
-                Cancel
-              </button>
-            </div>
-
-            {createError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold">
-                {createError}
-              </div>
-            )}
-
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">NAME*</label>
-              <input
-                type="text"
-                required
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="e.g. Robert Chen"
-                className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-sm font-medium focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">MOBILE NUMBER</label>
-              <input
-                type="tel"
-                value={newPhone}
-                onChange={(e) => setNewPhone(e.target.value)}
-                placeholder="e.g. +1 (555) 019-2834"
-                className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-sm font-medium focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">ADDRESS</label>
-              <input
-                type="text"
-                value={newAddress}
-                onChange={(e) => setNewAddress(e.target.value)}
-                placeholder="e.g. 123 Fashion St, Suite 100"
-                className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-sm font-medium focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">NOTE</label>
-              <textarea
-                value={newNotes}
-                onChange={(e) => setNewNotes(e.target.value)}
-                placeholder="Preferred fits, specific styling instructions..."
-                rows={2}
-                className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-sm font-medium focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all"
-              />
-            </div>
-
-
-          </form>
-        ) : (
-          /* SEARCH & CUSTOMER LIST */
-          <div className="space-y-4">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search Customer (Name or Phone)..."
-                className="w-full pl-11 pr-4 py-3 bg-white border-2 border-slate-200 rounded-xl text-slate-800 text-base placeholder-slate-400 focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all font-medium"
-              />
-            </div>
-
-            <div className="space-y-1.5 max-h-[480px] overflow-y-auto pr-1">
-              {loading && <p className="text-center text-slate-400 py-4 text-xs font-semibold uppercase tracking-wider">Searching customers...</p>}
-              {!loading && customers.length === 0 && (
-                <p className="text-center text-slate-400 py-8 text-xs font-semibold uppercase tracking-wider">No matching customers found.</p>
-              )}
-              {customers.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => {
-                    setSelectedCustomer(c);
-                  }}
-                  className={`w-full p-4 rounded-xl text-left border transition-all flex items-center justify-between cursor-pointer ${
-                    selectedCustomer?.id === c.id
-                      ? 'bg-[#F0F9FF] border-[#38BDF8] ring-2 ring-sky-100'
-                      : 'bg-[#FFFFFF] hover:bg-slate-50 border-slate-200/60'
-                  }`}
-                >
-                  <div className="space-y-1">
-                    <p className="font-extrabold text-slate-900 text-base font-display">{c.name}</p>
-                    {c.phone && !c.phone.startsWith('NO-PHONE-') ? (
-                      <div className="flex items-center gap-1.5 text-slate-500 text-xs font-semibold">
-                        <Phone className="w-3.5 h-3.5 shrink-0" />
-                        <span>{c.phone}</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5 text-slate-400 text-xs font-medium italic">
-                        No phone number
-                      </div>
-                    )}
-                  </div>
-                  <ChevronRight className={`w-5 h-5 shrink-0 ${selectedCustomer?.id === c.id ? 'text-[#38BDF8]' : 'text-slate-400'}`} />
-                </button>
-              ))}
-              {hasMore && (
-                <button
-                  onClick={loadMoreCustomers}
-                  disabled={loading}
-                  className="w-full mt-3 py-2.5 px-4 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-200 cursor-pointer text-center flex items-center justify-center gap-1.5 transition-all shadow-3xs"
-                >
-                  {loading ? 'Loading...' : 'Load More Customers'}
-                </button>
-              )}
-            </div>
+        {/* "Show More" Button - Always visible at the bottom of the Left Column except when creating customer */}
+        {!isCreating && (
+          <div className="pt-4 border-t border-slate-100 mt-4">
+            <button
+              onClick={() => {
+                setShowAllPage(true);
+              }}
+              className="w-full py-3 px-4 bg-sky-50 hover:bg-sky-100 text-[#0369A1] font-bold text-xs uppercase tracking-wider rounded-xl border border-sky-200 cursor-pointer text-center flex items-center justify-center gap-1.5 transition-all shadow-3xs"
+            >
+              Show More
+            </button>
           </div>
         )}
       </div>
@@ -678,10 +869,10 @@ export default function CustomersSection({
         {selectedCustomer ? (
           <div className="space-y-6 animate-fade-in print:hidden">
             {/* Header */}
-            <div className="border-b border-slate-100 pb-5 space-y-3">
-              <div className="space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Profile</span>
-                <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight font-display uppercase">{selectedCustomer.name}</h1>
+            <div className="border-b border-slate-100 pb-3 space-y-2">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Customer Profile</span>
+                <h1 className="text-lg font-bold text-slate-900 tracking-tight uppercase">{selectedCustomer.name}</h1>
               </div>
 
               {/* Attributes display */}
@@ -860,11 +1051,8 @@ export default function CustomersSection({
                 <div>
                   <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-display flex items-center gap-1.5">
                     <Layers className="w-5 h-5 text-[#38BDF8]" />
-                    Measurement Profiles
+                    MEASUREMENTS
                   </h3>
-                  <p className="text-3xs text-slate-400 font-bold uppercase tracking-wider mt-0.5">
-                    {profiles.length} profiles listed for this customer
-                  </p>
                 </div>
 
                 {!isAddingProfile && (
@@ -898,7 +1086,7 @@ export default function CustomersSection({
 
               {measSuccess && (
                 <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold animate-fade-in">
-                  Measurement Profiles synchronized successfully! Previous frozen orders remain safe.
+                  Measurements saved successfully!
                 </div>
               )}
 
@@ -1033,12 +1221,7 @@ export default function CustomersSection({
                   
                   {/* Title and specific action toolbar */}
                   <div className="flex items-center justify-between border-b border-slate-200 pb-2 flex-wrap gap-2">
-                    <div>
-                      <span className="text-3xs font-extrabold text-slate-400 uppercase tracking-widest block">Active Garment Profile</span>
-                      <span className="text-sm font-black text-slate-800 uppercase tracking-wider block font-display">
-                        {activeProfile.garment_name} Specification
-                      </span>
-                    </div>
+                    <div />
 
                     <div className="flex items-center gap-1.5">
                       {editingProfileId === activeProfile.id ? (
@@ -1197,14 +1380,10 @@ export default function CustomersSection({
                 <Sparkles className="w-5 h-5 text-[#38BDF8]" />
                 Garment Specification & Measurements
               </h3>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">
-                Define the first garment profile and corresponding measurement details for this customer.
-              </p>
             </div>
 
             {/* Garment Type Selector */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">First Garment Profile *</label>
               <select
                 id="garment-profile-selector"
                 value={selectedGarmentTypeId}
@@ -1220,17 +1399,11 @@ export default function CustomersSection({
                   </option>
                 ))}
               </select>
-              <p className="text-[10px] text-slate-400 font-semibold tracking-wide uppercase">
-                Showing only active garment specifications.
-              </p>
             </div>
 
             {/* Dynamic Initial Measurements */}
             {selectedGarmentTypeForNewCustomer && (
               <div className="pt-2">
-                <p className="font-bold text-slate-700 text-xs uppercase tracking-wider mb-2">
-                  Initial Measurements ({selectedGarmentTypeForNewCustomer.name})
-                </p>
                 {selectedGarmentTypeForNewCustomer.measurement_fields.length === 0 ? (
                   <div className="p-4 border border-slate-200 rounded-xl bg-slate-50 text-center text-xs text-slate-400 font-bold uppercase tracking-wide">
                     No custom fields defined for this garment type.

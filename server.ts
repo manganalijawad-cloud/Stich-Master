@@ -294,7 +294,7 @@ const DEFAULT_SHOP_SETTINGS = {
   shop_name: "",
   phone: "",
   address: "",
-  currency: "$",
+  currency: "PKR",
   measurement_fields: [],
   pipeline_stages: [
     { id: "Pending", name: "Getting Ready", enabled: true },
@@ -311,7 +311,13 @@ const DEFAULT_SHOP_SETTINGS = {
 // -------------------------------------------------------------------------
 // ACCOUNT-SPECIFIC SHOP SETTINGS HELPERS (PREFIX-BASED MULTI-TENANCY)
 // -------------------------------------------------------------------------
+const settingsCache = new Map<string, Record<string, any>>();
+
 async function getAccountSettings(userSupabase: any, userId: string): Promise<Record<string, any>> {
+  if (settingsCache.has(userId)) {
+    return JSON.parse(JSON.stringify(settingsCache.get(userId)));
+  }
+
   // 1. Fetch settings prefixed with the user's ID
   const { data, error } = await userSupabase
     .from("shop_settings")
@@ -362,10 +368,12 @@ async function getAccountSettings(userSupabase: any, userId: string): Promise<Re
     settingsMap.measurement_unit = "Inches";
   }
 
+  settingsCache.set(userId, JSON.parse(JSON.stringify(settingsMap)));
   return settingsMap;
 }
 
 async function saveAccountSettings(userSupabase: any, userId: string, settingsData: Record<string, any>): Promise<void> {
+  settingsCache.delete(userId);
   const now = new Date().toISOString();
   const entries = Object.entries(settingsData);
   for (const [key, value] of entries) {
@@ -397,12 +405,26 @@ interface AuthenticatedRequest extends Request {
   token?: string;
 }
 
+const authCache = new Map<string, { profile: any; expiresAt: number }>();
+
 async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({ error: "Unauthorized. Missing authentication token." });
   }
   const token = authHeader.split(" ")[1];
+
+  const nowTime = Date.now();
+  if (authCache.has(token)) {
+    const cached = authCache.get(token)!;
+    if (cached.expiresAt > nowTime) {
+      req.user = cached.profile;
+      req.token = token;
+      return next();
+    } else {
+      authCache.delete(token);
+    }
+  }
 
   try {
     const { data: { user }, error } = await supabaseAnon.auth.getUser(token);
@@ -491,6 +513,13 @@ async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextF
       shop_id: profile.shop_id || "default-shop"
     };
     req.token = token;
+
+    // Cache the verified profile for 15 seconds
+    authCache.set(token, {
+      profile: req.user,
+      expiresAt: Date.now() + 15000
+    });
+
     next();
   } catch (err: any) {
     console.error("Auth verification error:", err);
@@ -684,6 +713,7 @@ app.post("/api/auth/logout", async (req: Request, res: Response) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer ")) {
     const token = authHeader.split(" ")[1];
+    authCache.delete(token);
     await getSupabaseClient(token).auth.signOut();
   }
   return res.json({ success: true });
@@ -736,6 +766,8 @@ app.get("/api/customers", requireAuth, async (req: AuthenticatedRequest, res: Re
   const page = parseInt(req.query.page as string || "1");
   const limit = parseInt(req.query.limit as string || "50");
   const offset = (page - 1) * limit;
+  const sortBy = req.query.sort as string || "name";
+  const sortOrder = req.query.order as string || "asc";
 
   try {
     const userSupabase = getSupabaseClient(req.token);
@@ -744,7 +776,7 @@ app.get("/api/customers", requireAuth, async (req: AuthenticatedRequest, res: Re
       reqQuery = reqQuery.or(`name.ilike.%${query}%,phone.ilike.%${query}%`);
     }
     const { data, error } = await reqQuery
-      .order("name", { ascending: true })
+      .order(sortBy, { ascending: sortOrder === "asc" })
       .range(offset, offset + limit - 1);
     if (error) throw error;
     return res.json(data || []);
@@ -783,6 +815,18 @@ app.post("/api/customers", requireAuth, async (req: AuthenticatedRequest, res: R
 
   try {
     const userSupabase = getSupabaseClient(req.token);
+
+    // Enforce name duplicate validation - if name already exists, phone number is required
+    const { data: nameMatch } = await userSupabase
+      .from("customers")
+      .select("id")
+      .eq("created_by", req.user!.id)
+      .ilike("name", name.trim());
+
+    if (nameMatch && nameMatch.length > 0 && !cleanPhone) {
+      return res.status(400).json({ error: "A customer with this name already exists. A Phone Number is required to save a duplicate name." });
+    }
+
     if (cleanPhone) {
       const { data: existing } = await userSupabase
         .from("customers")
@@ -1472,40 +1516,59 @@ app.put("/api/settings", requireAuth, requireRole(["Owner"]), async (req: Authen
 function getDefaultGarmentTypes(userId: string) {
   return [
     {
-      id: "gt-suit",
-      name: "Suit",
+      id: "gt-shalwar-kameez",
+      name: "Shalwar Kameez",
       enabled: true,
       display_order: 0,
       measurement_fields: [
-        { name: "Chest", required: true, display_order: 0 },
-        { name: "Waist", required: true, display_order: 1 },
-        { name: "Shoulder Width", required: true, display_order: 2 },
-        { name: "Sleeve Length", required: true, display_order: 3 },
-        { name: "Jacket Length", required: true, display_order: 4 }
+        { name: "Kameez Length (Lambaee)", required: true, display_order: 0 },
+        { name: "Chest (Chaati)", required: true, display_order: 1 },
+        { name: "Waist (Kamar)", required: true, display_order: 2 },
+        { name: "Shoulder (Teera)", required: true, display_order: 3 },
+        { name: "Sleeve Length (Aasteen)", required: true, display_order: 4 },
+        { name: "Collar/Neck (Hala)", required: true, display_order: 5 },
+        { name: "Shalwar Length", required: true, display_order: 6 },
+        { name: "Paincha Bottom", required: true, display_order: 7 }
       ]
     },
     {
-      id: "gt-shirt",
-      name: "Shirt",
+      id: "gt-kurta",
+      name: "Kurta",
       enabled: true,
       display_order: 1,
       measurement_fields: [
-        { name: "Collar/Neck", required: true, display_order: 0 },
-        { name: "Chest", required: true, display_order: 1 },
-        { name: "Sleeve Length", required: true, display_order: 2 },
-        { name: "Shirt Length", required: true, display_order: 3 }
+        { name: "Kurta Length", required: true, display_order: 0 },
+        { name: "Chest (Chaati)", required: true, display_order: 1 },
+        { name: "Shoulder (Teera)", required: true, display_order: 2 },
+        { name: "Sleeve Length (Aasteen)", required: true, display_order: 3 },
+        { name: "Neck/Hala", required: true, display_order: 4 },
+        { name: "Daman Width", required: false, display_order: 5 }
       ]
     },
     {
-      id: "gt-trouser",
-      name: "Trouser",
+      id: "gt-sherwani",
+      name: "Sherwani",
       enabled: true,
       display_order: 2,
       measurement_fields: [
-        { name: "Waist", required: true, display_order: 0 },
-        { name: "Hips", required: true, display_order: 1 },
-        { name: "Trouser Length", required: true, display_order: 2 },
-        { name: "Inseam", required: true, display_order: 3 }
+        { name: "Sherwani Length", required: true, display_order: 0 },
+        { name: "Chest", required: true, display_order: 1 },
+        { name: "Waist", required: true, display_order: 2 },
+        { name: "Shoulder", required: true, display_order: 3 },
+        { name: "Sleeve Length", required: true, display_order: 4 },
+        { name: "Collar/Neck", required: true, display_order: 5 }
+      ]
+    },
+    {
+      id: "gt-waistcoat",
+      name: "Waistcoat (Koti)",
+      enabled: true,
+      display_order: 3,
+      measurement_fields: [
+        { name: "Waistcoat Length", required: true, display_order: 0 },
+        { name: "Chest", required: true, display_order: 1 },
+        { name: "Waist", required: true, display_order: 2 },
+        { name: "Shoulder", required: true, display_order: 3 }
       ]
     }
   ];
@@ -1912,73 +1975,68 @@ function getDefaultStylingCategories(userId: string) {
   return [
     {
       id: "sc-collar",
-      name: "Collar",
+      name: "Collar/Neck Style",
       display_order: 0,
       options: [
-        { id: "opt-sc-collar-1", name: "Standard", enabled: true, display_order: 0 },
-        { id: "opt-sc-collar-2", name: "Mao / Mandarin", enabled: true, display_order: 1 },
-        { id: "opt-sc-collar-3", name: "Spread", enabled: true, display_order: 2 },
-        { id: "opt-sc-collar-4", name: "Button-Down", enabled: true, display_order: 3 }
+        { id: "opt-sc-collar-1", name: "Ban Collar (Traditional Mandarin)", enabled: true, display_order: 0 },
+        { id: "opt-sc-collar-2", name: "Shirt Collar (Standard)", enabled: true, display_order: 1 },
+        { id: "opt-sc-collar-3", name: "Half Ban Collar", enabled: true, display_order: 2 },
+        { id: "opt-sc-collar-4", name: "Kurta V-Neck", enabled: true, display_order: 3 },
+        { id: "opt-sc-collar-5", name: "Gol Gala (Round Neck)", enabled: true, display_order: 4 }
       ]
     },
     {
       id: "sc-pocket",
-      name: "Pocket",
+      name: "Pocket Style",
       display_order: 1,
       options: [
-        { id: "opt-sc-pocket-1", name: "None", enabled: true, display_order: 0 },
-        { id: "opt-sc-pocket-2", name: "V-Shaped", enabled: true, display_order: 1 },
-        { id: "opt-sc-pocket-3", name: "Square", enabled: true, display_order: 2 },
-        { id: "opt-sc-pocket-4", name: "Flap", enabled: true, display_order: 3 }
+        { id: "opt-sc-pocket-1", name: "No Pocket", enabled: true, display_order: 0 },
+        { id: "opt-sc-pocket-2", name: "Standard Side Pockets (Both)", enabled: true, display_order: 1 },
+        { id: "opt-sc-pocket-3", name: "One Side Pocket (Right)", enabled: true, display_order: 2 },
+        { id: "opt-sc-pocket-4", name: "Front Chest Pocket", enabled: true, display_order: 3 },
+        { id: "opt-sc-pocket-5", name: "Front Chest Pocket with Flap", enabled: true, display_order: 4 }
       ]
     },
     {
       id: "sc-front",
-      name: "Front",
+      name: "Placket (Patti) Style",
       display_order: 2,
       options: [
-        { id: "opt-sc-front-1", name: "Plain", enabled: true, display_order: 0 },
-        { id: "opt-sc-front-2", name: "Placket", enabled: true, display_order: 1 },
-        { id: "opt-sc-front-3", name: "Fly Front", enabled: true, display_order: 2 }
+        { id: "opt-sc-front-1", name: "Standard Placket (Kaj Patti)", enabled: true, display_order: 0 },
+        { id: "opt-sc-front-2", name: "Hidden Placket (Gum Patti)", enabled: true, display_order: 1 },
+        { id: "opt-sc-front-3", name: "Zipper Placket", enabled: true, display_order: 2 },
+        { id: "opt-sc-front-4", name: "Fancy Loop Buttons Patti", enabled: true, display_order: 3 }
       ]
     },
     {
       id: "sc-back",
-      name: "Back",
+      name: "Sleeve Cuff Style",
       display_order: 3,
       options: [
-        { id: "opt-sc-back-1", name: "Plain", enabled: true, display_order: 0 },
-        { id: "opt-sc-back-2", name: "Side Pleats", enabled: true, display_order: 1 },
-        { id: "opt-sc-back-3", name: "Box Pleat", enabled: true, display_order: 2 }
+        { id: "opt-sc-back-1", name: "Straight Sleeve (Sada Aasteen)", enabled: true, display_order: 0 },
+        { id: "opt-sc-back-2", name: "Standard 1-Button Cuff", enabled: true, display_order: 1 },
+        { id: "opt-sc-back-3", name: "Standard 2-Button Cuff", enabled: true, display_order: 2 },
+        { id: "opt-sc-back-4", name: "Round Cuff", enabled: true, display_order: 3 }
       ]
     },
     {
       id: "sc-cuff",
-      name: "Cuff",
+      name: "Daman (Bottom) Style",
       display_order: 4,
       options: [
-        { id: "opt-sc-cuff-1", name: "Single Button", enabled: true, display_order: 0 },
-        { id: "opt-sc-cuff-2", name: "Double Button", enabled: true, display_order: 1 },
-        { id: "opt-sc-cuff-3", name: "French Cuff", enabled: true, display_order: 2 }
+        { id: "opt-sc-cuff-1", name: "Straight Daman (Chakor)", enabled: true, display_order: 0 },
+        { id: "opt-sc-cuff-2", name: "Round Daman (Gool Ghera)", enabled: true, display_order: 1 }
       ]
     },
     {
       id: "sc-buttons",
-      name: "Buttons",
+      name: "Shalwar Pocket",
       display_order: 5,
       options: [
-        { id: "opt-sc-buttons-1", name: "Standard", enabled: true, display_order: 0 },
-        { id: "opt-sc-buttons-2", name: "Contrast", enabled: true, display_order: 1 },
-        { id: "opt-sc-buttons-3", name: "Hidden", enabled: true, display_order: 2 }
-      ]
-    },
-    {
-      id: "sc-sleeves",
-      name: "Sleeves",
-      display_order: 6,
-      options: [
-        { id: "opt-sc-sleeves-1", name: "Long Sleeve", enabled: true, display_order: 0 },
-        { id: "opt-sc-sleeves-2", name: "Short Sleeve", enabled: true, display_order: 1 }
+        { id: "opt-sc-buttons-1", name: "No Pocket", enabled: true, display_order: 0 },
+        { id: "opt-sc-buttons-2", name: "Right Side Shalwar Pocket", enabled: true, display_order: 1 },
+        { id: "opt-sc-buttons-3", name: "Both Side Shalwar Pockets", enabled: true, display_order: 2 },
+        { id: "opt-sc-buttons-4", name: "Inner Secret Pocket (Chor Pocket)", enabled: true, display_order: 3 }
       ]
     }
   ];
