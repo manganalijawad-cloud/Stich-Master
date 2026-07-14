@@ -39,6 +39,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     updated_by UUID REFERENCES auth.users(id) DEFAULT auth.uid()
 );
 
+-- Add shop_id column if table already exists from a prior schema
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS shop_id UUID REFERENCES public.shops(id) ON DELETE SET NULL;
+
 -- Enable RLS on Profiles
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
@@ -86,6 +89,8 @@ CREATE TABLE IF NOT EXISTS public.customers (
     updated_by UUID REFERENCES auth.users(id) DEFAULT auth.uid()
 );
 
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS shop_id UUID REFERENCES public.shops(id) ON DELETE CASCADE;
+
 -- Enable RLS on Customers
 ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
 
@@ -112,6 +117,8 @@ CREATE TABLE IF NOT EXISTS public.measurements (
     created_by UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
     updated_by UUID REFERENCES auth.users(id) DEFAULT auth.uid()
 );
+
+ALTER TABLE public.measurements ADD COLUMN IF NOT EXISTS shop_id UUID REFERENCES public.shops(id) ON DELETE CASCADE;
 
 -- Enable RLS on Measurements
 ALTER TABLE public.measurements ENABLE ROW LEVEL SECURITY;
@@ -148,6 +155,8 @@ CREATE TABLE IF NOT EXISTS public.orders (
     updated_by UUID REFERENCES auth.users(id) DEFAULT auth.uid()
 );
 
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS shop_id UUID REFERENCES public.shops(id) ON DELETE CASCADE;
+
 -- Enable RLS on Orders
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 
@@ -174,6 +183,8 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
     details JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS shop_id UUID REFERENCES public.shops(id) ON DELETE CASCADE;
 
 -- Enable RLS on Audit Logs
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
@@ -202,6 +213,10 @@ CREATE TABLE IF NOT EXISTS public.shop_settings (
     user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
     PRIMARY KEY (shop_id, key)
 );
+
+-- Ensure columns exist on existing tables (safe re-run for existing tables)
+ALTER TABLE public.shop_settings ADD COLUMN IF NOT EXISTS shop_id UUID REFERENCES public.shops(id) ON DELETE CASCADE;
+ALTER TABLE public.shop_settings ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid();
 
 -- Enable RLS on Shop Settings
 ALTER TABLE public.shop_settings ENABLE ROW LEVEL SECURITY;
@@ -291,6 +306,8 @@ CREATE TABLE IF NOT EXISTS public.garment_types (
     updated_by UUID REFERENCES auth.users(id) DEFAULT auth.uid()
 );
 
+ALTER TABLE public.garment_types ADD COLUMN IF NOT EXISTS shop_id UUID REFERENCES public.shops(id) ON DELETE CASCADE;
+
 -- Enable RLS on Garment Types
 ALTER TABLE public.garment_types ENABLE ROW LEVEL SECURITY;
 
@@ -321,6 +338,8 @@ CREATE TABLE IF NOT EXISTS public.styling_categories (
     updated_by UUID REFERENCES auth.users(id) DEFAULT auth.uid()
 );
 
+ALTER TABLE public.styling_categories ADD COLUMN IF NOT EXISTS shop_id UUID REFERENCES public.shops(id) ON DELETE CASCADE;
+
 -- Enable RLS on Styling Categories
 ALTER TABLE public.styling_categories ENABLE ROW LEVEL SECURITY;
 
@@ -336,4 +355,72 @@ CREATE INDEX IF NOT EXISTS styling_categories_shop_id_idx ON public.styling_cate
 CREATE INDEX IF NOT EXISTS styling_categories_created_by_idx ON public.styling_categories (created_by);
 CREATE INDEX IF NOT EXISTS styling_categories_display_order_idx ON public.styling_categories (display_order);
 
+-- -------------------------------------------------------------------------
+-- DELETE SINGLE USER BY UUID (copy ID from Authentication > Users)
+--   SELECT public.delete_app_user('uuid-here');
+-- -------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.delete_app_user(p_uid UUID)
+RETURNS TEXT AS $$
+DECLARE
+  v_count INT;
+BEGIN
+  DELETE FROM public.customers WHERE created_by = p_uid;
+  DELETE FROM public.orders WHERE created_by = p_uid;
+  DELETE FROM public.measurements WHERE created_by = p_uid;
+  DELETE FROM public.garment_types WHERE created_by = p_uid;
+  DELETE FROM public.styling_categories WHERE created_by = p_uid;
+  DELETE FROM public.inventory WHERE created_by = p_uid;
+  DELETE FROM public.shop_settings WHERE user_id = p_uid;
+  DELETE FROM public.audit_logs WHERE user_id = p_uid;
+  DELETE FROM public.profiles WHERE id = p_uid;
+  DELETE FROM auth.identities WHERE id = p_uid OR user_id = p_uid;
+  DELETE FROM auth.mfa_factors WHERE user_id = p_uid;
+  DELETE FROM auth.mfa_challenges WHERE user_id = p_uid;
+  DELETE FROM auth.sessions WHERE user_id = p_uid;
+  DELETE FROM auth.refresh_tokens WHERE user_id = p_uid;
+  DELETE FROM auth.one_time_tokens WHERE user_id = p_uid;
+  DELETE FROM auth.users WHERE id = p_uid;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  IF v_count = 0 THEN RETURN 'User not found'; END IF;
+  RETURN 'Deleted successfully';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- =========================================================================
+-- WIPE ALL DATA AND ALL USERS - Copy and run in SQL Editor
+-- =========================================================================
+BEGIN;
+
+-- Disable triggers temporarily to avoid interference
+SET session_replication_role = 'replica';
+
+-- App data
+DELETE FROM public.orders;
+DELETE FROM public.measurements;
+DELETE FROM public.customers;
+DELETE FROM public.garment_types;
+DELETE FROM public.styling_categories;
+DELETE FROM public.inventory;
+DELETE FROM public.shop_settings;
+DELETE FROM public.audit_logs;
+DELETE FROM public.profiles;
+
+-- Auth schema internals
+DELETE FROM auth.one_time_tokens;
+DELETE FROM auth.mfa_factors;
+DELETE FROM auth.mfa_challenges;
+DELETE FROM auth.refresh_tokens;
+DELETE FROM auth.sessions;
+DELETE FROM auth.identities;
+
+-- Finally the users
+DELETE FROM auth.users;
+
+-- Re-enable triggers
+SET session_replication_role = 'origin';
+
+COMMIT;
+
+-- Verify
+SELECT count(*) AS remaining_users FROM auth.users;
 

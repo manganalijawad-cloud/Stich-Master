@@ -974,10 +974,10 @@ Do you absolutely want to proceed with deletion?`;
           
           {/* Create Form */}
           <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-2xs">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Add New Catalog Garment</span>
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Add New Catalog Garment</span>
             <form onSubmit={handleAddGarmentType} className="space-y-2.5">
               <div className="space-y-1">
-                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Garment Name</label>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Garment Name</label>
                 <input
                   type="text"
                   required
@@ -988,7 +988,7 @@ Do you absolutely want to proceed with deletion?`;
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Base Price (Rs.)</label>
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Base Price (Rs.)</label>
                 <input
                   type="number"
                   min="0"
@@ -1001,7 +1001,7 @@ Do you absolutely want to proceed with deletion?`;
               </div>
               <button
                 type="submit"
-                className="w-full py-2.5 bg-[#0F172A] hover:bg-[#1E293B] text-white font-extrabold rounded-xl text-btn-sm uppercase tracking-wider cursor-pointer flex items-center justify-center gap-1.5 transition-colors"
+                className="w-full py-2.5 bg-[#0F172A] hover:bg-[#1E293B] text-white font-extrabold rounded-xl text-btn-md uppercase tracking-wider cursor-pointer flex items-center justify-center gap-1.5 transition-colors"
               >
                 <Plus className="icon-sm text-[#38BDF8]" />
                 Add Garment
@@ -1012,11 +1012,11 @@ Do you absolutely want to proceed with deletion?`;
           {/* List of Garment Types */}
           <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
             <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-              <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Garment Catalog List</span>
+              <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Garment Catalog List</span>
               <span className="text-3xs font-bold text-slate-400 uppercase tracking-widest">{garmentTypes.length} registered</span>
             </div>
 
-            <div className="divide-y divide-slate-150 max-h-[480px] overflow-y-auto bg-white">
+            <div className="divide-y divide-slate-150 max-h-[55vh] overflow-y-auto bg-white">
               {loading && garmentTypes.length === 0 ? (
                 <div className="p-8 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">
                   Retrieving catalog data...
@@ -1060,7 +1060,7 @@ Do you absolutely want to proceed with deletion?`;
                             className="p-0.5 rounded text-slate-400 hover:text-[#38BDF8] disabled:opacity-20 cursor-pointer hover:bg-slate-100"
                             title="Move Up"
                           >
-                            <ArrowUp className="w-3 h-3" />
+                            <ArrowUp className="w-4 h-4" />
                           </button>
                           <button
                             type="button"
@@ -1069,7 +1069,7 @@ Do you absolutely want to proceed with deletion?`;
                             className="p-0.5 rounded text-slate-400 hover:text-[#38BDF8] disabled:opacity-20 cursor-pointer hover:bg-slate-100"
                             title="Move Down"
                           >
-                            <ArrowDown className="w-3 h-3" />
+                            <ArrowDown className="w-4 h-4" />
                           </button>
                         </div>
 
@@ -1104,7 +1104,7 @@ Do you absolutely want to proceed with deletion?`;
                               <span className={`text-xs font-extrabold ${type.enabled ? 'text-slate-800' : 'text-slate-400 line-through'}`}>
                                 {type.name}
                               </span>
-                              <div className="flex gap-1.5 items-center text-[10px] font-bold text-slate-400 mt-0.5">
+                              <div className="flex gap-1.5 items-center text-xs font-bold text-slate-400 mt-0.5">
                                 <span>{type.measurement_fields?.length || 0} measurements</span>
                                 <span>•</span>
                                 <span className="text-emerald-600">Rs. {type.price || 0}</span>
@@ -1142,7 +1142,7 @@ Do you absolutely want to proceed with deletion?`;
                             className="p-1 text-slate-500 hover:text-[#38BDF8] hover:bg-slate-100 rounded cursor-pointer transition-colors"
                             title="Rename"
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
+                            <Edit2 className="w-4 h-4" />
                           </button>
 
                           {/* Delete */}
@@ -1152,7 +1152,7 @@ Do you absolutely want to proceed with deletion?`;
                             className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded cursor-pointer transition-colors"
                             title="Delete Garment Type & All Configs"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       )}
@@ -1172,12 +1172,12 @@ Do you absolutely want to proceed with deletion?`;
               {/* Garment Type General Settings / Price */}
               <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Garment Category</span>
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Garment Category</span>
                   <span className="text-body font-extrabold text-slate-800 font-display">{selectedType.name}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="flex flex-col">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider sm:text-right">Base Price</span>
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider sm:text-right">Base Price</span>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className="text-body-sm font-bold text-slate-500">Rs.</span>
                       <input
@@ -1195,7 +1195,7 @@ Do you absolutely want to proceed with deletion?`;
                         type="button"
                         onClick={handleSavePrice}
                         disabled={savingPrice || selectedTypePrice === null}
-                        className="px-3 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white font-extrabold rounded-lg text-btn-sm uppercase tracking-wider cursor-pointer flex items-center gap-1 shrink-0 transition-colors disabled:opacity-45"
+                        className="px-3 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white font-extrabold rounded-lg text-btn-md uppercase tracking-wider cursor-pointer flex items-center gap-1 shrink-0 transition-colors disabled:opacity-45"
                       >
                         {savingPrice ? 'Saving...' : 'Save Price'}
                       </button>
@@ -1209,7 +1209,7 @@ Do you absolutely want to proceed with deletion?`;
                 <button
                   type="button"
                   onClick={() => setActiveConfigSection('MeasurementForm')}
-                  className={`flex-1 py-3 px-4 font-bold text-btn-sm uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all cursor-pointer ${
+                  className={`flex-1 py-3 px-4 font-bold text-btn-md uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all cursor-pointer ${
                     activeConfigSection === 'MeasurementForm'
                       ? 'border-[#0F172A] text-slate-800 bg-white'
                       : 'border-transparent text-slate-400 hover:text-slate-600'
@@ -1221,7 +1221,7 @@ Do you absolutely want to proceed with deletion?`;
                 <button
                   type="button"
                   onClick={() => setActiveConfigSection('StylingLibrary')}
-                  className={`flex-1 py-3 px-4 font-bold text-btn-sm uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all cursor-pointer ${
+                  className={`flex-1 py-3 px-4 font-bold text-btn-md uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all cursor-pointer ${
                     activeConfigSection === 'StylingLibrary'
                       ? 'border-[#0F172A] text-slate-800 bg-white'
                       : 'border-transparent text-slate-400 hover:text-slate-600'
@@ -1250,7 +1250,7 @@ Do you absolutely want to proceed with deletion?`;
                     {/* New Field Creator Form */}
                     <form onSubmit={handleAddField} className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-wrap gap-3 items-end">
                       <div className="flex-1 min-w-[200px] space-y-1">
-                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Parameter Name</label>
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Parameter Name</label>
                         <input
                           type="text"
                           required
@@ -1278,7 +1278,7 @@ Do you absolutely want to proceed with deletion?`;
 
                       <button
                         type="submit"
-                        className="px-4 py-2 bg-[#0F172A] hover:bg-slate-800 text-white font-extrabold text-2xs uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer transition-colors shrink-0 h-9"
+                        className="px-4 py-2 bg-[#0F172A] hover:bg-slate-800 text-white font-extrabold text-xs uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer transition-colors shrink-0 h-9"
                       >
                         <Plus className="w-4 h-4 text-[#38BDF8]" />
                         Insert Field
@@ -1287,7 +1287,7 @@ Do you absolutely want to proceed with deletion?`;
 
                     {/* Draggable fields layout */}
                     <div className="space-y-2">
-                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Fields Layout & Preview</span>
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Fields Layout & Preview</span>
                       
                       {builderFields.length === 0 ? (
                         <div className="p-8 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400 text-xs font-semibold uppercase tracking-wider">
@@ -1322,7 +1322,7 @@ Do you absolutely want to proceed with deletion?`;
                                       className="p-0.5 text-slate-400 hover:text-[#38BDF8] disabled:opacity-10 cursor-pointer"
                                       title="Move Up"
                                     >
-                                      <ArrowUp className="w-3 h-3" />
+                                      <ArrowUp className="w-4 h-4" />
                                     </button>
                                     <button
                                       type="button"
@@ -1331,7 +1331,7 @@ Do you absolutely want to proceed with deletion?`;
                                       className="p-0.5 text-slate-400 hover:text-[#38BDF8] disabled:opacity-10 cursor-pointer"
                                       title="Move Down"
                                     >
-                                      <ArrowDown className="w-3 h-3" />
+                                      <ArrowDown className="w-4 h-4" />
                                     </button>
                                   </div>
 
@@ -1397,7 +1397,7 @@ Do you absolutely want to proceed with deletion?`;
                                       className="p-1 text-slate-400 hover:text-slate-600 rounded cursor-pointer"
                                       title="Rename parameter"
                                     >
-                                      <Edit2 className="w-3.5 h-3.5" />
+                                      <Edit2 className="w-4 h-4" />
                                     </button>
                                     <button
                                       type="button"
@@ -1405,7 +1405,7 @@ Do you absolutely want to proceed with deletion?`;
                                       className="p-1 text-red-500 hover:text-red-700 rounded cursor-pointer"
                                       title="Remove parameter"
                                     >
-                                      <Trash2 className="w-3.5 h-3.5" />
+                                      <Trash2 className="w-4 h-4" />
                                     </button>
                                   </div>
                                 )}
@@ -1429,7 +1429,7 @@ Do you absolutely want to proceed with deletion?`;
                       <button
                         type="button"
                         onClick={handleSaveMeasurementForm}
-                        className="px-5 py-2.5 bg-[#0F172A] hover:bg-slate-800 text-white font-extrabold rounded-xl text-btn-sm uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-colors shadow-xs"
+                        className="px-5 py-2.5 bg-[#0F172A] hover:bg-slate-800 text-white font-extrabold rounded-xl text-btn-md uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-colors shadow-xs"
                       >
                         <Save className="icon-sm text-[#38BDF8]" />
                         Save Form Layout
@@ -1457,7 +1457,7 @@ Do you absolutely want to proceed with deletion?`;
                       {/* Left: Styling categories inside the selected garment */}
                       <div className="md:col-span-5 space-y-4">
                         <div className="space-y-2">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">1. Style Categories</span>
+                          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">1. Style Categories</span>
                           
                           {/* New category name creator */}
                           <form onSubmit={handleAddStylingCategory} className="flex gap-1.5">
@@ -1467,19 +1467,19 @@ Do you absolutely want to proceed with deletion?`;
                               value={newCategoryName}
                               onChange={(e) => setNewCategoryName(e.target.value)}
                               placeholder="e.g. Collar Type"
-                              className="flex-1 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-800 text-2xs font-semibold focus:outline-none"
+                              className="flex-1 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs font-semibold focus:outline-none"
                             />
                             <button
                               type="submit"
                               className="p-2 bg-[#0F172A] hover:bg-slate-800 rounded-lg text-white cursor-pointer shrink-0"
                               title="Create style category"
                             >
-                              <Plus className="w-3.5 h-3.5" />
+                              <Plus className="w-4 h-4" />
                             </button>
                           </form>
 
                           {/* List of styling categories */}
-                          <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden bg-white max-h-80 overflow-y-auto">
+                          <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden bg-white max-h-[40vh] overflow-y-auto">
                             {stylingCategories.length === 0 ? (
                               <p className="p-4 text-center text-slate-400 text-3xs font-extrabold uppercase tracking-wider">No categories built.</p>
                             ) : (
@@ -1502,7 +1502,7 @@ Do you absolutely want to proceed with deletion?`;
                                     }`}
                                   >
                                     <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                                      <GripVertical className="w-3 h-3 text-slate-300 shrink-0 cursor-grab" />
+                                      <GripVertical className="w-4 h-4 text-slate-300 shrink-0 cursor-grab" />
                                       
                                       <div className="flex flex-col shrink-0 text-slate-400">
                                         <button
@@ -1538,20 +1538,20 @@ Do you absolutely want to proceed with deletion?`;
                                               onClick={() => handleRenameStylingCategory(category.id)}
                                               className="text-emerald-600 p-0.5 hover:bg-emerald-50 rounded shrink-0"
                                             >
-                                              <Check className="w-3.5 h-3.5" />
+                                              <Check className="w-4 h-4" />
                                             </button>
                                             <button
                                               type="button"
                                               onClick={() => setEditingCategoryId(null)}
                                               className="text-red-500 p-0.5 hover:bg-red-50 rounded shrink-0"
                                             >
-                                              <X className="w-3.5 h-3.5" />
+                                              <X className="w-4 h-4" />
                                             </button>
                                           </div>
                                         ) : (
                                           <div className="flex flex-col">
-                                            <span className="text-2xs font-extrabold text-slate-800 truncate">{category.name}</span>
-                                            <span className="text-[9px] font-bold text-slate-400 mt-0.5">{category.options?.length || 0} design options</span>
+                                            <span className="text-xs font-extrabold text-slate-800 break-words">{category.name}</span>
+                                            <span className="text-xs font-bold text-slate-400 mt-0.5">{category.options?.length || 0} design options</span>
                                           </div>
                                         )}
                                       </div>
@@ -1568,14 +1568,14 @@ Do you absolutely want to proceed with deletion?`;
                                           }}
                                           className="p-1 text-slate-400 hover:text-slate-600 rounded cursor-pointer"
                                         >
-                                          <Edit2 className="w-3 h-3" />
+                                          <Edit2 className="w-4 h-4" />
                                         </button>
                                         <button
                                           type="button"
                                           onClick={(e) => { e.stopPropagation(); handleDeleteStylingCategory(category); }}
                                           className="p-1 text-red-500 hover:text-red-700 rounded cursor-pointer"
                                         >
-                                          <Trash2 className="w-3 h-3" />
+                                          <Trash2 className="w-4 h-4" />
                                         </button>
                                       </div>
                                     )}
@@ -1589,7 +1589,7 @@ Do you absolutely want to proceed with deletion?`;
 
                       {/* Right: Style Options creator inside selected category */}
                       <div className="md:col-span-7 space-y-4">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">2. Options in Category</span>
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">2. Options in Category</span>
                         
                         {selectedStylingCategory ? (
                           <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-4">
@@ -1614,14 +1614,14 @@ Do you absolutely want to proceed with deletion?`;
                               />
                               <button
                                 type="submit"
-                                className="px-3.5 py-1.5 bg-[#0F172A] hover:bg-slate-800 text-white font-extrabold rounded-lg text-2xs uppercase tracking-wider cursor-pointer"
+                                className="px-3.5 py-1.5 bg-[#0F172A] hover:bg-slate-800 text-white font-extrabold rounded-lg text-xs uppercase tracking-wider cursor-pointer"
                               >
                                 Insert Option
                               </button>
                             </form>
 
                             {/* Option list and sorting */}
-                            <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                            <div className="space-y-1.5 max-h-[35vh] overflow-y-auto">
                               {builderOptions.length === 0 ? (
                                 <p className="p-6 border border-dashed border-slate-150 rounded-lg text-center text-slate-400 text-3xs font-bold uppercase tracking-wider">
                                   No options built. Insert options using the field above.
@@ -1641,7 +1641,7 @@ Do you absolutely want to proceed with deletion?`;
                                         className="group p-2.5 flex items-center justify-between gap-2 hover:bg-slate-50/50 transition-colors select-none"
                                       >
                                         <div className="flex items-center gap-2 flex-1 min-w-0">
-                                          <GripVertical className="w-3.5 h-3.5 text-slate-300 cursor-grab shrink-0" />
+                                          <GripVertical className="w-4 h-4 text-slate-300 cursor-grab shrink-0" />
                                           
                                           <div className="flex flex-col shrink-0 text-slate-400">
                                             <button
@@ -1670,25 +1670,25 @@ Do you absolutely want to proceed with deletion?`;
                                                   required
                                                   value={editingOptionName}
                                                   onChange={(e) => setEditingOptionName(e.target.value)}
-                                                  className="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-2xs font-bold text-slate-800 focus:outline-none w-full"
+                                                  className="px-2 py-1 bg-white border border-slate-300 rounded text-xs font-bold text-slate-800 focus:outline-none w-full"
                                                 />
                                                 <button
                                                   type="button"
                                                   onClick={() => handleSaveOptionName(oIdx)}
                                                   className="p-0.5 text-emerald-600 hover:bg-emerald-50 rounded cursor-pointer shrink-0"
                                                 >
-                                                  <Check className="w-3.5 h-3.5" />
+                                                  <Check className="w-4 h-4" />
                                                 </button>
                                                 <button
                                                   type="button"
                                                   onClick={() => setEditingOptionIndex(null)}
                                                   className="p-0.5 text-red-500 hover:bg-red-50 rounded cursor-pointer shrink-0"
                                                 >
-                                                  <X className="w-3.5 h-3.5" />
+                                                  <X className="w-4 h-4" />
                                                 </button>
                                               </div>
                                             ) : (
-                                              <span className={`text-2xs font-extrabold ${opt.enabled ? 'text-slate-800' : 'text-slate-400 line-through'}`}>
+                                              <span className={`text-xs font-extrabold ${opt.enabled ? 'text-slate-800' : 'text-slate-400 line-through'}`}>
                                                 {opt.name}
                                               </span>
                                             )}
@@ -1700,7 +1700,7 @@ Do you absolutely want to proceed with deletion?`;
                                             <button
                                               type="button"
                                               onClick={() => handleToggleOptionEnable(oIdx)}
-                                              className={`px-1.5 py-0.5 text-3xs font-bold rounded uppercase cursor-pointer ${
+                                              className={`px-2 py-1 text-3xs font-bold rounded uppercase cursor-pointer ${
                                                 opt.enabled 
                                                   ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' 
                                                   : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
@@ -1716,14 +1716,14 @@ Do you absolutely want to proceed with deletion?`;
                                               }}
                                               className="p-0.5 text-slate-400 hover:text-slate-600 rounded cursor-pointer"
                                             >
-                                              <Edit2 className="w-3 h-3" />
+                                              <Edit2 className="w-4 h-4" />
                                             </button>
                                             <button
                                               type="button"
                                               onClick={() => handleRemoveOption(oIdx)}
                                               className="p-0.5 text-red-500 hover:text-red-700 rounded cursor-pointer"
                                             >
-                                              <Trash2 className="w-3 h-3" />
+                                              <Trash2 className="w-4 h-4" />
                                             </button>
                                           </div>
                                         )}
@@ -1739,7 +1739,7 @@ Do you absolutely want to proceed with deletion?`;
                               <div>
                                 {saveOptionsSuccess && (
                                   <span className="text-emerald-600 text-3xs font-extrabold uppercase flex items-center gap-0.5 animate-fade-in">
-                                    <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                    <Check className="w-4 h-4 text-emerald-500" />
                                     Saved successfully
                                   </span>
                                 )}
@@ -1747,7 +1747,7 @@ Do you absolutely want to proceed with deletion?`;
                               <button
                                 type="button"
                                 onClick={handleSaveCategoryOptions}
-                                className="px-3.5 py-1.5 bg-[#0F172A] hover:bg-slate-800 text-white font-extrabold rounded-lg text-btn-sm uppercase tracking-wider cursor-pointer"
+                                className="px-3.5 py-1.5 bg-[#0F172A] hover:bg-slate-800 text-white font-extrabold rounded-lg text-btn-md uppercase tracking-wider cursor-pointer"
                               >
                                 Save Option Layout
                               </button>

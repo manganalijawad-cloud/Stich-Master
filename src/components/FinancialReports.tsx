@@ -6,22 +6,17 @@
 import React, { useState, useMemo } from 'react';
 import { 
   DollarSign, 
-  Calendar, 
   ArrowDownToLine, 
   Printer, 
   TrendingUp, 
   TrendingDown, 
   AlertCircle, 
-  CheckCircle2, 
   Clock, 
-  Users, 
   ShoppingBag, 
-  ChevronRight, 
   FileText, 
   Search,
   MessageSquare,
   Phone,
-  Filter,
   RefreshCw
 } from 'lucide-react';
 import { Order, OrderStatus, PipelineStage } from '../types';
@@ -50,10 +45,10 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
   const [customStartDate, setCustomStartDate] = useState(() => {
     const d = new Date();
     d.setDate(1); // First day of current month
-    return d.toISOString().split('T')[0];
+    return d.toLocaleDateString('en-CA');
   });
   const [customEndDate, setCustomEndDate] = useState(() => {
-    return new Date().toISOString().split('T')[0];
+    return new Date().toLocaleDateString('en-CA');
   });
 
   // Search filter for Customer lists
@@ -489,7 +484,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
     // CSV Rows
     const rows = filteredOrders.map(o => {
       const balance = (Number(o.total_amount) || 0) - (Number(o.paid_amount) || 0);
-      const dateStr = new Date(o.created_at).toISOString().split('T')[0];
+      const dateStr = new Date(o.created_at).toLocaleDateString('en-CA');
       return [
         o.order_number,
         o.customer_name || 'N/A',
@@ -577,16 +572,15 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
 
   return (
     <div className="space-y-6 print:space-y-8 print:bg-white print:p-0">
-      
-      {/* HEADER CONTROL BAR */}
+
+      {/* HEADER */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden">
         <div>
-          <h1 className="text-h1 font-black text-slate-900 tracking-tight font-display uppercase">Financial Command Center</h1>
-          <p className="text-body-sm text-slate-500 font-medium">Real-time revenue monitoring, payment collections, and liquidity trends</p>
+          <h1 className="text-h1 font-black text-slate-900 tracking-tight font-display uppercase">Sales Overview</h1>
+          <p className="text-body-sm text-slate-500 font-medium">See your shop's earnings, payments received, and order summary at a glance</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Quick Filters */}
           <div className="bg-white border border-slate-200 p-1 rounded-xl flex shadow-2xs">
             {[
               { id: 'Today', label: 'Today' },
@@ -598,7 +592,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
               <button
                 key={tab.id}
                 onClick={() => setDateFilter(tab.id as any)}
-                className={`py-1.5 px-3.5 rounded-lg text-btn-sm font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                className={`py-1.5 px-3.5 rounded-lg text-btn-md font-bold uppercase tracking-wider transition-all cursor-pointer ${
                   dateFilter === tab.id
                     ? 'bg-[#0F172A] text-white shadow-sm'
                     : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
@@ -609,13 +603,12 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
             ))}
           </div>
 
-          {/* Export Actions */}
           <div className="flex items-center gap-1.5">
             <button
               onClick={handleExportCSV}
               disabled={!filteredOrders.length}
               className={`p-2.5 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl shadow-2xs text-slate-600 hover:text-slate-800 transition-colors cursor-pointer ${!filteredOrders.length ? 'opacity-50 cursor-not-allowed' : ''}`}
-              title="Download CSV Statement"
+              title="Download CSV"
             >
               <ArrowDownToLine className="icon-sm" />
             </button>
@@ -623,7 +616,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
               onClick={handlePrint}
               disabled={!filteredOrders.length}
               className={`p-2.5 bg-[#0F172A] hover:bg-slate-800 text-white rounded-xl shadow-md transition-colors cursor-pointer ${!filteredOrders.length ? 'opacity-50 cursor-not-allowed' : ''}`}
-              title="Print Financial Statement"
+              title="Print Report"
             >
               <Printer className="icon-sm" />
             </button>
@@ -631,12 +624,12 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
         </div>
       </div>
 
-      {/* CUSTOM DATE PICKERS (Conditional) */}
+      {/* CUSTOM DATE PICKERS */}
       {dateFilter === 'Custom' && (
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-wrap gap-4 items-center animate-fade-in print:hidden">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">From:</span>
-            <input 
+            <input
               type="date"
               value={customStartDate}
               onChange={(e) => setCustomStartDate(e.target.value)}
@@ -645,191 +638,155 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">To:</span>
-            <input 
+            <input
               type="date"
               value={customEndDate}
               onChange={(e) => setCustomEndDate(e.target.value)}
               className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-hidden focus:border-slate-500"
             />
           </div>
-          <button 
+          <button
             onClick={fetchFinancials}
             className="px-4 py-1.5 bg-slate-900 text-white hover:bg-slate-800 text-xs font-bold uppercase tracking-wider rounded-xl cursor-pointer"
           >
-            Apply Range
+            Apply
           </button>
         </div>
       )}
 
-      {/* BENTO GRID: BUSINESS SUMMARY CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Revenue */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs relative overflow-hidden flex flex-col justify-between min-h-32 group hover:border-slate-300 transition-all">
-          <div className="absolute right-4 top-4 p-2 bg-blue-50 text-blue-600 rounded-xl">
-            <ShoppingBag className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Total Booked Volume</span>
-            <span className="text-display-lg font-black mt-2 font-display text-slate-900 block">{currency}{stats.totalRevenue.toLocaleString()}</span>
-          </div>
-          <div className="mt-2 flex items-center gap-1 text-2xs font-semibold">
-            {trends.revenueChange >= 0 ? (
-              <span className="text-emerald-600 flex items-center gap-0.5">
-                <TrendingUp className="w-3.5 h-3.5" /> +{trends.revenueChange.toFixed(1)}%
-              </span>
-            ) : (
-              <span className="text-rose-600 flex items-center gap-0.5">
-                <TrendingDown className="w-3.5 h-3.5" /> {trends.revenueChange.toFixed(1)}%
-              </span>
-            )}
-            <span className="text-slate-400">vs previous period</span>
-          </div>
-        </div>
+      {/* === SECTION 1: KEY NUMBERS AT A GLANCE === */}
+      <div>
+        <h2 className="text-sm font-black text-slate-700 uppercase tracking-wider mb-3 font-display">Summary</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
-        {/* Total Collected */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs relative overflow-hidden flex flex-col justify-between min-h-32 group hover:border-slate-300 transition-all">
-          <div className="absolute right-4 top-4 p-2 bg-emerald-50 text-emerald-600 rounded-xl">
-            <DollarSign className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Total Liquid Collected</span>
-            <span className="text-display-lg font-black mt-2 font-display text-emerald-600 block">{currency}{stats.totalCollected.toLocaleString()}</span>
-          </div>
-          <div className="mt-2 flex items-center gap-1 text-2xs font-semibold">
-            {trends.collectionChange >= 0 ? (
-              <span className="text-emerald-600 flex items-center gap-0.5">
-                <TrendingUp className="w-3.5 h-3.5" /> +{trends.collectionChange.toFixed(1)}%
-              </span>
-            ) : (
-              <span className="text-rose-600 flex items-center gap-0.5">
-                <TrendingDown className="w-3.5 h-3.5" /> {trends.collectionChange.toFixed(1)}%
-              </span>
-            )}
-            <span className="text-slate-400">vs previous period</span>
-          </div>
-        </div>
-
-        {/* Outstanding Balance */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs relative overflow-hidden flex flex-col justify-between min-h-32 group hover:border-slate-300 transition-all">
-          <div className="absolute right-4 top-4 p-2 bg-amber-50 text-amber-600 rounded-xl">
-            <AlertCircle className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Outstanding Receivables</span>
-            <span className="text-display-lg font-black mt-2 font-display text-amber-500 block">{currency}{stats.outstandingBalance.toLocaleString()}</span>
+          {/* Total Sales */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs min-h-32 flex flex-col justify-between relative overflow-hidden">
+            <div className="absolute right-4 top-4 p-2 bg-blue-50 text-blue-600 rounded-xl">
+              <ShoppingBag className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-xs font-black text-slate-400 uppercase tracking-wider block" title="Total value of all orders placed during this period">Total Sales</span>
+              <p className="text-caption-xs text-slate-400 mt-0.5">Total value of all orders placed</p>
+              <span className="text-display-lg font-black mt-1 font-display text-slate-900 block">{currency}{stats.totalRevenue.toLocaleString()}</span>
+            </div>
+            <div className="mt-2 flex items-center gap-1 text-xs font-semibold">
+              {trends.revenueChange >= 0 ? (
+                <span className="text-emerald-600 flex items-center gap-0.5">
+                  <TrendingUp className="w-4 h-4" /> +{trends.revenueChange.toFixed(1)}%
+                </span>
+              ) : (
+                <span className="text-rose-600 flex items-center gap-0.5">
+                  <TrendingDown className="w-4 h-4" /> {trends.revenueChange.toFixed(1)}%
+                </span>
+              )}
+              <span className="text-slate-400">vs previous period</span>
+            </div>
           </div>
 
-        </div>
+          {/* Payments Received */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs min-h-32 flex flex-col justify-between relative overflow-hidden">
+            <div className="absolute right-4 top-4 p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+              <DollarSign className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-xs font-black text-slate-400 uppercase tracking-wider block" title="Payments already received from customers">Payments Received</span>
+              <p className="text-caption-xs text-slate-400 mt-0.5">Amount already paid by customers</p>
+              <span className="text-display-lg font-black mt-1 font-display text-emerald-600 block">{currency}{stats.totalCollected.toLocaleString()}</span>
+            </div>
+            <div className="mt-2 flex items-center gap-1 text-xs font-semibold">
+              {trends.collectionChange >= 0 ? (
+                <span className="text-emerald-600 flex items-center gap-0.5">
+                  <TrendingUp className="w-4 h-4" /> +{trends.collectionChange.toFixed(1)}%
+                </span>
+              ) : (
+                <span className="text-rose-600 flex items-center gap-0.5">
+                  <TrendingDown className="w-4 h-4" /> {trends.collectionChange.toFixed(1)}%
+                </span>
+              )}
+              <span className="text-slate-400">vs previous period</span>
+            </div>
+          </div>
 
-        {/* Average Order Value & Sales Count */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs relative overflow-hidden flex flex-col justify-between min-h-32 group hover:border-slate-300 transition-all">
-          <div className="absolute right-4 top-4 p-2 bg-purple-50 text-purple-600 rounded-xl">
-            <FileText className="w-5 h-5" />
+          {/* Still to Collect */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs min-h-32 flex flex-col justify-between relative overflow-hidden">
+            <div className="absolute right-4 top-4 p-2 bg-amber-50 text-amber-600 rounded-xl">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-xs font-black text-slate-400 uppercase tracking-wider block" title="Amount customers still need to pay you">Still to Collect</span>
+              <p className="text-caption-xs text-slate-400 mt-0.5">Outstanding payments from customers</p>
+              <span className="text-display-lg font-black mt-1 font-display text-amber-500 block">{currency}{stats.outstandingBalance.toLocaleString()}</span>
+            </div>
+            <div className="mt-2 flex items-center gap-1 text-xs font-semibold">
+              <span className="text-slate-500">{stats.pendingPaymentsCount} orders with pending payment</span>
+            </div>
           </div>
-          <div>
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Average Order Value</span>
-            <span className="text-display-lg font-black mt-2 font-display text-purple-600 block">{currency}{Math.round(stats.averageOrderValue).toLocaleString()}</span>
-          </div>
-          <div className="mt-2 flex items-center gap-1 text-2xs font-semibold">
-            <span className="text-purple-600 font-bold">{stats.totalOrders}</span>
-            <span className="text-slate-400">total orders registered</span>
+
+          {/* Average per Order */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs min-h-32 flex flex-col justify-between relative overflow-hidden">
+            <div className="absolute right-4 top-4 p-2 bg-purple-50 text-purple-600 rounded-xl">
+              <FileText className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-xs font-black text-slate-400 uppercase tracking-wider block" title="Average amount per order">Avg per Order</span>
+              <p className="text-caption-xs text-slate-400 mt-0.5">Average value of each order</p>
+              <span className="text-display-lg font-black mt-1 font-display text-purple-600 block">{currency}{Math.round(stats.averageOrderValue).toLocaleString()}</span>
+            </div>
+            <div className="mt-2 flex items-center gap-1 text-xs font-semibold">
+              <span className="text-purple-600 font-bold">{stats.totalOrders}</span>
+              <span className="text-slate-400">total orders</span>
+              <span className="text-slate-300 mx-1">•</span>
+              <span className="text-emerald-600 font-bold">{stats.deliveredOrdersCount}</span>
+              <span className="text-slate-400">delivered</span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* CONDITIONAL BENTO ROW FOR EXPENSES (IF INVENTORY EXISTS) */}
+      {/* === EXPENSES & PROFIT (only if inventory data exists) === */}
       {stats.hasExpenses && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-slate-200 pt-4 print:hidden">
-          {/* Total Expenses */}
-          <div className="bg-rose-50/50 border border-rose-100 p-5 rounded-2xl flex items-center justify-between shadow-2xs">
-            <div>
-              <span className="text-3xs font-black text-rose-500 uppercase tracking-wider block">Inventory Asset Cost</span>
+        <div className="border-t border-slate-200 pt-4">
+          <h2 className="text-sm font-black text-slate-700 uppercase tracking-wider mb-3 font-display">Costs &amp; Profit</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-rose-50/50 border border-rose-100 p-5 rounded-2xl shadow-2xs">
+              <span className="text-3xs font-black text-rose-500 uppercase tracking-wider block" title="Value of materials and inventory you have purchased">Material Costs</span>
+              <p className="text-caption-xs text-rose-400 mt-0.5">Cost of materials and inventory</p>
               <span className="text-xl font-extrabold mt-1.5 font-display text-rose-700 block">{currency}{stats.totalExpenses.toLocaleString()}</span>
             </div>
-            <div className="p-2.5 bg-rose-100 text-rose-700 rounded-xl">
-              <TrendingDown className="w-5 h-5" />
-            </div>
-          </div>
-
-          {/* Net Profit */}
-          <div className={`border p-5 rounded-2xl flex items-center justify-between shadow-2xs ${stats.netProfit >= 0 ? 'bg-emerald-50/50 border-emerald-100' : 'bg-rose-50/50 border-rose-100'}`}>
-            <div>
-              <span className={`text-3xs font-black uppercase tracking-wider block ${stats.netProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>Net Operating Profit</span>
+            <div className={`border p-5 rounded-2xl shadow-2xs ${stats.netProfit >= 0 ? 'bg-emerald-50/50 border-emerald-100' : 'bg-rose-50/50 border-rose-100'}`}>
+              <span className={`text-3xs font-black uppercase tracking-wider block ${stats.netProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`} title="Sales minus material costs">Profit</span>
+              <p className={`text-caption-xs mt-0.5 ${stats.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>What's left after material costs</p>
               <span className={`text-xl font-extrabold mt-1.5 font-display block ${stats.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{currency}{stats.netProfit.toLocaleString()}</span>
             </div>
-            <div className={`p-2.5 rounded-xl ${stats.netProfit >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-              <TrendingUp className="w-5 h-5" />
-            </div>
-          </div>
-
-          {/* Profit Margin */}
-          <div className={`border p-5 rounded-2xl flex items-center justify-between shadow-2xs ${stats.profitMargin >= 30 ? 'bg-emerald-50/50 border-emerald-100' : 'bg-amber-50/50 border-amber-100'}`}>
-            <div>
-              <span className={`text-3xs font-black uppercase tracking-wider block ${stats.profitMargin >= 30 ? 'text-emerald-500' : 'text-amber-500'}`}>Net Margin</span>
+            <div className={`border p-5 rounded-2xl shadow-2xs ${stats.profitMargin >= 30 ? 'bg-emerald-50/50 border-emerald-100' : 'bg-amber-50/50 border-amber-100'}`}>
+              <span className={`text-3xs font-black uppercase tracking-wider block ${stats.profitMargin >= 30 ? 'text-emerald-500' : 'text-amber-500'}`} title="Profit as a percentage of sales">Profit Margin</span>
+              <p className={`text-caption-xs mt-0.5 ${stats.profitMargin >= 30 ? 'text-emerald-400' : 'text-amber-400'}`}>Profit per rupee of sales</p>
               <span className={`text-xl font-extrabold mt-1.5 font-display block ${stats.profitMargin >= 30 ? 'text-emerald-700' : 'text-amber-700'}`}>{stats.profitMargin.toFixed(1)}%</span>
             </div>
-            <div className={`p-2.5 rounded-xl ${stats.profitMargin >= 30 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
           </div>
         </div>
       )}
 
-      {/* SMART INSIGHTS */}
-      {smartInsights.length > 0 && (
-        <div className="bg-[#0F172A] border border-slate-800 text-white rounded-2xl p-5 shadow-md relative overflow-hidden print:hidden">
-          <div className="flex items-center gap-2 mb-4">
-            <TrendingUp className="w-4.5 h-4.5 text-[#38BDF8]" />
-            <h3 className="text-xs font-black uppercase tracking-wider text-[#38BDF8]">Autonomous Financial Insights</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {smartInsights.map((insight, idx) => (
-              <div 
-                key={idx} 
-                className={`p-3 rounded-xl flex items-start gap-3 border transition-colors ${
-                  insight.type === 'success' 
-                    ? 'bg-emerald-950/30 border-emerald-900/40 text-emerald-300' 
-                    : insight.type === 'warning' 
-                    ? 'bg-amber-950/30 border-amber-900/40 text-amber-300' 
-                    : 'bg-slate-800/40 border-slate-700/50 text-slate-300'
-                }`}
-              >
-                <div className="mt-0.5">
-                  {insight.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
-                  {insight.type === 'warning' && <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />}
-                  {insight.type === 'info' && <Clock className="w-4 h-4 text-[#38BDF8] shrink-0" />}
-                </div>
-                <p className="text-xs font-medium leading-relaxed">{insight.text}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* EMPTY STATE */}
+      {/* === EMPTY STATE === */}
       {filteredOrders.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-3">
           <ShoppingBag className="w-12 h-12 text-slate-300" />
-          <h3 className="font-bold text-slate-800">No transactions recorded for this period</h3>
-          <p className="text-xs text-slate-400 max-w-sm leading-relaxed">There are no orders registered within the selected time window. Try adjusting your date filters or choose a custom calendar range.</p>
+          <h3 className="font-bold text-slate-800">No orders in this period</h3>
+          <p className="text-xs text-slate-400 max-w-sm leading-relaxed">There are no orders registered within the selected time window. Try adjusting your date filters or choose a custom range.</p>
         </div>
       ) : (
         <>
-          {/* INTERACTIVE CHARTS DIVISION */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            {/* CHART 1: REVENUE vs COLLECTIONS HISTORICAL TREND (SVG AREA CHART) */}
-            <div className="lg:col-span-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between">
-              <div>
-                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider font-display">Revenue vs Collection Trend</h3>
-                <p className="text-3xs text-slate-400 font-medium">Historical comparison of booked value versus collections</p>
-              </div>
 
-              {/* Chart Stage */}
-              <div className="relative mt-6 h-64 w-full flex items-end">
+          {/* === SECTION 2: SALES & PAYMENTS OVER TIME === */}
+          <div>
+            <h2 className="text-sm font-black text-slate-700 uppercase tracking-wider mb-3 font-display">Sales &amp; Payments Over Time</h2>
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+              <p className="text-3xs text-slate-400 font-medium mb-4">Shows how your sales (blue) and payments received (green) change over the selected period. Hover over a point for details.</p>
+
+              <div className="relative h-64 w-full flex items-end">
                 {chartData.length < 2 ? (
                   <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-slate-400">
-                    Not enough data points in this period to draw trends.
+                    Not enough data in this period to draw a chart.
                   </div>
                 ) : (
                   <svg className="w-full h-full" viewBox="0 0 500 200" preserveAspectRatio="none">
@@ -843,46 +800,32 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                         <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
                       </linearGradient>
                     </defs>
-
-                    {/* Grid lines */}
                     <line x1="0" y1="50" x2="500" y2="50" stroke="#F1F5F9" strokeWidth="1" />
                     <line x1="0" y1="100" x2="500" y2="100" stroke="#F1F5F9" strokeWidth="1" />
                     <line x1="0" y1="150" x2="500" y2="150" stroke="#F1F5F9" strokeWidth="1" />
-
-                    {/* Logic to plot area path coordinates */}
                     {(() => {
                       const maxVal = Math.max(...chartData.map(d => Math.max(d.revenue, d.collected))) || 100;
                       const stepX = 500 / (chartData.length - 1);
-                      
                       const pointsRev = chartData.map((d, idx) => {
                         const x = idx * stepX;
-                        const y = 200 - (d.revenue / maxVal) * 160 - 20; // safe padding top/bottom
+                        const y = 200 - (d.revenue / maxVal) * 160 - 20;
                         return { x, y, data: d };
                       });
-
                       const pointsCol = chartData.map((d, idx) => {
                         const x = idx * stepX;
                         const y = 200 - (d.collected / maxVal) * 160 - 20;
                         return { x, y, data: d };
                       });
-
                       const dPathRev = `M ${pointsRev[0].x} 200 ` + pointsRev.map(p => `L ${p.x} ${p.y}`).join(' ') + ` L ${pointsRev[pointsRev.length-1].x} 200 Z`;
                       const dLineRev = pointsRev.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-
                       const dPathCol = `M ${pointsCol[0].x} 200 ` + pointsCol.map(p => `L ${p.x} ${p.y}`).join(' ') + ` L ${pointsCol[pointsCol.length-1].x} 200 Z`;
                       const dLineCol = pointsCol.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
-
                       return (
                         <>
-                          {/* Paths with gradients */}
                           <path d={dPathRev} fill="url(#colorRev)" />
                           <path d={dPathCol} fill="url(#colorCol)" />
-
-                          {/* Lines */}
                           <path d={dLineRev} fill="none" stroke="#38BDF8" strokeWidth="3" strokeLinecap="round" />
                           <path d={dLineCol} fill="none" stroke="#10B981" strokeWidth="3" strokeLinecap="round" />
-
-                          {/* Hover Interactive Nodes */}
                           {pointsRev.map((p, idx) => (
                             <g key={idx} className="cursor-pointer group/node" onMouseEnter={(e) => {
                               const rect = e.currentTarget.getBoundingClientRect();
@@ -897,8 +840,8 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                                 });
                               }
                             }} onMouseLeave={() => setActiveTooltip(null)}>
-                              <circle cx={p.x} cy={p.y} r="5" fill="#FFFFFF" stroke="#38BDF8" strokeWidth="3" className="transition-all group-hover/node:r-7" />
-                              <circle cx={pointsCol[idx].x} cy={pointsCol[idx].y} r="5" fill="#FFFFFF" stroke="#10B981" strokeWidth="3" className="transition-all group-hover/node:r-7" />
+                              <circle cx={p.x} cy={p.y} r="5" fill="#FFFFFF" stroke="#38BDF8" strokeWidth="3" />
+                              <circle cx={pointsCol[idx].x} cy={pointsCol[idx].y} r="5" fill="#FFFFFF" stroke="#10B981" strokeWidth="3" />
                             </g>
                           ))}
                         </>
@@ -907,38 +850,35 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                   </svg>
                 )}
 
-                {/* Hover Tooltip Render */}
                 {activeTooltip && (
-                  <div 
-                    className="absolute bg-slate-900 text-white text-2xs p-2.5 rounded-xl border border-slate-800 pointer-events-none shadow-md z-30 transition-all flex flex-col gap-1 w-36"
+                  <div
+                    className="absolute bg-slate-900 text-white text-xs p-2.5 rounded-xl border border-slate-800 pointer-events-none shadow-md z-30 flex flex-col gap-1 w-36"
                     style={{ left: `${Math.min(activeTooltip.x - 50, 360)}px`, top: `${activeTooltip.y}px` }}
                   >
-                    <span className="font-bold text-slate-300 block border-b border-slate-800 pb-1">{activeTooltip.label}</span>
+                    <span className="font-bold text-slate-300 border-b border-slate-800 pb-1">{activeTooltip.label}</span>
                     <span className="flex justify-between mt-1">
-                      <span>Booked:</span>
+                      <span>Sales:</span>
                       <span className="font-black text-[#38BDF8]">{currency}{activeTooltip.revenue.toLocaleString()}</span>
                     </span>
                     <span className="flex justify-between">
-                      <span>Collected:</span>
+                      <span>Payments:</span>
                       <span className="font-black text-emerald-400">{currency}{activeTooltip.collected.toLocaleString()}</span>
                     </span>
                   </div>
                 )}
               </div>
 
-              {/* Chart Legends & Timeline labels */}
               <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
                 <div className="flex gap-4">
-                  <div className="flex items-center gap-1.5 text-2xs font-bold text-slate-500 uppercase tracking-wider">
-                    <span className="w-3 h-3 bg-sky-400 rounded-full inline-block" />
-                    Booked Value
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <span className="w-4 h-4 bg-sky-400 rounded-full inline-block" />
+                    Sales
                   </div>
-                  <div className="flex items-center gap-1.5 text-2xs font-bold text-slate-500 uppercase tracking-wider">
-                    <span className="w-3 h-3 bg-emerald-500 rounded-full inline-block" />
-                    Liquid Collected
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <span className="w-4 h-4 bg-emerald-500 rounded-full inline-block" />
+                    Payments
                   </div>
                 </div>
-
                 <div className="flex gap-1.5 text-3xs font-black text-slate-400 uppercase tracking-wide">
                   {chartData.slice(0, 5).map((d, i) => (
                     <span key={i}>{d.label}</span>
@@ -947,172 +887,128 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                 </div>
               </div>
             </div>
-
-            {/* CHART 2: PAYMENT STATUS BREAKDOWN (DONUT ARC VISUALIZER) */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between">
-              <div>
-                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider font-display">Liquidity Health</h3>
-                <p className="text-3xs text-slate-400 font-medium">Breakdown of orders based on payment progress</p>
-              </div>
-
-              {/* Donut SVG Ring */}
-              <div className="my-6 flex items-center justify-center relative">
-                <svg className="w-40 h-40 transform -rotate-90">
-                  {(() => {
-                    const radius = 60;
-                    const circumference = 2 * Math.PI * radius;
-                    
-                    const fullyPaidVal = paymentDistribution.fullyPaid.count;
-                    const partiallyPaidVal = paymentDistribution.partiallyPaid.count;
-                    const unpaidVal = paymentDistribution.unpaid.count;
-                    const total = fullyPaidVal + partiallyPaidVal + unpaidVal || 1;
-
-                    const strokeFully = (fullyPaidVal / total) * circumference;
-                    const strokePartially = (partiallyPaidVal / total) * circumference;
-                    const strokeUnpaid = (unpaidVal / total) * circumference;
-
-                    return (
-                      <>
-                        {/* Unpaid */}
-                        <circle 
-                          cx="80" cy="80" r={radius} 
-                          fill="transparent" 
-                          stroke="#FDA4AF" 
-                          strokeWidth="14"
-                          strokeDasharray={circumference}
-                          strokeDashoffset={0}
-                        />
-                        {/* Partially Paid */}
-                        <circle 
-                          cx="80" cy="80" r={radius} 
-                          fill="transparent" 
-                          stroke="#FCD34D" 
-                          strokeWidth="14"
-                          strokeDasharray={circumference}
-                          strokeDashoffset={strokeUnpaid}
-                        />
-                        {/* Fully Paid */}
-                        <circle 
-                          cx="80" cy="80" r={radius} 
-                          fill="transparent" 
-                          stroke="#34D399" 
-                          strokeWidth="14"
-                          strokeDasharray={circumference}
-                          strokeDashoffset={strokeUnpaid + strokePartially}
-                        />
-                      </>
-                    );
-                  })()}
-                </svg>
-
-                {/* Donut Inner Metric */}
-                <div className="absolute flex flex-col items-center justify-center text-center">
-                  <span className="text-xs font-black text-slate-400 uppercase tracking-wider block">Collection</span>
-                  <span className="text-xl font-black text-slate-800 font-display mt-0.5">
-                    {stats.totalRevenue > 0 ? ((stats.totalCollected / stats.totalRevenue) * 100).toFixed(0) : 0}%
-                  </span>
-                </div>
-              </div>
-
-              {/* Rings Legends */}
-              <div className="space-y-2 border-t border-slate-100 pt-3">
-                <div className="flex items-center justify-between text-2xs font-bold uppercase tracking-wider">
-                  <div className="flex items-center gap-1.5 text-slate-500">
-                    <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full" />
-                    Fully Paid ({paymentDistribution.fullyPaid.count})
-                  </div>
-                  <span className="text-emerald-600">{currency}{paymentDistribution.fullyPaid.value.toLocaleString()}</span>
-                </div>
-                <div className="flex items-center justify-between text-2xs font-bold uppercase tracking-wider">
-                  <div className="flex items-center gap-1.5 text-slate-500">
-                    <span className="w-2.5 h-2.5 bg-amber-300 rounded-full" />
-                    Partially Paid ({paymentDistribution.partiallyPaid.count})
-                  </div>
-                  <span className="text-amber-500">{currency}{paymentDistribution.partiallyPaid.value.toLocaleString()}</span>
-                </div>
-                <div className="flex items-center justify-between text-2xs font-bold uppercase tracking-wider">
-                  <div className="flex items-center gap-1.5 text-slate-500">
-                    <span className="w-2.5 h-2.5 bg-rose-300 rounded-full" />
-                    Unpaid ({paymentDistribution.unpaid.count})
-                  </div>
-                  <span className="text-rose-400">{currency}{paymentDistribution.unpaid.value.toLocaleString()}</span>
-                </div>
-              </div>
-            </div>
           </div>
 
-          {/* TWO COLUMN ANALYSIS: PIPELINE VALUE & CUSTOMERS */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* COLUMN 1: ORDER VALUE PER PIPELINE STAGE */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-              <div>
-                <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider font-display">Value by Pipeline Stage</h3>
-                <p className="text-3xs text-slate-400 font-medium">Value, Collections, and Outstanding balances across workflow steps</p>
+          {/* === SECTION 3: PAYMENT STATUS === */}
+          <div>
+            <h2 className="text-sm font-black text-slate-700 uppercase tracking-wider mb-3 font-display">Payment Status</h2>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+              {/* Donut Chart */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col items-center justify-center">
+                <p className="text-3xs text-slate-400 font-medium mb-2 text-center">How many orders are fully paid, partly paid, or not yet paid</p>
+                <div className="my-4 flex items-center justify-center relative">
+                  <svg className="w-40 h-40 transform -rotate-90">
+                    {(() => {
+                      const radius = 60;
+                      const circumference = 2 * Math.PI * radius;
+                      const fullyPaidVal = paymentDistribution.fullyPaid.count;
+                      const partiallyPaidVal = paymentDistribution.partiallyPaid.count;
+                      const unpaidVal = paymentDistribution.unpaid.count;
+                      const total = fullyPaidVal + partiallyPaidVal + unpaidVal || 1;
+                      const strokeFully = (fullyPaidVal / total) * circumference;
+                      const strokePartially = (partiallyPaidVal / total) * circumference;
+                      const strokeUnpaid = (unpaidVal / total) * circumference;
+                      return (
+                        <>
+                          <circle cx="80" cy="80" r={radius} fill="transparent" stroke="#FDA4AF" strokeWidth="14" strokeDasharray={circumference} strokeDashoffset={0} />
+                          <circle cx="80" cy="80" r={radius} fill="transparent" stroke="#FCD34D" strokeWidth="14" strokeDasharray={circumference} strokeDashoffset={strokeUnpaid} />
+                          <circle cx="80" cy="80" r={radius} fill="transparent" stroke="#34D399" strokeWidth="14" strokeDasharray={circumference} strokeDashoffset={strokeUnpaid + strokePartially} />
+                        </>
+                      );
+                    })()}
+                  </svg>
+                  <div className="absolute flex flex-col items-center justify-center text-center">
+                    <span className="text-3xs font-black text-slate-400 uppercase tracking-wider">Collected</span>
+                    <span className="text-xl font-black text-slate-800 font-display mt-0.5">
+                      {stats.totalRevenue > 0 ? ((stats.totalCollected / stats.totalRevenue) * 100).toFixed(0) : 0}%
+                    </span>
+                  </div>
+                </div>
+
+                <div className="w-full space-y-2 border-t border-slate-100 pt-3">
+                  <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider">
+                    <div className="flex items-center gap-1.5 text-slate-500">
+                      <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full" />
+                      Fully Paid ({paymentDistribution.fullyPaid.count})
+                    </div>
+                    <span className="text-emerald-600">{currency}{paymentDistribution.fullyPaid.value.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider">
+                    <div className="flex items-center gap-1.5 text-slate-500">
+                      <span className="w-2.5 h-2.5 bg-amber-300 rounded-full" />
+                      Partly Paid ({paymentDistribution.partiallyPaid.count})
+                    </div>
+                    <span className="text-amber-500">{currency}{paymentDistribution.partiallyPaid.value.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider">
+                    <div className="flex items-center gap-1.5 text-slate-500">
+                      <span className="w-2.5 h-2.5 bg-rose-300 rounded-full" />
+                      Not Yet Paid ({paymentDistribution.unpaid.count})
+                    </div>
+                    <span className="text-rose-400">{currency}{paymentDistribution.unpaid.value.toLocaleString()}</span>
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-3 pt-2">
-                {pipelineFinancials.map(stage => {
-                  const pct = stats.totalRevenue > 0 ? (stage.totalValue / stats.totalRevenue) * 100 : 0;
-                  return (
-                    <div key={stage.id} className="p-4 bg-slate-50/50 rounded-xl border border-slate-100 flex flex-col gap-2.5 hover:bg-slate-50 transition-colors">
+              {/* === SECTION 4: ORDERS BY STAGE === */}
+              <div className="lg:col-span-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+                <p className="text-3xs text-slate-400 font-medium mb-4">Orders grouped by their current stage, showing how much has been collected vs still owed</p>
+                <div className="space-y-3">
+                  {pipelineFinancials.map(stage => (
+                    <div key={stage.id} className="p-4 bg-slate-50/50 rounded-xl border border-slate-100 flex flex-col gap-2.5">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded-md text-3xs font-black uppercase tracking-wider">{stage.count} Orders</span>
+                          <span className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded-md text-3xs font-black uppercase tracking-wider">{stage.count} orders</span>
                           <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">{stage.name}</h4>
                         </div>
                         <span className="font-extrabold text-slate-900 text-xs">{currency}{stage.totalValue.toLocaleString()}</span>
                       </div>
 
-                      {/* Stacked Progress Bar */}
                       <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden flex">
                         <div className="bg-emerald-400 h-full" style={{ width: `${stage.totalValue > 0 ? (stage.collected / stage.totalValue) * 100 : 0}%` }} title="Collected" />
                         <div className="bg-amber-300 h-full" style={{ width: `${stage.totalValue > 0 ? (stage.remaining / stage.totalValue) * 100 : 0}%` }} title="Outstanding" />
                       </div>
 
-                      {/* Detail Metrics breakdown */}
                       <div className="flex justify-between text-3xs font-black text-slate-400 uppercase tracking-wide">
                         <span className="text-emerald-600">Collected: {currency}{stage.collected.toLocaleString()}</span>
-                        <span className="text-amber-500">Dues: {currency}{stage.remaining.toLocaleString()}</span>
+                        <span className="text-amber-500">Unpaid: {currency}{stage.remaining.toLocaleString()}</span>
                       </div>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
             </div>
+          </div>
 
-            {/* COLUMN 2: CUSTOMER FINANCIAL INSIGHTS & RECEIVABLES */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div>
-                  <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider font-display">Customer Ledger & Receivables</h3>
-                  <p className="text-3xs text-slate-400 font-medium">Outstanding balances, collections, and billing history</p>
-                </div>
-                
-                {/* Search customer name */}
+          {/* === SECTION 5: CUSTOMER PAYMENTS === */}
+          <div>
+            <h2 className="text-sm font-black text-slate-700 uppercase tracking-wider mb-3 font-display">Customer Payments</h2>
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+                <p className="text-3xs text-slate-400 font-medium">Customers who have orders in this period, showing what they still owe</p>
                 <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                  <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" />
                   <input
                     type="text"
                     value={customerSearch}
                     onChange={(e) => setCustomerSearch(e.target.value)}
-                    placeholder="Search ledger..."
+                    placeholder="Search customer..."
                     className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-3xs font-bold text-slate-600 placeholder:text-slate-400 focus:outline-hidden focus:bg-white"
                   />
                 </div>
               </div>
 
-              {/* Customers Ledger List */}
-              <div className="space-y-2.5 pt-2 max-h-[380px] overflow-y-auto pr-1">
+              <div className="space-y-2.5 max-h-[50vh] overflow-y-auto pr-1">
                 {customerInsights.length === 0 ? (
-                  <p className="text-slate-400 text-center py-6 text-2xs uppercase font-bold tracking-wider">No matching customer entries found.</p>
+                  <p className="text-slate-400 text-center py-6 text-xs uppercase font-bold tracking-wider">No customer entries found.</p>
                 ) : (
                   customerInsights.slice(0, 20).map(cust => (
                     <div key={cust.id} className="p-3 bg-white border border-slate-100 rounded-xl flex items-center justify-between hover:border-slate-300 transition-all hover:shadow-2xs">
                       <div>
-                        <h4 className="font-bold text-slate-800 text-xs">{cust.name}</h4>
-                        <span className="text-3xs text-slate-400 font-bold block mt-0.5 uppercase tracking-wide">
-                          {cust.ordersCount} booked • total booked: {currency}{cust.totalBookings.toLocaleString()}
+                        <h4 className="font-bold text-slate-800 text-sm">{cust.name}</h4>
+                        <span className="text-3xs text-slate-400 font-bold mt-0.5 uppercase tracking-wide">
+                          {cust.ordersCount} order{cust.ordersCount !== 1 ? 's' : ''} • Total ordered: {currency}{cust.totalBookings.toLocaleString()}
                         </span>
                       </div>
 
@@ -1120,35 +1016,34 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                         <div>
                           {cust.outstanding > 0 ? (
                             <>
-                              <span className="text-2xs font-extrabold text-amber-500 block">{currency}{cust.outstanding.toLocaleString()}</span>
-                              <span className="text-3xs font-black text-rose-400 block uppercase tracking-wide">Outstanding</span>
+                              <span className="text-xs font-extrabold text-amber-500 block">Unpaid: {currency}{cust.outstanding.toLocaleString()}</span>
+                              <span className="text-3xs font-black text-rose-400 block uppercase tracking-wide">Needs Follow-Up</span>
                             </>
                           ) : (
                             <>
-                              <span className="text-2xs font-extrabold text-emerald-500 block">{currency}{cust.totalPaid.toLocaleString()}</span>
-                              <span className="text-3xs font-bold text-slate-400 block uppercase tracking-wide">Paid</span>
+                              <span className="text-xs font-extrabold text-emerald-500 block">{currency}{cust.totalPaid.toLocaleString()}</span>
+                              <span className="text-3xs font-bold text-slate-400 block uppercase tracking-wide">Paid in Full</span>
                             </>
                           )}
                         </div>
 
-                        {/* Direct Follow-up links */}
                         {cust.outstanding > 0 && (
                           <div className="flex gap-1.5">
-                            <a 
+                            <a
                               href={`tel:${cust.phone}`}
                               className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-800 border border-slate-200 rounded-lg cursor-pointer transition-colors"
                               title="Call Customer"
                             >
-                              <Phone className="w-3.5 h-3.5" />
+                              <Phone className="w-4 h-4" />
                             </a>
-                            <a 
+                            <a
                               href={`https://wa.me/${cust.phone.replace(/[^0-9]/g, '')}?text=Hi%20${encodeURIComponent(cust.name)}%2C%20this%20is%20a%20gentle%20reminder%20from%20our%20shop%20regarding%20your%20pending%20balance%20of%20${currency}${cust.outstanding}%20on%20your%20garment%20booking.%20Thank%20you!`}
                               target="_blank"
                               rel="noreferrer"
                               className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-100 rounded-lg cursor-pointer transition-colors"
-                              title="WhatsApp Reminder"
+                              title="Send WhatsApp Reminder"
                             >
-                              <MessageSquare className="w-3.5 h-3.5" />
+                              <MessageSquare className="w-4 h-4" />
                             </a>
                           </div>
                         )}
@@ -1162,54 +1057,52 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
         </>
       )}
 
-      {/* PRINT STATEMENT & DETAILED AUDITED HISTORICAL TABLE */}
+      {/* === PRINT & DETAILED TABLE === */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs mt-6 print:border-none print:shadow-none print:p-0">
         <div className="flex items-center justify-between mb-4 print:hidden">
           <div>
-            <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider font-display">Statement of Accounts</h3>
-            <p className="text-3xs text-slate-400 font-medium">Detailed audit trail of bookings registered during the selected interval</p>
+            <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider font-display">Order Details</h3>
+            <p className="text-3xs text-slate-400 font-medium">Complete list of all orders in this period</p>
           </div>
         </div>
 
-        {/* PRINT ONLY BRAND HEADER */}
         <div className="hidden print:flex flex-col items-center text-center pb-6 border-b border-slate-200 mb-6">
-          <h1 className="text-2xl font-black uppercase text-slate-900 tracking-tight">Tailor Shop Financial Report</h1>
-          <p className="text-sm text-slate-500 font-medium mt-1">Period: {dateRangeBounds.start.toLocaleDateString()} to {dateRangeBounds.end.toLocaleDateString()}</p>
+          <h1 className="text-2xl font-black uppercase text-slate-900 tracking-tight">Sales Report</h1>
+          <p className="text-sm text-slate-500 font-medium mt-1">{dateRangeBounds.start.toLocaleDateString(undefined, { dateStyle: 'medium' })} to {dateRangeBounds.end.toLocaleDateString(undefined, { dateStyle: 'medium' })}</p>
           <div className="grid grid-cols-3 gap-12 mt-6 w-full max-w-lg">
             <div className="border border-slate-200 p-3 rounded-xl">
-              <span className="text-3xs font-black text-slate-400 uppercase tracking-wider block">Gross Bookings</span>
+              <span className="text-3xs font-black text-slate-400 uppercase tracking-wider block">Total Sales</span>
               <span className="text-base font-black text-slate-800 mt-1">{currency}{stats.totalRevenue.toLocaleString()}</span>
             </div>
             <div className="border border-slate-200 p-3 rounded-xl">
-              <span className="text-3xs font-black text-slate-400 uppercase tracking-wider block">Liquid Collected</span>
+              <span className="text-3xs font-black text-slate-400 uppercase tracking-wider block">Payments Received</span>
               <span className="text-base font-black text-emerald-600 mt-1">{currency}{stats.totalCollected.toLocaleString()}</span>
             </div>
             <div className="border border-slate-200 p-3 rounded-xl">
-              <span className="text-3xs font-black text-slate-400 uppercase tracking-wider block">Outstanding Dues</span>
+              <span className="text-3xs font-black text-slate-400 uppercase tracking-wider block">Still to Collect</span>
               <span className="text-base font-black text-amber-500 mt-1">{currency}{stats.outstandingBalance.toLocaleString()}</span>
             </div>
           </div>
         </div>
 
-        {/* Statement Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-table-cell">
             <thead>
               <tr className="border-b border-slate-200 text-table-header uppercase tracking-wider font-bold">
                 <th className="py-3 px-4">Order</th>
                 <th className="py-3 px-4">Customer</th>
-                <th className="py-3 px-4">Booking Date</th>
+                <th className="py-3 px-4">Date</th>
                 <th className="py-3 px-4">Due Date</th>
                 <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4 text-right">Order Value</th>
-                <th className="py-3 px-4 text-right">Paid Advance</th>
+                <th className="py-3 px-4 text-right">Paid</th>
                 <th className="py-3 px-4 text-right">Balance</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-6 text-center text-slate-400 font-medium uppercase tracking-wider">No transactional records available.</td>
+                  <td colSpan={8} className="py-6 text-center text-slate-400 font-medium uppercase tracking-wider">No records available.</td>
                 </tr>
               ) : (
                 filteredOrders.map(o => {
@@ -1219,12 +1112,12 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                     <tr key={o.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="py-3.5 px-4 font-black text-slate-950 uppercase">{o.order_number}</td>
                       <td className="py-3.5 px-4 font-bold text-slate-700">{o.customer_name}</td>
-                      <td className="py-3.5 px-4 font-medium text-slate-500">{new Date(o.created_at).toLocaleDateString()}</td>
-                      <td className="py-3.5 px-4 font-medium text-slate-500">{new Date(o.due_date).toLocaleDateString()}</td>
+                      <td className="py-3.5 px-4 font-medium text-slate-500">{new Date(o.created_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}</td>
+                      <td className="py-3.5 px-4 font-medium text-slate-500">{new Date(o.due_date).toLocaleDateString(undefined, { dateStyle: 'medium' })}</td>
                       <td className="py-3.5 px-4">
                         <span className={`px-2 py-0.5 rounded-full text-3xs font-black uppercase tracking-wider inline-block ${
-                          o.status === 'Delivered' 
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
+                          o.status === 'Delivered'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
                             : o.status === 'Ready' || o.status === 'Ready to Deliver'
                             ? 'bg-blue-50 text-blue-700 border border-blue-100'
                             : 'bg-amber-50 text-amber-700 border border-amber-100'

@@ -47,11 +47,12 @@ export interface Measurements {
 export type OrderStatus = 'Pending' | 'Cutting' | 'Stitching' | 'Fitting' | 'Ready' | 'Ready to Deliver' | 'Delivered' | 'Archived';
 
 export interface OrderItem {
-  type: string; // e.g., Suit, Shirt, Trouser, Sherwani
+  type: string;
   price: number;
+  quantity?: number;
   notes?: string;
   color?: string;
-  delivery_date?: string; // Optional for backward compatibility, required for new items
+  delivery_date?: string;
   measurement_snapshot?: Record<string, string | number>;
   styling_snapshot?: Record<string, string>;
 }
@@ -63,6 +64,7 @@ export interface Order {
   customer_id: string;
   customer_name?: string; // joined
   customer_phone?: string; // joined
+  customer_whatsapp?: string; // joined
   status: OrderStatus;
   items: OrderItem[];
   total_amount: number;
@@ -102,6 +104,7 @@ export interface ShopSettings {
   pipeline_stages?: PipelineStage[]; // customizable pipeline stages
   auto_archive_days?: number; // default: 30 days
   measurement_unit?: 'Inches' | 'Centimeters' | 'Feet';
+  whatsapp_message_template?: string;
   updated_at: string;
   updated_by: string;
 }

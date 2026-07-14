@@ -4,26 +4,20 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { DollarSign, Users, Settings, Database, Activity, Plus, Trash2, ShieldAlert, ArrowDown, ArrowUp, Calendar, AlertTriangle, Save, ListTodo, Sparkles, Sliders } from 'lucide-react';
-import { UserProfile, AuditLog, ShopSettings, PipelineStage } from '../types';
+import { DollarSign, Settings, Database, Activity, Plus, Trash2, ArrowDown, ArrowUp, Calendar, Save, ListTodo, Sliders, Upload, Printer } from 'lucide-react';
+import { AuditLog, ShopSettings, PipelineStage, GarmentType } from '../types';
 import GarmentConfiguration from './GarmentConfiguration';
+import DataImport from './DataImport';
 
 interface OwnerDashboardProps {
   token: string;
   currency: string;
+  shopLogo: string;
   onSettingsUpdated: () => void;
-  onWorkersUpdated?: (workers: UserProfile[]) => void;
 }
 
-export default function OwnerDashboard({ token, currency, onSettingsUpdated, onWorkersUpdated }: OwnerDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'Settings' | 'GarmentConfig' | 'Backup' | 'Logs'>('Settings');
-
-  // Workers State
-  const [workers, setWorkers] = useState<UserProfile[]>([]);
-  const [workersLoading, setWorkersLoading] = useState(false);
-  const [newWorkerName, setNewWorkerName] = useState('');
-  const [workerError, setWorkerError] = useState<string | null>(null);
-  const [workerSuccess, setWorkerSuccess] = useState<string | null>(null);
+export default function OwnerDashboard({ token, currency, shopLogo, onSettingsUpdated }: OwnerDashboardProps) {
+  const [activeTab, setActiveTab] = useState<'Settings' | 'GarmentConfig' | 'Backup' | 'Logs' | 'Import'>('Settings');
 
   // Settings State
   const [settings, setSettings] = useState<ShopSettings | null>(null);
@@ -37,8 +31,13 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
   const [newStageName, setNewStageName] = useState('');
   const [editedAutoArchiveDays, setEditedAutoArchiveDays] = useState<number>(30);
   const [editedMeasurementUnit, setEditedMeasurementUnit] = useState<'Inches' | 'Centimeters' | 'Feet'>('Inches');
+  const [editedTermsConditions, setEditedTermsConditions] = useState('');
+  const [editedReceiptFooter, setEditedReceiptFooter] = useState('');
+  const [defaultPrintReceipt, setDefaultPrintReceipt] = useState(true);
+  const [defaultPrintMeasure, setDefaultPrintMeasure] = useState(true);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [settingsSuccess, setSettingsSuccess] = useState(false);
+  const [editedShopLogo, setEditedShopLogo] = useState('');
 
   // Backup & Restore State
   const [archiveCutoff, setArchiveCutoff] = useState('');
@@ -51,26 +50,8 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
 
-  // Fetch Workers
-  const fetchWorkers = async () => {
-    setWorkersLoading(true);
-    try {
-      const res = await fetch('/api/workers', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setWorkers(data);
-        if (onWorkersUpdated) {
-          onWorkersUpdated(data);
-        }
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setWorkersLoading(false);
-    }
-  };
+  // Import State
+  const [garmentTypes, setGarmentTypes] = useState<GarmentType[]>([]);
 
   // Fetch Settings
   const fetchSettings = async () => {
@@ -88,6 +69,11 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
         setEditedCurrency(data.currency || '$');
         setEditedAutoArchiveDays(data.auto_archive_days !== undefined ? Number(data.auto_archive_days) : 30);
         setEditedMeasurementUnit(data.measurement_unit || 'Inches');
+        setEditedTermsConditions(data.terms_conditions ?? '');
+        setEditedReceiptFooter(data.receipt_footer_text ?? '');
+        setDefaultPrintReceipt(data.default_print_receipt !== false);
+        setDefaultPrintMeasure(data.default_print_measure !== false);
+        setEditedShopLogo(data.shop_logo || '');
         setEditedFields(data.measurement_fields || []);
         setEditedStages(data.pipeline_stages || [
           { id: 'Pending', name: 'Getting Ready', enabled: true },
@@ -123,78 +109,22 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
 
   // Load appropriate data on tab click
   useEffect(() => {
-    if (activeTab === 'Workers') fetchWorkers();
     if (activeTab === 'Settings') fetchSettings();
     if (activeTab === 'Backup') {
       const d = new Date();
       d.setDate(d.getDate() - 30);
-      setArchiveCutoff(d.toISOString().split('T')[0]);
+      setArchiveCutoff(d.toLocaleDateString('en-CA'));
     }
     if (activeTab === 'Logs') fetchLogs();
-  }, [activeTab, token]);
-
-  // Handle Create Worker
-  const handleCreateWorker = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newWorkerName || newWorkerName.trim() === '') {
-      setWorkerError('Worker name is required.');
-      return;
-    }
-
-    setWorkerError(null);
-    setWorkerSuccess(null);
-
-    try {
-      const res = await fetch('/api/workers', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name: newWorkerName,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to create worker.');
-      }
-
-      setWorkerSuccess(`Successfully created worker profile for ${newWorkerName}!`);
-      setNewWorkerName('');
-      fetchWorkers();
-    } catch (err: any) {
-      setWorkerError(err.message);
-    }
-  };
-
-  // Handle Delete Worker
-  const handleDeleteWorker = async (workerId: string) => {
-    if (!confirm('Are you absolutely sure you want to permanently delete this worker account? This will block their login immediately.')) {
-      return;
-    }
-
-    setWorkerError(null);
-    setWorkerSuccess(null);
-
-    try {
-      const res = await fetch(`/api/workers/${workerId}`, {
-        method: 'DELETE',
+    if (activeTab === 'Import') {
+      fetch('/api/garment-types', {
         headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to delete worker.');
-      }
-
-      setWorkerSuccess('Worker account deleted successfully.');
-      fetchWorkers();
-    } catch (err: any) {
-      setWorkerError(err.message);
+      })
+        .then(r => r.json())
+        .then(d => setGarmentTypes(Array.isArray(d) ? d : []))
+        .catch(() => setGarmentTypes([]));
     }
-  };
+  }, [activeTab, token]);
 
   // Handle Settings Update
   const handleUpdateSettings = async (e: React.FormEvent) => {
@@ -218,6 +148,11 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
           pipeline_stages: editedStages,
           auto_archive_days: editedAutoArchiveDays,
           measurement_unit: editedMeasurementUnit,
+          terms_conditions: editedTermsConditions,
+          receipt_footer_text: editedReceiptFooter,
+          default_print_receipt: defaultPrintReceipt,
+          default_print_measure: defaultPrintMeasure,
+          shop_logo: editedShopLogo,
         }),
       });
 
@@ -386,6 +321,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
           { id: 'GarmentConfig', label: 'Garment Configuration', icon: Sliders },
           { id: 'Backup', label: 'Backup & Archiving', icon: Database },
           { id: 'Logs', label: 'Audit Logs', icon: Activity },
+          { id: 'Import', label: 'Data Import', icon: Upload },
         ].map((tab) => {
           const Icon = tab.icon;
           const isSelected = activeTab === tab.id;
@@ -407,9 +343,9 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
       </div>
 
       {/* Tab Body - Clean container frame */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 min-h-[450px]">
+      <div className="bg-white rounded-2xl border border-slate-200 p-4 min-h-0">
         
-        {/* TAB 3: SHOP SETTINGS */}
+        {/* TAB 1: SHOP SETTINGS */}
         {activeTab === 'Settings' && (
           <form onSubmit={handleUpdateSettings} className="space-y-6 animate-fade-in">
             <h3 className="text-lg font-bold text-slate-900 uppercase tracking-wider font-display border-b border-slate-100 pb-2">Shop Identity & Parameters</h3>
@@ -429,7 +365,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
             <div className="max-w-xl">
               <div className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Shop / Company Name *</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Shop / Company Name *</label>
                   <input
                     type="text"
                     required
@@ -440,7 +376,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Identity Phone Number</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Identity Phone Number</label>
                   <input
                     type="text"
                     value={editedPhone}
@@ -450,7 +386,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Company Address</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Company Address</label>
                   <textarea
                     value={editedAddress}
                     onChange={(e) => setEditedAddress(e.target.value)}
@@ -460,7 +396,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">System Currency Symbol</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">System Currency Symbol</label>
                   <select
                     value={editedCurrency}
                     onChange={(e) => setEditedCurrency(e.target.value)}
@@ -476,7 +412,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Auto-Archive Delivered Orders</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Auto-Archive Delivered Orders</label>
                   <select
                     value={editedAutoArchiveDays}
                     onChange={(e) => setEditedAutoArchiveDays(Number(e.target.value))}
@@ -492,7 +428,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Default Measurement Unit</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Default Measurement Unit</label>
                   <select
                     value={editedMeasurementUnit}
                     onChange={(e) => setEditedMeasurementUnit(e.target.value as any)}
@@ -502,6 +438,108 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
                     <option value="Centimeters">Centimeters (cm)</option>
                     <option value="Feet">Feet (ft)</option>
                   </select>
+                </div>
+              </div>
+            </div>
+
+            {/* PRINTING SECTION */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 space-y-4">
+              <div>
+                <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 font-display">
+                  <Printer className="w-5 h-5 text-[#38BDF8]" />
+                  Printing
+                </h4>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Configure settings used for customer receipts and measurement slips.
+                </p>
+              </div>
+
+              <div className="space-y-4 max-w-xl">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Shop Logo</label>
+                  <div className="flex items-center gap-3">
+                    {editedShopLogo ? (
+                      <div className="relative w-16 h-16 rounded-xl border-2 border-slate-200 overflow-hidden bg-white shrink-0">
+                        <img src={editedShopLogo} alt="Shop Logo" className="w-full h-full object-contain" />
+                        <button
+                          type="button"
+                          onClick={() => setEditedShopLogo('')}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center cursor-pointer hover:bg-red-600 text-[10px] font-bold"
+                        >
+                          X
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 flex items-center justify-center shrink-0">
+                        <span className="text-xs text-slate-400 font-bold">Logo</span>
+                      </div>
+                    )}
+                    <label className="px-3 py-2 bg-white border-2 border-slate-200 rounded-lg text-xs font-bold text-slate-600 cursor-pointer hover:bg-slate-50 hover:border-slate-300 transition-colors uppercase tracking-wider">
+                      {editedShopLogo ? 'Change' : 'Upload'}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 2 * 1024 * 1024) {
+                            alert('Logo must be under 2MB.');
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = ev => setEditedShopLogo(ev.target?.result as string);
+                          reader.readAsDataURL(file);
+                        }}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Receipt Footer Text</label>
+                  <input
+                    type="text"
+                    value={editedReceiptFooter}
+                    onChange={(e) => setEditedReceiptFooter(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-sm font-semibold focus:outline-none focus:border-[#38BDF8]"
+                    placeholder="Receipt is generated by Stitch Master - 03163455358"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Terms & Conditions</label>
+                  <textarea
+                    value={editedTermsConditions}
+                    onChange={(e) => setEditedTermsConditions(e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-sm font-semibold focus:outline-none focus:border-[#38BDF8] resize-y"
+                    placeholder="e.g. All orders are subject to our terms and conditions..."
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Default Print Preferences</label>
+                  <div className="flex flex-wrap gap-4 pt-1">
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-600 uppercase tracking-wider cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={defaultPrintReceipt}
+                        onChange={(e) => setDefaultPrintReceipt(e.target.checked)}
+                        className="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400 cursor-pointer"
+                      />
+                      Customer Receipt
+                    </label>
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-600 uppercase tracking-wider cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={defaultPrintMeasure}
+                        onChange={(e) => setDefaultPrintMeasure(e.target.checked)}
+                        className="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400 cursor-pointer"
+                      />
+                      Measurement Slip(s)
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>
@@ -529,14 +567,14 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
                 <button
                   type="button"
                   onClick={handleAddStage}
-                  className="px-4 py-2 bg-[#0F172A] text-white font-bold rounded-lg text-2xs uppercase tracking-wider cursor-pointer hover:bg-slate-800 flex items-center gap-1 shrink-0"
+                  className="px-4 py-2 bg-[#0F172A] text-white font-bold rounded-lg text-xs uppercase tracking-wider cursor-pointer hover:bg-slate-800 flex items-center gap-1 shrink-0"
                 >
                   <Plus className="w-4 h-4 text-[#38BDF8]" />
                   Add Stage
                 </button>
               </div>
 
-              <div className="space-y-2 max-h-96 overflow-y-auto p-4 bg-white border border-slate-200 rounded-xl shadow-2xs">
+              <div className="space-y-2 max-h-[50vh] overflow-y-auto p-4 bg-white border border-slate-200 rounded-xl shadow-2xs">
                 {editedStages.map((stage, idx) => {
                   const isCore = stage.id === 'Pending' || stage.id === 'Archived' || stage.name.toLowerCase() === 'archived';
                   return (
@@ -551,7 +589,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
                             className="p-0.5 rounded text-slate-400 hover:text-[#38BDF8] disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed hover:bg-white"
                             title="Move Stage Up"
                           >
-                            <ArrowUp className="w-3.5 h-3.5" />
+                            <ArrowUp className="w-4 h-4" />
                           </button>
                           <button
                             type="button"
@@ -560,7 +598,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
                             className="p-0.5 rounded text-slate-400 hover:text-[#38BDF8] disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed hover:bg-white"
                             title="Move Stage Down"
                           >
-                            <ArrowDown className="w-3.5 h-3.5" />
+                            <ArrowDown className="w-4 h-4" />
                           </button>
                         </div>
 
@@ -574,7 +612,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
                         />
 
                         {isCore && (
-                          <span className="text-[9px] font-extrabold bg-[#E0F2FE] text-[#0369A1] px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0">
+                          <span className="text-xs font-extrabold bg-[#E0F2FE] text-[#0369A1] px-2 py-1 rounded uppercase tracking-wider shrink-0">
                             Core
                           </span>
                         )}
@@ -582,13 +620,13 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
 
                       <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
                         {/* Enable / Disable checkbox */}
-                        <label className="flex items-center gap-1.5 text-2xs font-extrabold text-slate-500 uppercase select-none cursor-pointer">
+                        <label className="flex items-center gap-1.5 text-xs font-extrabold text-slate-500 uppercase select-none cursor-pointer">
                           <input
                             type="checkbox"
                             checked={stage.enabled}
                             disabled={isCore}
                             onChange={() => handleToggleStage(idx)}
-                            className="w-3.5 h-3.5 rounded border-slate-300 text-[#38BDF8] focus:ring-[#38BDF8] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="w-4 h-4 rounded border-slate-300 text-[#38BDF8] focus:ring-[#38BDF8] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                           />
                           <span>{stage.enabled ? 'Enabled' : 'Disabled'}</span>
                         </label>
@@ -636,7 +674,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
               <button
                 onClick={triggerBackupDownload}
                 disabled={backupLoading}
-                className="px-4 py-2.5 bg-[#0F172A] hover:bg-[#1E293B] disabled:opacity-50 text-white font-bold rounded-lg flex items-center gap-1.5 cursor-pointer text-2xs uppercase tracking-wider border border-slate-800 transition-colors"
+                className="px-4 py-2.5 bg-[#0F172A] hover:bg-[#1E293B] disabled:opacity-50 text-white font-bold rounded-lg flex items-center gap-1.5 cursor-pointer text-xs uppercase tracking-wider border border-slate-800 transition-colors"
               >
                 <ArrowDown className="w-4 h-4 text-[#38BDF8]" />
                 {backupLoading ? 'Compiling Backup...' : 'Download Full System Backup'}
@@ -691,7 +729,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
 
               <div className="flex flex-wrap gap-3 items-end">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 block uppercase tracking-wider">Archive Prior To:</label>
+                  <label className="text-xs font-bold text-slate-500 block uppercase tracking-wider">Archive Prior To:</label>
                   <input
                     type="date"
                     value={archiveCutoff}
@@ -701,7 +739,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
                 </div>
                 <button
                   onClick={handleArchiveOrders}
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg cursor-pointer text-2xs uppercase tracking-wider border border-amber-500 transition-colors"
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg cursor-pointer text-xs uppercase tracking-wider border border-amber-500 transition-colors"
                 >
                   Archive Closed Orders
                 </button>
@@ -717,7 +755,16 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
           </div>
         )}
 
-        {/* TAB 5: AUDIT LOGS */}
+        {/* TAB: DATA IMPORT */}
+        {activeTab === 'Import' && (
+          <DataImport
+            token={token}
+            garmentTypes={garmentTypes}
+            onComplete={() => setActiveTab('Settings')}
+          />
+        )}
+
+        {/* TAB: AUDIT LOGS */}
         {activeTab === 'Logs' && (
           <div className="space-y-4 animate-fade-in">
             <div className="space-y-1">
@@ -731,7 +778,7 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
             </div>
 
             <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-              <div className="max-h-[400px] overflow-y-auto divide-y divide-slate-100 bg-slate-50">
+              <div className="max-h-[50vh] overflow-y-auto divide-y divide-slate-100 bg-slate-50">
                 {logsLoading && <p className="p-6 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">Retrieving log buffers...</p>}
                 {!logsLoading && logs.length === 0 && (
                   <p className="p-10 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">No modification actions logged in session.</p>
@@ -743,12 +790,12 @@ export default function OwnerDashboard({ token, currency, onSettingsUpdated, onW
                         <span className="text-indigo-600 font-extrabold uppercase tracking-wide">[{log.action}]</span> by {log.user_email}
                       </p>
                       {log.details && (
-                        <pre className="text-2xs text-slate-500 bg-slate-50 p-2.5 border border-slate-200/60 rounded-lg mt-1.5 overflow-x-auto max-w-lg font-mono">
+                        <pre className="text-xs text-slate-500 bg-slate-50 p-2.5 border border-slate-200/60 rounded-lg mt-1.5 overflow-x-auto max-w-lg font-mono">
                           {JSON.stringify(log.details)}
                         </pre>
                       )}
                     </div>
-                    <span className="text-2xs font-extrabold text-slate-400 shrink-0 ml-4">
+                    <span className="text-xs font-extrabold text-slate-400 shrink-0 ml-4">
                       {new Date(log.created_at).toLocaleString()}
                     </span>
                   </div>

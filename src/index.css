@@ -11,15 +11,15 @@
   --color-brand-sky: #38BDF8;
   --color-brand-bg: #F8FAFC;
 
-  /* Redefine base Tailwind sizes to align everything with the new typography guidelines */
-  --text-xs: 0.875rem;       /* 14px - labels, captions */
-  --text-sm: 0.9375rem;      /* 15px - table/list text, small buttons */
-  --text-base: 1rem;         /* 16px - body text, main buttons */
-  --text-lg: 1.125rem;       /* 18px */
-  --text-xl: 1.25rem;        /* 20px - section heading start */
-  --text-2xl: 1.5rem;        /* 24px - section heading end */
-  --text-3xl: 1.75rem;       /* 28px - page title start */
-  --text-4xl: 2rem;          /* 32px - page title end */
+  /* Desktop-optimized sizing */
+  --text-xs: 0.8125rem;        /* 13px */
+  --text-sm: 0.875rem;         /* 14px */
+  --text-base: 1rem;           /* 16px */
+  --text-lg: 1.125rem;         /* 18px */
+  --text-xl: 1.25rem;          /* 20px */
+  --text-2xl: 1.5rem;          /* 24px */
+  --text-3xl: 1.75rem;         /* 28px */
+  --text-4xl: 2rem;            /* 32px */
 }
 
 /* -------------------------------------------------------------------------
@@ -27,52 +27,52 @@
    ------------------------------------------------------------------------- */
 @utility text-display-lg {
   font-family: var(--font-display);
-  font-size: clamp(1.75rem, 4vw, 2rem); /* 28px - 32px */
-  line-height: 1.25;
+  font-size: 2rem;            /* 32px */
+  line-height: 1.2;
   font-weight: 800;
   letter-spacing: -0.02em;
 }
 
 @utility text-h1 {
   font-family: var(--font-display);
-  font-size: clamp(1.75rem, 3.5vw, 2rem); /* 28px - 32px */
-  line-height: 1.3;
+  font-size: 1.75rem;         /* 28px */
+  line-height: 1.25;
   font-weight: 700;
   letter-spacing: -0.015em;
 }
 
 @utility text-h2 {
   font-family: var(--font-sans);
-  font-size: clamp(1.25rem, 2.5vw, 1.5rem); /* 20px - 24px */
-  line-height: 1.4;
+  font-size: 1.375rem;        /* 22px */
+  line-height: 1.35;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
 
 @utility text-h3 {
   font-family: var(--font-sans);
-  font-size: clamp(1.25rem, 2vw, 1.375rem); /* 20px - 22px */
+  font-size: 1.125rem;        /* 18px */
   line-height: 1.4;
   font-weight: 600;
 }
 
 @utility text-body {
   font-family: var(--font-sans);
-  font-size: 1rem; /* 16px */
-  line-height: 1.5;
+  font-size: 1.0625rem;       /* 17px */
+  line-height: 1.55;
   font-weight: 400;
 }
 
 @utility text-body-sm {
   font-family: var(--font-sans);
-  font-size: 0.9375rem; /* 15px */
-  line-height: 1.45;
+  font-size: 1rem;            /* 16px */
+  line-height: 1.5;
   font-weight: 400;
 }
 
 @utility text-label-caps {
   font-family: var(--font-sans);
-  font-size: 0.875rem; /* 14px */
+  font-size: 0.9375rem;       /* 15px */
   line-height: 1.4;
   font-weight: 600;
   text-transform: uppercase;
@@ -81,35 +81,35 @@
 
 @utility text-caption {
   font-family: var(--font-sans);
-  font-size: 0.875rem; /* 14px */
-  line-height: 1.4;
+  font-size: 0.9375rem;       /* 15px */
+  line-height: 1.45;
   font-weight: 400;
 }
 
 @utility text-caption-xs {
   font-family: var(--font-sans);
-  font-size: 0.8125rem; /* 13px */
-  line-height: 1.3;
+  font-size: 0.875rem;        /* 14px */
+  line-height: 1.35;
   font-weight: 400;
 }
 
 @utility text-btn-sm {
   font-family: var(--font-sans);
-  font-size: 0.9375rem; /* 15px */
+  font-size: 0.9375rem;       /* 15px */
   font-weight: 600;
   letter-spacing: 0.025em;
 }
 
 @utility text-btn-md {
   font-family: var(--font-sans);
-  font-size: 1rem; /* 16px */
+  font-size: 1rem;            /* 16px */
   font-weight: 600;
   letter-spacing: 0.025em;
 }
 
 @utility text-table-header {
   font-family: var(--font-sans);
-  font-size: 0.875rem; /* 14px */
+  font-size: 0.875rem;        /* 14px */
   line-height: 1.4;
   font-weight: 600;
   text-transform: uppercase;
@@ -118,7 +118,7 @@
 
 @utility text-table-cell {
   font-family: var(--font-sans);
-  font-size: 0.9375rem; /* 15px */
+  font-size: 0.9375rem;       /* 15px */
   line-height: 1.5;
   font-weight: 400;
 }
@@ -127,52 +127,52 @@
    STANDARDIZED ICON SIZES (visibly match surrounding text)
    ------------------------------------------------------------------------- */
 @utility icon-xs {
-  width: 1.25rem !important; /* 20px */
-  height: 1.25rem !important;
+  width: 1rem !important;
+  height: 1rem !important;
 }
 
 @utility icon-sm {
-  width: 1.25rem !important; /* 20px */
-  height: 1.25rem !important;
+  width: 1.125rem !important;
+  height: 1.125rem !important;
 }
 
 @utility icon-md {
-  width: 1.375rem !important; /* 22px */
-  height: 1.375rem !important;
+  width: 1.25rem !important;
+  height: 1.25rem !important;
 }
 
 @utility icon-lg {
-  width: 1.5rem !important; /* 24px */
+  width: 1.5rem !important;
   height: 1.5rem !important;
 }
 
 @utility icon-xl {
-  width: 1.5rem !important; /* 24px */
-  height: 1.5rem !important;
+  width: 1.75rem !important;
+  height: 1.75rem !important;
 }
 
-/* Specifically target Lucide icons to guarantee they scale between 20px and 24px */
+/* Lucide icons - restrict to a compact desktop scale */
 svg.lucide,
 .lucide,
 [class^="lucide-"],
 [class*=" lucide-"] {
-  width: clamp(1.25rem, 2vw, 1.5rem) !important; /* 20px - 24px */
-  height: clamp(1.25rem, 2vw, 1.5rem) !important;
+  width: 1.25rem !important;
+  height: 1.25rem !important;
 }
 
 /* -------------------------------------------------------------------------
    SPACING & ALIGNMENT TOKENS
    ------------------------------------------------------------------------- */
 @utility card-spacing {
-  padding: clamp(1rem, 3vw, 1.5rem);
+  padding: 1.5rem;
 }
 
 @utility modal-spacing {
-  padding: clamp(1.25rem, 4vw, 2rem);
+  padding: 1.75rem;
 }
 
 @utility table-cell-padding {
-  padding: 0.875rem 1rem;
+  padding: 0.75rem 1rem;
 }
 
 html {
@@ -222,6 +222,150 @@ body {
   @page {
     margin: 5mm;
     size: auto;
+  }
+
+  /* A4 Measurement Slip Layout - 2 slips per page */
+  .meas-page {
+    page-break-after: always;
+    break-after: page;
+    height: 297mm;
+    box-sizing: border-box;
+    padding: 10mm 12mm;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .meas-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  .meas-page-inner {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6mm;
+  }
+
+  .meas-slip {
+    flex: 1;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 5mm 6mm;
+    display: flex;
+    flex-direction: column;
+    gap: 3mm;
+  }
+
+  .meas-slip-header {
+    display: flex;
+    align-items: center;
+    gap: 3mm;
+    padding-bottom: 2.5mm;
+    border-bottom: 2px solid #1f2937;
+    margin-bottom: 1mm;
+  }
+
+  .meas-logo {
+    height: 12mm;
+    width: auto;
+    object-fit: contain;
+  }
+
+  .meas-shop-name {
+    font-size: 14pt;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+
+  .meas-contact {
+    font-size: 8pt;
+    color: #4b5563;
+  }
+
+  .meas-field-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9pt;
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 1.5mm;
+  }
+
+  .meas-label {
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #6b7280;
+  }
+
+  .meas-value {
+    font-weight: 900;
+  }
+
+  .meas-section {
+    margin-top: 1mm;
+  }
+
+  .meas-section-title {
+    font-size: 9pt;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6b7280;
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 0.5mm;
+    margin-bottom: 1.5mm;
+  }
+
+  .meas-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1mm 3mm;
+    font-size: 8.5pt;
+  }
+
+  .meas-grid-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #f3f4f6;
+    padding: 0.5mm 0;
+  }
+
+  .meas-grid-label {
+    color: #4b5563;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 65%;
+  }
+
+  .meas-grid-value {
+    font-weight: 900;
+    background: #f3f4f6;
+    padding: 0 1.5mm;
+    border-radius: 2px;
+  }
+
+  .meas-styling-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5mm;
+    font-size: 8.5pt;
+  }
+
+  .meas-styling-chip {
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+    padding: 0.5mm 2mm;
+    border-radius: 3px;
+    font-weight: 500;
+  }
+
+  .meas-styling-chip strong {
+    font-weight: 700;
   }
 }
 

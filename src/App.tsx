@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Shield, Users, ShoppingBag, Settings, LogOut, Info, ShieldCheck, Menu, X, Key, DollarSign } from 'lucide-react';
+import { Shield, Users, ShoppingBag, Settings, LogOut, Info, ShieldCheck, Menu, X, Key, DollarSign, Lock, Unlock } from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
 import CustomersSection from './components/CustomersSection';
 import OrdersSection from './components/OrdersSection';
@@ -66,6 +66,56 @@ export default function App() {
 
   const activeRole = 'Owner' as UserRole;
 
+  const [activeMode, setActiveMode] = useState<'Manager' | 'Owner'>(() => {
+    return (localStorage.getItem('tailor_active_role') as 'Manager' | 'Owner') || 'Manager';
+  });
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [ownerPassword, setOwnerPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
+
+  const switchToOwner = async () => {
+    if (!token) return;
+    setShowPasswordModal(true);
+  };
+
+  const switchToManager = () => {
+    setActiveMode('Manager');
+    localStorage.setItem('tailor_active_role', 'Manager');
+    if (activeTab === 'Owner' || activeTab === 'Financials') {
+      setActiveTab('Customers');
+    }
+  };
+
+  const handlePasswordSubmit = async () => {
+    if (!ownerPassword || !token) return;
+    setIsVerifyingPassword(true);
+    setPasswordError(null);
+    try {
+      const res = await fetch('/api/auth/verify-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ password: ownerPassword }),
+      });
+      if (res.ok) {
+        setActiveMode('Owner');
+        localStorage.setItem('tailor_active_role', 'Owner');
+        setShowPasswordModal(false);
+        setOwnerPassword('');
+      } else {
+        const data = await res.json();
+        setPasswordError(data.error || 'Incorrect password.');
+      }
+    } catch {
+      setPasswordError('Connection failed. Try again.');
+    } finally {
+      setIsVerifyingPassword(false);
+    }
+  };
+
   const [activeTab, setActiveTab] = useState<'Customers' | 'Orders' | 'Financials' | 'Owner'>('Customers');
   const [activeCustomerIdForNewOrder, setActiveCustomerIdForNewOrder] = useState<string | undefined>(undefined);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -85,10 +135,15 @@ export default function App() {
   const [shopName, setShopName] = useState('');
   const [shopPhone, setShopPhone] = useState('');
   const [shopAddress, setShopAddress] = useState('');
+  const [shopLogo, setShopLogo] = useState('');
   const [currency, setCurrency] = useState('$');
   const [measurementFields, setMeasurementFields] = useState<string[]>([]);
   const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
   const [measurementUnit, setMeasurementUnit] = useState<'Inches' | 'Centimeters' | 'Feet'>('Inches');
+  const [termsConditions, setTermsConditions] = useState('');
+  const [receiptFooterText, setReceiptFooterText] = useState('');
+  const [defaultPrintReceipt, setDefaultPrintReceipt] = useState(true);
+  const [defaultPrintMeasure, setDefaultPrintMeasure] = useState(true);
   const [supabaseConfig, setSupabaseConfig] = useState<{ supabaseConnected: boolean; supabaseUrl: string | null }>({
     supabaseConnected: true,
     supabaseUrl: null,
@@ -239,6 +294,11 @@ export default function App() {
         setShopName(settingsData.shop_name ?? '');
         setShopPhone(settingsData.phone ?? '');
         setShopAddress(settingsData.address ?? '');
+        setShopLogo(settingsData.shop_logo ?? '');
+        setTermsConditions(settingsData.terms_conditions ?? '');
+        setReceiptFooterText(settingsData.receipt_footer_text ?? '');
+        setDefaultPrintReceipt(settingsData.default_print_receipt !== false);
+        setDefaultPrintMeasure(settingsData.default_print_measure !== false);
         setCurrency(settingsData.currency || '$');
         setMeasurementFields(settingsData.measurement_fields || []);
         setMeasurementUnit(settingsData.measurement_unit || 'Inches');
@@ -257,10 +317,6 @@ export default function App() {
   useEffect(() => {
     fetchShopMetadata();
   }, [token]);
-
-  const handleWorkersUpdated = (workersList: UserProfile[]) => {
-    // legacy hook keeping
-  };
 
   const handleLoginSuccess = (usr: UserProfile, tkn: string) => {
     setUser(usr);
@@ -317,16 +373,18 @@ export default function App() {
       label: 'Orders',
       icon: ShoppingBag,
     },
-    {
-      id: 'Financials' as const,
-      label: 'Financial Reports',
-      icon: DollarSign,
-    },
-    {
-      id: 'Owner' as const,
-      label: 'Administration Portal',
-      icon: Settings,
-    },
+    ...(activeMode === 'Owner' ? [
+      {
+        id: 'Financials' as const,
+        label: 'Financial Reports',
+        icon: DollarSign,
+      },
+      {
+        id: 'Owner' as const,
+        label: 'Administration Portal',
+        icon: Settings,
+      },
+    ] : []),
   ];
 
   return (
@@ -334,19 +392,23 @@ export default function App() {
       
       {/* SIDEBAR FOR DESKTOP */}
       <aside className={`hidden md:flex flex-col bg-[#0F172A] text-white shrink-0 border-r border-slate-800 print:hidden sticky top-0 h-screen overflow-y-auto transition-all duration-[250ms] ease-in-out ${
-        isSidebarCollapsed ? 'w-16 p-3 items-center' : 'w-72 p-6'
+        isSidebarCollapsed ? 'w-14 p-2 items-center' : 'w-60 p-5'
       }`}>
         
         {/* Brand Header */}
-        <div className="mb-10 mt-2 w-full flex justify-center">
+        <div className="mb-6 mt-1 w-full flex justify-center">
           <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3'} w-full`}>
-            <div className="p-2 bg-slate-800 rounded-xl flex items-center justify-center border border-slate-700 shrink-0" title={isSidebarCollapsed ? (shopName || 'Tailor Shop') : undefined}>
-              <Shield className="icon-md text-[#38BDF8] shrink-0" />
+            <div className="p-2 bg-slate-800 rounded-xl flex items-center justify-center border border-slate-700 shrink-0 overflow-hidden" title={isSidebarCollapsed ? (shopName || 'Tailor Shop') : undefined}>
+              {shopLogo ? (
+                <img src={shopLogo} alt="Logo" className="w-7 h-7 object-contain shrink-0" />
+              ) : (
+                <Shield className="icon-md text-[#38BDF8] shrink-0" />
+              )}
             </div>
             {!isSidebarCollapsed && (
-              <div className="overflow-hidden whitespace-nowrap animate-fade-in">
-                <span className="text-h3 block text-[#38BDF8] font-display uppercase font-bold truncate">{shopName || 'Unnamed Tailor Shop'}</span>
-                <span className="text-caption-xs font-bold text-slate-400 block uppercase tracking-wider mt-0.5 truncate">
+              <div className="overflow-hidden animate-fade-in min-w-0">
+                <span className="text-h3 block text-[#38BDF8] font-display uppercase font-bold break-words">{shopName || 'Unnamed Tailor Shop'}</span>
+                <span className="text-caption-xs font-bold text-slate-400 block uppercase tracking-wider mt-0.5">
                   Staff Workspace
                 </span>
               </div>
@@ -376,7 +438,7 @@ export default function App() {
               >
                 <Icon className={`icon-md shrink-0 transition-colors ${isActive ? 'text-[#38BDF8]' : 'text-[#94A3B8]'}`} />
                 {!isSidebarCollapsed && (
-                  <span className="whitespace-nowrap truncate animate-fade-in">{item.label}</span>
+                  <span className="animate-fade-in break-words">{item.label}</span>
                 )}
                 {isSidebarCollapsed && (
                   <div className="absolute left-16 pl-2 hidden group-hover:block z-50 pointer-events-none">
@@ -391,7 +453,38 @@ export default function App() {
         </nav>
 
         {/* Footer/Logout Area */}
-        <div className={`pt-6 border-t border-slate-800 mt-auto space-y-3.5 w-full ${isSidebarCollapsed ? 'flex justify-center' : ''}`}>
+        <div className={`pt-6 border-t border-slate-800 mt-auto space-y-3 w-full ${isSidebarCollapsed ? 'flex flex-col items-center' : ''}`}>
+          {activeMode === 'Manager' ? (
+            <button
+              onClick={switchToOwner}
+              className={`w-full py-2 ${isSidebarCollapsed ? 'px-0 justify-center' : 'px-3'} bg-amber-900/30 hover:bg-amber-900/50 text-amber-400 border border-amber-800/30 rounded-xl text-btn-sm uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors relative group`}
+            >
+              <Lock className="icon-sm shrink-0" />
+              {!isSidebarCollapsed && <span>Switch to Owner</span>}
+              {isSidebarCollapsed && (
+                <div className="absolute left-16 pl-2 hidden group-hover:block z-50 pointer-events-none">
+                  <div className="bg-amber-900 text-amber-200 text-xs font-semibold py-1.5 px-3 rounded-lg shadow-xl whitespace-nowrap border border-amber-800/50">
+                    Switch to Owner
+                  </div>
+                </div>
+              )}
+            </button>
+          ) : (
+            <button
+              onClick={switchToManager}
+              className={`w-full py-2 ${isSidebarCollapsed ? 'px-0 justify-center' : 'px-3'} bg-emerald-900/30 hover:bg-emerald-900/50 text-emerald-400 border border-emerald-800/30 rounded-xl text-btn-sm uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors relative group`}
+            >
+              <Unlock className="icon-sm shrink-0" />
+              {!isSidebarCollapsed && <span>Switch to Manager</span>}
+              {isSidebarCollapsed && (
+                <div className="absolute left-16 pl-2 hidden group-hover:block z-50 pointer-events-none">
+                  <div className="bg-emerald-900 text-emerald-200 text-xs font-semibold py-1.5 px-3 rounded-lg shadow-xl whitespace-nowrap border border-emerald-800/50">
+                    Switch to Manager
+                  </div>
+                </div>
+              )}
+            </button>
+          )}
           <button
             onClick={handleLogout}
             className={`w-full py-2 ${isSidebarCollapsed ? 'px-0 justify-center' : 'px-3'} bg-red-950/40 hover:bg-red-950/60 text-red-400 border border-red-900/30 rounded-xl text-btn-sm uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors relative group`}
@@ -413,7 +506,11 @@ export default function App() {
       {/* MOBILE HEADER BAR */}
       <header className="md:hidden bg-[#0F172A] text-white py-4 px-6 flex items-center justify-between sticky top-0 z-50 print:hidden border-b border-slate-800">
         <div className="flex items-center gap-2">
-          <Shield className="icon-md text-[#38BDF8]" />
+          {shopLogo ? (
+            <img src={shopLogo} alt="Logo" className="w-7 h-7 object-contain shrink-0" />
+          ) : (
+            <Shield className="icon-md text-[#38BDF8]" />
+          )}
           <span className="font-extrabold text-h3 tracking-tight text-[#38BDF8] uppercase">{shopName}</span>
         </div>
         <button
@@ -452,7 +549,24 @@ export default function App() {
             })}
           </nav>
 
-          <div className="pt-6 border-t border-slate-800 mt-auto space-y-4">
+          <div className="pt-6 border-t border-slate-800 mt-auto space-y-3">
+            {activeMode === 'Manager' ? (
+              <button
+                onClick={() => { setIsMobileMenuOpen(false); switchToOwner(); }}
+                className="w-full py-2.5 px-3 bg-amber-900/30 hover:bg-amber-900/50 text-amber-400 border border-amber-800/30 rounded-xl text-btn-sm uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <Lock className="icon-sm shrink-0" />
+                <span>Unlock Owner Mode</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => { setIsMobileMenuOpen(false); switchToManager(); }}
+                className="w-full py-2.5 px-3 bg-emerald-900/30 hover:bg-emerald-900/50 text-emerald-400 border border-emerald-800/30 rounded-xl text-btn-sm uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <Unlock className="icon-sm shrink-0" />
+                <span>Switch to Manager</span>
+              </button>
+            )}
             <button
               onClick={() => {
                 setIsMobileMenuOpen(false);
@@ -471,7 +585,7 @@ export default function App() {
       <div className="flex-1 flex flex-col min-w-0">
         
         {/* DESKTOP TOP-BAR PANEL */}
-        <header className="hidden md:flex items-center justify-between bg-white h-20 px-8 border-b border-slate-200 shrink-0 print:hidden">
+        <header className="hidden md:flex items-center justify-between bg-white h-14 px-6 border-b border-slate-200 shrink-0 print:hidden">
           <div className="flex items-center gap-4">
             <button
               onClick={toggleSidebar}
@@ -491,12 +605,29 @@ export default function App() {
             </h2>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            {activeMode === 'Manager' ? (
+              <button
+                onClick={switchToOwner}
+                className="flex items-center gap-2 px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-btn-sm font-bold uppercase tracking-wider cursor-pointer transition-colors"
+              >
+                <Lock className="icon-sm" />
+                <span className="hidden sm:inline">Manager Mode</span>
+              </button>
+            ) : (
+              <button
+                onClick={switchToManager}
+                className="flex items-center gap-2 px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-btn-sm font-bold uppercase tracking-wider cursor-pointer transition-colors"
+              >
+                <Unlock className="icon-sm" />
+                <span className="hidden sm:inline">Owner Mode</span>
+              </button>
+            )}
           </div>
         </header>
 
         {/* CORE WORKSPACE CONTENT AREA */}
-        <main className="flex-1 p-4 sm:p-6 md:p-8 max-w-7xl w-full mx-auto">
+        <main className="flex-1 p-3 md:p-4">
           
           {/* ACTIVE MODULE CONTAINER */}
           <div className="animate-fade-in">
@@ -512,6 +643,7 @@ export default function App() {
                   setActiveTab('Orders');
                 }}
                 shopName={shopName}
+                shopLogo={shopLogo}
                 measurementUnit={measurementUnit}
               />
             )}
@@ -532,6 +664,11 @@ export default function App() {
                 shopName={shopName}
                 shopPhone={shopPhone}
                 shopAddress={shopAddress}
+                shopLogo={shopLogo}
+                termsConditions={termsConditions}
+                receiptFooterText={receiptFooterText}
+                defaultPrintReceipt={defaultPrintReceipt}
+                defaultPrintMeasure={defaultPrintMeasure}
               />
             )}
 
@@ -546,16 +683,60 @@ export default function App() {
               <OwnerDashboard
                 token={token}
                 currency={currency}
+                shopLogo={shopLogo}
                 onSettingsUpdated={handleSettingsUpdated}
-                onWorkersUpdated={handleWorkersUpdated}
               />
             )}
           </div>
 
         </main>
 
+        {/* PASSWORD MODAL FOR OWNER MODE UNLOCK */}
+        {showPasswordModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => { setShowPasswordModal(false); setPasswordError(null); setOwnerPassword(''); }}>
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 w-full max-w-sm mx-4 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+              <div className="text-center mb-5">
+                <div className="inline-flex items-center justify-center p-3 bg-amber-100 rounded-xl mb-3">
+                  <Shield className="icon-lg text-amber-600" />
+                </div>
+                <h3 className="text-h3 font-bold text-slate-900">Unlock Owner Mode</h3>
+                <p className="text-caption-xs text-slate-500 mt-1">Enter your account password to access administrative features.</p>
+              </div>
+              {passwordError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-caption-xs font-semibold">
+                  {passwordError}
+                </div>
+              )}
+              <input
+                type="password"
+                value={ownerPassword}
+                onChange={(e) => setOwnerPassword(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handlePasswordSubmit(); }}
+                placeholder="Enter password"
+                className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-body-sm placeholder-slate-400 focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-100 font-medium transition-all mb-4"
+                autoFocus
+              />
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setShowPasswordModal(false); setPasswordError(null); setOwnerPassword(''); }}
+                  className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-btn-sm font-bold cursor-pointer transition-colors border border-slate-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handlePasswordSubmit}
+                  disabled={isVerifyingPassword || !ownerPassword}
+                  className="flex-1 py-2.5 px-4 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-btn-sm font-bold cursor-pointer transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isVerifyingPassword ? 'Verifying...' : 'Unlock'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* COMPACT FOOTER */}
-        <footer className="mt-auto py-5 px-8 border-t border-slate-200 bg-white text-center text-slate-400 text-caption print:hidden flex flex-col sm:flex-row justify-between items-center gap-2">
+        <footer className="mt-auto py-3 px-6 border-t border-slate-200 bg-white text-center text-slate-400 text-caption print:hidden flex flex-col sm:flex-row justify-between items-center gap-2">
           <p className="font-medium">&copy; {new Date().getFullYear()} {shopName || 'Unnamed Tailor Shop'} StitchMaster. All rights reserved.</p>
           <div className="flex gap-4 text-slate-400">
             <span className="font-semibold uppercase tracking-wider text-caption-xs">Tailored Suite Pro</span>

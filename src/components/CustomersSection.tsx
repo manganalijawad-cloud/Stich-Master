@@ -15,7 +15,6 @@ import {
   Edit2, 
   ShieldAlert, 
   ShoppingCart, 
-  MessageCircle, 
   MapPin, 
   AlertTriangle, 
   Printer,
@@ -35,6 +34,7 @@ interface CustomersSectionProps {
   onBookOrder: (customer: Customer) => void;
   selectedCustomerId?: string;
   shopName?: string;
+  shopLogo?: string;
   measurementUnit?: 'Inches' | 'Centimeters' | 'Feet';
 }
 
@@ -46,13 +46,13 @@ export default function CustomersSection({
   onBookOrder,
   selectedCustomerId,
   shopName,
+  shopLogo,
   measurementUnit = 'Inches',
 }: CustomersSectionProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
+  
   const [showAllPage, setShowAllPage] = useState(false);
   const [recentCustomers, setRecentCustomers] = useState<Customer[]>([]);
   const [recentLoading, setRecentLoading] = useState(false);
@@ -158,14 +158,12 @@ export default function CustomersSection({
     const fetchCustomers = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/customers?q=${encodeURIComponent(searchQuery)}&page=1&limit=50`, {
+        const res = await fetch(`/api/customers?q=${encodeURIComponent(searchQuery)}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = await res.json();
         if (res.ok) {
           setCustomers(data);
-          setPage(1);
-          setHasMore(data.length === 50);
           // Auto select if id provided
           if (selectedCustomerId && data.length > 0) {
             const matched = data.find((c: Customer) => c.id === selectedCustomerId);
@@ -215,7 +213,7 @@ export default function CustomersSection({
     if (!token) return;
     setRecentLoading(true);
     try {
-      const res = await fetch('/api/customers?page=1&limit=6&sort=created_at&order=desc', {
+      const res = await fetch('/api/customers?page=1&limit=4&sort=created_at&order=desc', {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -232,26 +230,6 @@ export default function CustomersSection({
   useEffect(() => {
     fetchRecentCustomers();
   }, [token]);
-
-  const loadMoreCustomers = async () => {
-    const nextPage = page + 1;
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/customers?q=${encodeURIComponent(searchQuery)}&page=${nextPage}&limit=50`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setCustomers((prev) => [...prev, ...data]);
-        setPage(nextPage);
-        setHasMore(data.length === 50);
-      }
-    } catch (err) {
-      console.error('Error loading more customers:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // Fetch measurements and order history when selected customer changes
   useEffect(() => {
@@ -565,13 +543,13 @@ export default function CustomersSection({
 
   if (showAllPage) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6 animate-fade-in min-h-[500px]">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6 animate-fade-in">
         {/* Full Customers Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
           <div>
             <button
               onClick={() => setShowAllPage(false)}
-              className="flex items-center gap-1.5 text-btn-sm text-sky-600 hover:text-sky-800 transition-colors uppercase tracking-wider mb-2 cursor-pointer bg-transparent border-none p-0"
+              className="flex items-center gap-1.5 text-btn-md text-sky-600 hover:text-sky-800 transition-colors uppercase tracking-wider mb-2 cursor-pointer bg-transparent border-none p-0"
             >
               ← Back to Dashboard / Profiles
             </button>
@@ -591,7 +569,7 @@ export default function CustomersSection({
               }
               setInitialMeasurements({});
             }}
-            className="px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl flex items-center gap-2 cursor-pointer transition-colors text-btn-sm uppercase tracking-wider self-start sm:self-auto"
+            className="px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl flex items-center gap-2 cursor-pointer transition-colors text-btn-md uppercase tracking-wider self-start sm:self-auto"
           >
             <UserPlus className="icon-sm text-[#38BDF8]" />
             Add Customer
@@ -618,20 +596,19 @@ export default function CustomersSection({
                 <th className="p-4">Customer Name</th>
                 <th className="p-4">Mobile Number</th>
                 <th className="p-4">Address</th>
-                <th className="p-4">WhatsApp</th>
                 <th className="p-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
               {loading && customers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-slate-400 font-bold uppercase tracking-wider">
+                  <td colSpan={4} className="p-8 text-center text-slate-400 font-bold uppercase tracking-wider">
                     Searching Database...
                   </td>
                 </tr>
               ) : customers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-slate-400 font-bold uppercase tracking-wider">
+                  <td colSpan={4} className="p-8 text-center text-slate-400 font-bold uppercase tracking-wider">
                     No customers found. Try a different search.
                   </td>
                 </tr>
@@ -649,24 +626,14 @@ export default function CustomersSection({
                         <span className="text-slate-400 italic">No phone</span>
                       )}
                     </td>
-                    <td className="p-4 truncate max-w-[200px]">{c.address || <span className="text-slate-400 italic">No address</span>}</td>
-                    <td className="p-4">
-                      {c.whatsapp ? (
-                        <span className="text-emerald-600 font-semibold flex items-center gap-1">
-                          <MessageCircle className="icon-sm text-emerald-500 shrink-0" />
-                          {c.whatsapp}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400 italic">-</span>
-                      )}
-                    </td>
+                    <td className="p-4 break-words min-w-0 max-w-[250px]">{c.address || <span className="text-slate-400 italic">No address</span>}</td>
                     <td className="p-4 text-right">
                       <button
                         onClick={() => {
                           setSelectedCustomer(c);
                           setShowAllPage(false);
                         }}
-                        className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold uppercase tracking-wider rounded-lg text-btn-sm transition-all cursor-pointer border border-sky-100"
+                        className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold uppercase tracking-wider rounded-lg text-btn-md transition-all cursor-pointer border border-sky-100"
                       >
                         View Profile &amp; Measure
                       </button>
@@ -678,18 +645,7 @@ export default function CustomersSection({
           </table>
         </div>
 
-        {/* Load More Button inside full page */}
-        {hasMore && (
-          <div className="flex justify-center pt-2">
-            <button
-              onClick={loadMoreCustomers}
-              disabled={loading}
-              className="px-6 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-200 cursor-pointer text-center flex items-center justify-center gap-1.5 transition-all shadow-3xs"
-            >
-              {loading ? 'Loading...' : 'Load More Customers'}
-            </button>
-          </div>
-        )}
+
       </div>
     );
   }
@@ -698,7 +654,7 @@ export default function CustomersSection({
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
       
       {/* LEFT COLUMN: Customer Search & List */}
-      <div className="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6 flex flex-col justify-between min-h-[480px]">
+      <div className="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-4">
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-h2 font-bold text-slate-900 tracking-tight font-display">Customers</h2>
@@ -714,7 +670,7 @@ export default function CustomersSection({
                   }
                   setInitialMeasurements({});
                 }}
-                className="px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl flex items-center gap-2 cursor-pointer transition-colors text-btn-sm uppercase tracking-wider"
+                className="px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl flex items-center gap-2 cursor-pointer transition-colors text-btn-md uppercase tracking-wider"
               >
                 <UserPlus className="icon-sm text-[#38BDF8]" />
                 Add Customer
@@ -819,7 +775,7 @@ export default function CustomersSection({
                 {searchQuery ? `Search Results (${customers.length})` : 'Newly Added Customers'}
               </span>
 
-              <div className="space-y-1 max-h-[380px] overflow-y-auto pr-1">
+              <div className="space-y-1 max-h-[50vh] overflow-y-auto pr-1">
                 {loading && (
                   <p className="text-center text-slate-400 py-3 text-caption-xs font-bold uppercase tracking-wider animate-pulse">Searching...</p>
                 )}
@@ -881,7 +837,7 @@ export default function CustomersSection({
       </div>
 
       {/* RIGHT COLUMN: Customer Details & Measurements */}
-      <div className="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6 min-h-[500px]">
+      <div className="lg:col-span-7 bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-4">
         {duplicateAlert && (
           <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs font-semibold flex items-start justify-between gap-2.5 animate-fade-in">
             <span>{duplicateAlert}</span>
@@ -935,7 +891,7 @@ export default function CustomersSection({
                   <div>
                     <span className="text-caption-xs font-bold text-slate-400 uppercase block">Last Updated</span>
                     <span className="text-body-sm font-extrabold text-slate-700 block mt-0.5">
-                      {getLastUpdated().toLocaleString('en-US', {
+                      {getLastUpdated().toLocaleString(undefined, {
                         year: 'numeric',
                         month: 'short',
                         day: 'numeric',
@@ -948,18 +904,12 @@ export default function CustomersSection({
               </div>
 
               {/* Extra details (optional parameters if exist) */}
-              {(selectedCustomer.email || selectedCustomer.whatsapp || selectedCustomer.notes) && (
+              {(selectedCustomer.email || selectedCustomer.notes) && (
                 <div className="pt-2 space-y-1.5 text-caption text-slate-600 font-medium border-t border-slate-100">
                   {selectedCustomer.email && (
                     <p className="flex items-center gap-1.5">
                       <Mail className="icon-sm text-slate-400" />
                       Email: <span className="text-slate-800 font-semibold">{selectedCustomer.email}</span>
-                    </p>
-                  )}
-                  {selectedCustomer.whatsapp && (
-                    <p className="flex items-center gap-1.5 text-emerald-600">
-                      <MessageCircle className="icon-sm text-emerald-500 shrink-0" />
-                      WhatsApp: <span className="text-slate-800 font-semibold">{selectedCustomer.whatsapp}</span>
                     </p>
                   )}
                   {selectedCustomer.notes && (
@@ -975,7 +925,7 @@ export default function CustomersSection({
               <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100">
                 <button
                   onClick={() => onBookOrder(selectedCustomer)}
-                  className="px-4 py-3 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl text-btn-sm uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all border border-slate-900 shadow-sm"
+                  className="px-4 py-3 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl text-btn-md uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all border border-slate-900 shadow-sm"
                 >
                   <ShoppingCart className="icon-sm text-[#38BDF8]" />
                   Create New Order
@@ -983,7 +933,7 @@ export default function CustomersSection({
 
                 <button
                   onClick={() => setShowHistory(!showHistory)}
-                  className={`px-4 py-3 text-[#0F172A] rounded-xl text-btn-sm uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-colors border ${
+                  className={`px-4 py-3 text-[#0F172A] rounded-xl text-btn-md uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-colors border ${
                     showHistory
                       ? 'bg-sky-50 border-[#38BDF8] text-[#0369A1]'
                       : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
@@ -1002,7 +952,7 @@ export default function CustomersSection({
                   <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider font-display">Order History ({orderHistory.length})</h3>
                   <button
                     onClick={() => setShowHistory(false)}
-                    className="text-slate-500 hover:text-slate-800 text-2xs font-bold uppercase tracking-wider cursor-pointer"
+                    className="text-slate-500 hover:text-slate-800 text-xs font-bold uppercase tracking-wider cursor-pointer"
                   >
                     Hide History
                   </button>
@@ -1013,13 +963,13 @@ export default function CustomersSection({
                 ) : orderHistory.length === 0 ? (
                   <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider py-4 text-center">No orders booked yet for this customer.</p>
                 ) : (
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                  <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
                     {orderHistory.map((order) => (
                       <div key={order.id} className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-4">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <span className="font-black text-slate-900 text-sm font-display">{order.order_number}</span>
-                            <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${
+                            <span className={`px-2 py-0.5 rounded text-xs font-extrabold uppercase ${
                               order.status === 'Ready' || order.status === 'Ready to Deliver'
                                 ? 'bg-[#DCFCE7] text-[#15803D]'
                                 : order.status === 'Delivered'
@@ -1031,10 +981,10 @@ export default function CustomersSection({
                               {order.status}
                             </span>
                           </div>
-                          <p className="text-slate-500 text-[11px] font-medium uppercase tracking-wider">
-                            Booked: {new Date(order.created_at).toLocaleDateString()} • Due: {new Date(order.due_date).toLocaleDateString()}
+                          <p className="text-slate-500 text-sm font-medium uppercase tracking-wider">
+                            Booked: {new Date(order.created_at).toLocaleDateString(undefined, { dateStyle: 'medium' })} • Due: {new Date(order.due_date).toLocaleDateString(undefined, { dateStyle: 'medium' })}
                           </p>
-                          <div className="text-[11px] text-slate-600 font-medium">
+                          <div className="text-sm text-slate-600 font-medium">
                             Items: {order.items.map(it => it.type).join(', ')}
                           </div>
                         </div>
@@ -1043,11 +993,11 @@ export default function CustomersSection({
                             {currency}{order.total_amount}
                           </span>
                           {order.total_amount - order.paid_amount > 0 ? (
-                            <span className="text-[10px] bg-red-50 text-red-700 font-bold px-1.5 py-0.5 rounded border border-red-100">
+                            <span className="text-xs bg-red-50 text-red-700 font-bold px-2 py-1 rounded border border-red-100">
                               Due: {currency}{order.total_amount - order.paid_amount}
                             </span>
                           ) : (
-                            <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-1.5 py-0.5 rounded border border-emerald-100">
+                            <span className="text-xs bg-emerald-50 text-emerald-700 font-bold px-2 py-1 rounded border border-emerald-100">
                               Paid
                             </span>
                           )}
@@ -1156,14 +1106,14 @@ export default function CustomersSection({
                           Measurements ({chosen.name})
                         </span>
                         {chosen.measurement_fields.length === 0 ? (
-                          <p className="text-2xs text-slate-400 italic text-center py-2">
+                          <p className="text-xs text-slate-400 italic text-center py-2">
                             No parameter fields declared for this garment type.
                           </p>
                         ) : (
-                          <div className="grid grid-cols-2 gap-3 max-h-48 overflow-y-auto p-2 bg-white rounded-xl border border-slate-150">
+                          <div className="grid grid-cols-2 gap-3 max-h-[30vh] overflow-y-auto p-2 bg-white rounded-xl border border-slate-150">
                             {chosen.measurement_fields.map((field) => (
-                              <div key={field.name} className="flex flex-col">
-                                <label className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wide truncate">
+                              <div key={field.name} className="flex flex-col min-w-0">
+                                <label className="text-xs text-slate-500 font-extrabold uppercase tracking-wide break-words leading-tight">
                                   {field.name} {field.required ? '*' : ''} ({getUnitAbbreviation(measurementUnit)})
                                 </label>
                                 <input
@@ -1299,7 +1249,7 @@ export default function CustomersSection({
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-white p-4 rounded-xl border border-slate-200">
                         {activeGarmentType.measurement_fields.map((field) => (
                           <div key={field.name} className="space-y-1">
-                            <label className="text-caption-xs font-bold text-slate-500 uppercase block truncate">
+                            <label className="text-xs font-bold text-slate-500 uppercase block break-words leading-tight">
                               {field.name} {field.required ? '*' : ''} ({getUnitAbbreviation(measurementUnit)})
                             </label>
                             <input
@@ -1319,7 +1269,27 @@ export default function CustomersSection({
                         ))}
                       </div>
                     ) : (
-                      <p className="text-2xs text-slate-400">Garment Type specification was deleted or modified.</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-white p-4 rounded-xl border border-slate-200">
+                        {Object.keys(activeProfile.values).map((fieldName) => (
+                          <div key={fieldName} className="space-y-1">
+                            <label className="text-xs font-bold text-slate-500 uppercase block break-words leading-tight">
+                              {fieldName} ({getUnitAbbreviation(measurementUnit)})
+                            </label>
+                            <input
+                              type="text"
+                              value={editingProfileMeasurements[fieldName] || ''}
+                              onChange={(e) => {
+                                setEditingProfileMeasurements(prev => ({
+                                  ...prev,
+                                  [fieldName]: e.target.value
+                                }));
+                              }}
+                              placeholder="--"
+                              className="w-full px-3 py-2 bg-[#F8FAFC] border border-slate-200 rounded-lg text-slate-800 font-bold text-sm focus:outline-none focus:border-[#38BDF8]"
+                            />
+                          </div>
+                        ))}
+                      </div>
                     )
                   ) : (
                     /* READ-ONLY DISPLAY */
@@ -1328,8 +1298,8 @@ export default function CustomersSection({
                         {activeGarmentType.measurement_fields.map((field) => {
                           const val = activeProfile.values[field.name];
                           return (
-                            <div key={field.name} className="p-3.5 bg-white border border-slate-150 rounded-xl flex flex-col justify-between shadow-2xs">
-                              <span className="text-caption-xs font-bold text-slate-400 truncate uppercase">
+                            <div key={field.name} className="p-3.5 bg-white border border-slate-150 rounded-xl flex flex-col justify-between shadow-2xs min-w-0">
+                              <span className="text-xs font-bold text-slate-400 uppercase break-words leading-tight">
                                 {field.name}
                               </span>
                               <span className="text-base font-black text-slate-800 mt-1 block">
@@ -1349,13 +1319,36 @@ export default function CustomersSection({
                         })}
                       </div>
                     ) : (
-                      <p className="text-2xs text-slate-400 italic">This profile uses a custom form. Edit parameters directly or view fields.</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {Object.keys(activeProfile.values).map((fieldName) => {
+                          const val = activeProfile.values[fieldName];
+                          return (
+                            <div key={fieldName} className="p-3.5 bg-white border border-slate-150 rounded-xl flex flex-col justify-between shadow-2xs min-w-0">
+                              <span className="text-xs font-bold text-slate-400 uppercase break-words leading-tight">
+                                {fieldName}
+                              </span>
+                              <span className="text-base font-black text-slate-800 mt-1 block">
+                                {val !== undefined && val !== '' ? (
+                                  <span className="flex items-baseline gap-0.5">
+                                    {val}
+                                    <span className="text-caption-xs font-bold text-slate-400 ml-0.5">
+                                      {getUnitAbbreviation(measurementUnit)}
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300 font-normal">--</span>
+                                )}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     )
                   )}
 
-                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider pt-2 flex justify-between">
-                    <span>Created: {new Date(activeProfile.created_at).toLocaleDateString()}</span>
-                    <span>Updated: {new Date(activeProfile.updated_at).toLocaleDateString()}</span>
+                  <div className="text-xs text-slate-400 font-bold uppercase tracking-wider pt-2 flex justify-between">
+                    <span>Created: {new Date(activeProfile.created_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span>
+                    <span>Updated: {new Date(activeProfile.updated_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span>
                   </div>
 
                 </div>
@@ -1380,7 +1373,7 @@ export default function CustomersSection({
                     }}
                     className="mt-4 px-4 py-2 bg-[#0F172A] hover:bg-slate-850 text-white font-extrabold text-3xs uppercase tracking-wider rounded-xl flex items-center gap-1.5 cursor-pointer"
                   >
-                    <Plus className="w-3.5 h-3.5 text-[#38BDF8]" />
+                    <Plus className="w-4 h-4 text-[#38BDF8]" />
                     Create First Profile
                   </button>
                 </div>
@@ -1425,10 +1418,10 @@ export default function CustomersSection({
                     No custom fields defined for this garment type.
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-4 max-h-[360px] overflow-y-auto p-4 border border-slate-200 rounded-xl bg-slate-50 shadow-3xs">
+                  <div className="grid grid-cols-2 gap-4 max-h-[45vh] overflow-y-auto p-4 border border-slate-200 rounded-xl bg-slate-50 shadow-3xs">
                     {selectedGarmentTypeForNewCustomer.measurement_fields.map((field) => (
-                      <div key={field.name} className="flex flex-col">
-                        <span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wide truncate">
+                      <div key={field.name} className="flex flex-col min-w-0">
+                        <span className="text-xs text-slate-500 font-extrabold uppercase tracking-wide break-words leading-tight">
                           {field.name} {field.required ? '*' : ''} ({getUnitAbbreviation(measurementUnit)})
                         </span>
                         <input
@@ -1474,16 +1467,18 @@ export default function CustomersSection({
       {selectedCustomer && (
         <div className="hidden print:block bg-white text-slate-900 p-8 space-y-6 max-w-2xl mx-auto">
           <div className="text-center space-y-2 border-b-2 border-slate-900 pb-5">
+            {shopLogo && (
+              <img src={shopLogo} alt="Logo" className="h-16 w-auto mx-auto mb-2 object-contain" />
+            )}
             <h1 className="text-3xl font-black tracking-tight uppercase">{shopName || 'Unnamed Tailor Shop'}</h1>
             <h2 className="text-xl font-bold tracking-wider text-slate-500 uppercase">Customer Measurement Sheet</h2>
-            <p className="text-xs">Generated on: {new Date().toLocaleDateString()} • Printed by StitchMaster</p>
+            <p className="text-xs">Generated on: {new Date().toLocaleDateString(undefined, { dateStyle: 'medium' })} • Printed by StitchMaster</p>
           </div>
 
           <div className="grid grid-cols-2 gap-4 text-sm pb-4 border-b border-slate-300">
             <div className="space-y-1">
               <p><strong>Customer Name:</strong> {selectedCustomer.name}</p>
               <p><strong>Phone Number:</strong> {selectedCustomer.phone && !selectedCustomer.phone.startsWith('NO-PHONE-') ? selectedCustomer.phone : 'Not Provided'}</p>
-              {selectedCustomer.whatsapp && <p><strong>WhatsApp:</strong> {selectedCustomer.whatsapp}</p>}
             </div>
             <div className="space-y-1 text-right">
               <p><strong>Address:</strong> {selectedCustomer.address || 'Not Provided'}</p>

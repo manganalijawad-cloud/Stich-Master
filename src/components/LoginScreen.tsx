@@ -1,10 +1,5 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState } from 'react';
-import { Shield, Key, Mail, Info } from 'lucide-react';
+import { Shield, Key, Mail } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface LoginScreenProps {
@@ -28,48 +23,32 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     setError(null);
 
     try {
-      // Authenticate directly using Supabase auth JS client
       const { data, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (authError) {
-        throw authError;
-      }
+      if (authError) throw authError;
+      if (!data.session) throw new Error('Authentication succeeded but no active session was returned.');
 
-      if (!data.session) {
-        throw new Error('Authentication succeeded but no active session was returned.');
-      }
-
-      // Fetch the role profile from our server using the new access token
       const response = await fetch('/api/auth/me', {
-        headers: {
-          'Authorization': `Bearer ${data.session.access_token}`
-        }
+        headers: { 'Authorization': `Bearer ${data.session.access_token}` }
       });
 
       if (!response.ok) {
         let errMsg = 'Failed to fetch user profile from server.';
         try {
           const errData = await response.json();
-          if (errData && errData.error) {
-            errMsg = errData.error;
-          }
-        } catch (e) {
-          // ignore parsing error
-        }
+          if (errData && errData.error) errMsg = errData.error;
+        } catch (e) { /* ignore */ }
         throw new Error(errMsg);
       }
 
       const resData = await response.json();
-      if (!resData || !resData.user) {
-        throw new Error('Invalid profile response received from server.');
-      }
+      if (!resData || !resData.user) throw new Error('Invalid profile response received from server.');
 
       onLoginSuccess(resData.user, data.session.access_token);
     } catch (err: any) {
-      // Handle authentication errors gracefully by displaying the actual Supabase/profile error message.
       setError(err.message || 'Something went wrong during login.');
     } finally {
       setLoading(false);
@@ -77,81 +56,55 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center px-4 py-8 font-sans">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden card-spacing">
-        
-        {/* Banner/Header */}
-        <div className="bg-[#0F172A] -mx-6 -mt-6 p-8 text-center border-b border-slate-800">
+    <div className="min-h-screen bg-[#0F172A] flex flex-col justify-center items-center px-4 font-sans">
+      <div className="w-full max-w-sm">
+        <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center p-3 bg-slate-800 rounded-2xl mb-4 border border-slate-700">
-            <Shield className="icon-xl text-[#38BDF8]" />
+            <Shield className="w-8 h-8 text-[#38BDF8]" />
           </div>
-          <h1 className="text-display-lg text-white">StitchMaster Pro</h1>
-          <p className="text-label-caps text-slate-400 mt-1">Secure Staff Portal</p>
+          <h1 className="text-2xl font-bold text-white font-display uppercase tracking-wider">StitchMaster</h1>
         </div>
 
-        {/* Status Indicators */}
-        <div className="pt-6">
-          <div className="flex items-center gap-3 bg-[#E0F2FE] border border-sky-100 rounded-xl p-3 text-[#0369A1]">
-            <Info className="icon-md shrink-0" />
-            <p className="text-label-caps text-[#0369A1]">Secure Cloud Auth Active</p>
-          </div>
-        </div>
-
-        {/* Login Form */}
-        <form onSubmit={handleSubmit} className="pt-6 space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-body-sm font-semibold">
+            <div className="p-3 bg-red-950/40 border border-red-900/30 rounded-xl text-red-400 text-sm font-semibold">
               {error}
             </div>
           )}
 
-          <div className="space-y-1.5">
-            <label className="block text-label-caps text-slate-700">Email Address</label>
-            <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 icon-md text-slate-400" />
-              <input
-                id="email-input"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="staff@shop.com"
-                className="w-full pl-11 pr-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-body placeholder-slate-400 focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 font-medium transition-all"
-                disabled={loading}
-              />
-            </div>
+          <div className="relative">
+            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email"
+              className="w-full pl-11 pr-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl text-white text-sm placeholder-slate-500 focus:outline-none focus:border-[#38BDF8] focus:ring-2 focus:ring-[#38BDF8]/20 font-medium transition-all"
+              disabled={loading}
+            />
           </div>
 
-          <div className="space-y-1.5">
-            <label className="block text-label-caps text-slate-700">Password</label>
-            <div className="relative">
-              <Key className="absolute left-4 top-1/2 -translate-y-1/2 icon-md text-slate-400" />
-              <input
-                id="password-input"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full pl-11 pr-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-body placeholder-slate-400 focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 font-medium transition-all"
-                disabled={loading}
-              />
-            </div>
+          <div className="relative">
+            <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              className="w-full pl-11 pr-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl text-white text-sm placeholder-slate-500 focus:outline-none focus:border-[#38BDF8] focus:ring-2 focus:ring-[#38BDF8]/20 font-medium transition-all"
+              disabled={loading}
+            />
           </div>
 
           <button
-            id="signin-btn"
             type="submit"
-            className="w-full py-3 px-6 bg-[#0F172A] hover:bg-[#1E293B] text-white text-btn-md rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            className="w-full py-3 bg-[#38BDF8] hover:bg-[#7DD3FC] text-[#0F172A] text-sm font-bold rounded-xl transition-all cursor-pointer disabled:opacity-50 uppercase tracking-wider"
             disabled={loading}
           >
-            {loading ? 'Verifying...' : 'Sign In'}
+            {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
       </div>
-
-      {/* Safety Notice footer */}
-      <p className="text-slate-400 text-caption text-center max-w-xs mt-8 uppercase tracking-wider font-semibold">
-        Protected system. Unauthorized access attempts are monitored and logged.
-      </p>
     </div>
   );
 }
