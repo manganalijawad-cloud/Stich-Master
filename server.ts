@@ -24,6 +24,7 @@ let IS_MULTI_TENANT_AVAILABLE = true;
 let IS_USER_ID_IN_SHOP_SETTINGS_AVAILABLE = true;
 let IS_DELIVERED_AT_AVAILABLE = true;
 let IS_GARMENT_TYPE_ID_IN_STYLING_CATEGORIES_AVAILABLE = true;
+let IS_PRICE_IN_GARMENT_TYPES_AVAILABLE = true;
 
 function proxyBuilder(builder: any, relation?: string): any {
   return new Proxy(builder, {
@@ -154,6 +155,34 @@ function proxyBuilder(builder: any, relation?: string): any {
               }
             }
           }
+
+          // 5. Handle missing price in garment_types
+          if (relation === "garment_types" && !IS_PRICE_IN_GARMENT_TYPES_AVAILABLE) {
+            if (prop === "select") {
+              if (typeof args[0] === "string" && args[0].includes("price")) {
+                let cleanSelect = args[0]
+                  .split(",")
+                  .map((s: string) => s.trim())
+                  .filter((s: string) => s !== "price" && s !== "")
+                  .join(",");
+                args[0] = cleanSelect;
+              }
+            }
+            if (prop === "insert" || prop === "upsert" || prop === "update") {
+              let payload = args[0];
+              if (payload) {
+                if (Array.isArray(payload)) {
+                  args[0] = payload.map(item => {
+                    const { price, ...rest } = item;
+                    return rest;
+                  });
+                } else if (typeof payload === "object") {
+                  const { price, ...rest } = payload;
+                  args[0] = rest;
+                }
+              }
+            }
+          }
           
           const result = val.apply(target, args);
           if (result && typeof result === "object" && typeof result.then === "function") {
@@ -275,6 +304,21 @@ async function checkDatabaseSchema() {
       IS_GARMENT_TYPE_ID_IN_STYLING_CATEGORIES_AVAILABLE = false;
     } else {
       console.log("Database check: garment_type_id column is available in styling_categories.");
+    }
+
+    // Check if price column exists in garment_types
+    const { error: priceError } = await supabaseAdmin.from("garment_types").select("price").limit(1);
+    if (
+      priceError && 
+      (priceError.code === "42703" || 
+       priceError.message?.includes("column") || 
+       priceError.message?.includes("price") ||
+       priceError.message?.includes("Could not find the"))
+    ) {
+      console.warn("WARNING: price column is missing in garment_types. Striping price from garment_types queries.");
+      IS_PRICE_IN_GARMENT_TYPES_AVAILABLE = false;
+    } else {
+      console.log("Database check: price column is available in garment_types.");
     }
   } catch (err) {
     console.error("Database schema check failed, defaulting to single-tenant mode:", err);
@@ -1520,6 +1564,7 @@ function getDefaultGarmentTypes(userId: string) {
       name: "Shalwar Kameez",
       enabled: true,
       display_order: 0,
+      price: 2500,
       measurement_fields: [
         { name: "Kameez Length (Lambaee)", required: true, display_order: 0 },
         { name: "Chest (Chaati)", required: true, display_order: 1 },
@@ -1536,6 +1581,7 @@ function getDefaultGarmentTypes(userId: string) {
       name: "Kurta",
       enabled: true,
       display_order: 1,
+      price: 1800,
       measurement_fields: [
         { name: "Kurta Length", required: true, display_order: 0 },
         { name: "Chest (Chaati)", required: true, display_order: 1 },
@@ -1550,6 +1596,7 @@ function getDefaultGarmentTypes(userId: string) {
       name: "Sherwani",
       enabled: true,
       display_order: 2,
+      price: 12000,
       measurement_fields: [
         { name: "Sherwani Length", required: true, display_order: 0 },
         { name: "Chest", required: true, display_order: 1 },
@@ -1564,6 +1611,7 @@ function getDefaultGarmentTypes(userId: string) {
       name: "Waistcoat (Koti)",
       enabled: true,
       display_order: 3,
+      price: 3500,
       measurement_fields: [
         { name: "Waistcoat Length", required: true, display_order: 0 },
         { name: "Chest", required: true, display_order: 1 },
@@ -1580,6 +1628,7 @@ async function seedDefaultGarmentTypesInTable(userSupabase: any, userId: string,
     name: d.name,
     enabled: d.enabled,
     display_order: d.display_order,
+    price: d.price || 0,
     measurement_fields: d.measurement_fields,
     shop_id: shopId,
     created_by: userId,
@@ -1672,7 +1721,7 @@ app.get("/api/garment-types", requireAuth, async (req: AuthenticatedRequest, res
 });
 
 app.post("/api/garment-types", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
-  const { name, enabled, display_order, measurement_fields } = req.body;
+  const { name, enabled, display_order, price, measurement_fields } = req.body;
   if (!name || name.trim() === "") {
     return res.status(400).json({ error: "Garment Type name is required." });
   }
@@ -1691,6 +1740,7 @@ app.post("/api/garment-types", requireAuth, requireRole(["Owner"]), async (req: 
         name,
         enabled: enabled !== false,
         display_order: display_order || 0,
+        price: price || 0,
         measurement_fields: measurement_fields || [],
         shop_id: shopId,
         created_by: userId,
@@ -1714,6 +1764,7 @@ app.post("/api/garment-types", requireAuth, requireRole(["Owner"]), async (req: 
         name,
         enabled: enabled !== false,
         display_order: display_order !== undefined ? display_order : currentList.length,
+        price: price || 0,
         measurement_fields: measurement_fields || []
       };
       const updatedList = [...currentList, newItem];
@@ -1790,7 +1841,7 @@ app.put("/api/garment-types/reorder", requireAuth, requireRole(["Owner"]), async
 
 app.put("/api/garment-types/:id", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
-  const { name, enabled, display_order, measurement_fields } = req.body;
+  const { name, enabled, display_order, price, measurement_fields } = req.body;
   const userId = req.user!.id;
   const now = new Date().toISOString();
 
@@ -1801,6 +1852,7 @@ app.put("/api/garment-types/:id", requireAuth, requireRole(["Owner"]), async (re
     if (name !== undefined) updatePayload.name = name;
     if (enabled !== undefined) updatePayload.enabled = enabled;
     if (display_order !== undefined) updatePayload.display_order = display_order;
+    if (price !== undefined) updatePayload.price = price;
     if (measurement_fields !== undefined) updatePayload.measurement_fields = measurement_fields;
 
     const { data, error } = await userSupabase
@@ -1833,6 +1885,7 @@ app.put("/api/garment-types/:id", requireAuth, requireRole(["Owner"]), async (re
           name: name !== undefined ? name : item.name,
           enabled: enabled !== undefined ? enabled : item.enabled,
           display_order: display_order !== undefined ? display_order : item.display_order,
+          price: price !== undefined ? price : item.price,
           measurement_fields: measurement_fields !== undefined ? measurement_fields : item.measurement_fields
         };
         return updatedItem;

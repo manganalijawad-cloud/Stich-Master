@@ -78,60 +78,60 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center px-4 py-8 font-sans">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden card-spacing">
         
         {/* Banner/Header */}
-        <div className="bg-[#0F172A] p-8 text-center border-b border-slate-800">
-          <div className="inline-flex items-center justify-center p-3.5 bg-slate-800 rounded-2xl mb-4 border border-slate-700">
-            <Shield className="w-8 h-8 text-[#38BDF8]" />
+        <div className="bg-[#0F172A] -mx-6 -mt-6 p-8 text-center border-b border-slate-800">
+          <div className="inline-flex items-center justify-center p-3 bg-slate-800 rounded-2xl mb-4 border border-slate-700">
+            <Shield className="icon-xl text-[#38BDF8]" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight font-display">StitchMaster Pro</h1>
-          <p className="text-slate-400 mt-1 text-sm tracking-wide uppercase font-semibold">Secure Staff Portal</p>
+          <h1 className="text-display-lg text-white">StitchMaster Pro</h1>
+          <p className="text-label-caps text-slate-400 mt-1">Secure Staff Portal</p>
         </div>
 
         {/* Status Indicators */}
-        <div className="px-8 pt-6">
-          <div className="flex items-center gap-3 bg-[#E0F2FE] border border-sky-100 rounded-xl p-4 text-[#0369A1]">
-            <Info className="w-5 h-5 shrink-0" />
-            <p className="text-xs font-bold uppercase tracking-wider">Secure Cloud Auth Active</p>
+        <div className="pt-6">
+          <div className="flex items-center gap-3 bg-[#E0F2FE] border border-sky-100 rounded-xl p-3 text-[#0369A1]">
+            <Info className="icon-md shrink-0" />
+            <p className="text-label-caps text-[#0369A1]">Secure Cloud Auth Active</p>
           </div>
         </div>
 
         {/* Login Form */}
-        <form onSubmit={handleSubmit} className="p-8 space-y-5">
+        <form onSubmit={handleSubmit} className="pt-6 space-y-4">
           {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-semibold">
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-body-sm font-semibold">
               {error}
             </div>
           )}
 
           <div className="space-y-1.5">
-            <label className="block text-sm font-bold text-slate-700 uppercase tracking-wider">Email Address</label>
+            <label className="block text-label-caps text-slate-700">Email Address</label>
             <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 icon-md text-slate-400" />
               <input
                 id="email-input"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="staff@shop.com"
-                className="w-full pl-11 pr-4 py-3 border-2 border-slate-200 rounded-xl text-slate-800 text-base placeholder-slate-400 focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 font-medium transition-all"
+                className="w-full pl-11 pr-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-body placeholder-slate-400 focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 font-medium transition-all"
                 disabled={loading}
               />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-sm font-bold text-slate-700 uppercase tracking-wider">Password</label>
+            <label className="block text-label-caps text-slate-700">Password</label>
             <div className="relative">
-              <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <Key className="absolute left-4 top-1/2 -translate-y-1/2 icon-md text-slate-400" />
               <input
                 id="password-input"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full pl-11 pr-4 py-3 border-2 border-slate-200 rounded-xl text-slate-800 text-base placeholder-slate-400 focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 font-medium transition-all"
+                className="w-full pl-11 pr-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-body placeholder-slate-400 focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 font-medium transition-all"
                 disabled={loading}
               />
             </div>
@@ -140,7 +140,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           <button
             id="signin-btn"
             type="submit"
-            className="w-full py-3.5 px-6 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold text-base rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            className="w-full py-3 px-6 bg-[#0F172A] hover:bg-[#1E293B] text-white text-btn-md rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             disabled={loading}
           >
             {loading ? 'Verifying...' : 'Sign In'}
@@ -149,7 +149,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       </div>
 
       {/* Safety Notice footer */}
-      <p className="text-slate-400 text-xs mt-8 text-center max-w-xs uppercase tracking-wider font-semibold">
+      <p className="text-slate-400 text-caption text-center max-w-xs mt-8 uppercase tracking-wider font-semibold">
         Protected system. Unauthorized access attempts are monitored and logged.
       </p>
     </div>

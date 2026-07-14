@@ -571,12 +571,12 @@ export default function CustomersSection({
           <div>
             <button
               onClick={() => setShowAllPage(false)}
-              className="flex items-center gap-1.5 text-xs font-bold text-sky-600 hover:text-sky-800 transition-colors uppercase tracking-wider mb-2 cursor-pointer bg-transparent border-none p-0"
+              className="flex items-center gap-1.5 text-btn-sm text-sky-600 hover:text-sky-800 transition-colors uppercase tracking-wider mb-2 cursor-pointer bg-transparent border-none p-0"
             >
               ← Back to Dashboard / Profiles
             </button>
-            <h1 className="text-2xl font-black text-[#0F172A] tracking-tight font-display uppercase">Customer Database</h1>
-            <p className="text-xs text-slate-400 font-medium mt-0.5">Search, filter, and select from the complete customer directory</p>
+            <h1 className="text-h1 text-[#0F172A]">Customer Database</h1>
+            <p className="text-caption text-slate-400 mt-0.5">Search, filter, and select from the complete customer directory</p>
           </div>
           
           <button
@@ -591,30 +591,30 @@ export default function CustomersSection({
               }
               setInitialMeasurements({});
             }}
-            className="px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold rounded-xl flex items-center gap-2 cursor-pointer transition-colors text-xs uppercase tracking-wider self-start sm:self-auto"
+            className="px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl flex items-center gap-2 cursor-pointer transition-colors text-btn-sm uppercase tracking-wider self-start sm:self-auto"
           >
-            <UserPlus className="w-4 h-4 text-[#38BDF8]" />
+            <UserPlus className="icon-sm text-[#38BDF8]" />
             Add Customer
           </button>
         </div>
 
         {/* Search Bar */}
         <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 icon-md text-slate-400" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by name, phone..."
-            className="w-full pl-10 pr-4 py-2 bg-white border-2 border-slate-200 rounded-xl text-slate-800 text-sm placeholder-slate-400 focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all font-medium"
+            className="w-full pl-10 pr-4 py-2 bg-white border-2 border-slate-200 rounded-xl text-slate-800 text-body-sm placeholder-slate-400 focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all font-medium"
           />
         </div>
 
         {/* Database List Table/Grid */}
         <div className="overflow-x-auto border border-slate-150 rounded-xl">
-          <table className="w-full text-left border-collapse text-xs">
+          <table className="w-full text-left border-collapse text-table-cell">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-150 text-slate-400 uppercase tracking-wider font-extrabold text-[10px]">
+              <tr className="bg-slate-50 border-b border-slate-150 text-slate-400 font-semibold text-table-header">
                 <th className="p-4">Customer Name</th>
                 <th className="p-4">Mobile Number</th>
                 <th className="p-4">Address</th>
@@ -638,11 +638,11 @@ export default function CustomersSection({
               ) : (
                 customers.map((c) => (
                   <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="p-4 font-bold text-slate-900">{c.name}</td>
+                     <td className="p-4 font-bold text-slate-900">{c.name}</td>
                     <td className="p-4">
                       {c.phone && !c.phone.startsWith('NO-PHONE-') ? (
                         <span className="flex items-center gap-1.5 text-slate-600 font-semibold">
-                          <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <Phone className="icon-sm text-slate-400 shrink-0" />
                           {c.phone}
                         </span>
                       ) : (
@@ -653,7 +653,7 @@ export default function CustomersSection({
                     <td className="p-4">
                       {c.whatsapp ? (
                         <span className="text-emerald-600 font-semibold flex items-center gap-1">
-                          <MessageCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                          <MessageCircle className="icon-sm text-emerald-500 shrink-0" />
                           {c.whatsapp}
                         </span>
                       ) : (
@@ -666,7 +666,7 @@ export default function CustomersSection({
                           setSelectedCustomer(c);
                           setShowAllPage(false);
                         }}
-                        className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold uppercase tracking-wider rounded-lg text-[10px] transition-all cursor-pointer border border-sky-100"
+                        className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold uppercase tracking-wider rounded-lg text-btn-sm transition-all cursor-pointer border border-sky-100"
                       >
                         View Profile &amp; Measure
                       </button>
@@ -701,7 +701,7 @@ export default function CustomersSection({
       <div className="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6 flex flex-col justify-between min-h-[480px]">
         <div className="space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight font-display uppercase">Customers</h2>
+            <h2 className="text-h2 font-bold text-slate-900 tracking-tight font-display">Customers</h2>
             {!isCreating && (
               <button
                 onClick={() => {
@@ -714,13 +714,35 @@ export default function CustomersSection({
                   }
                   setInitialMeasurements({});
                 }}
-                className="px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold rounded-xl flex items-center gap-2 cursor-pointer transition-colors text-xs uppercase tracking-wider"
+                className="px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl flex items-center gap-2 cursor-pointer transition-colors text-btn-sm uppercase tracking-wider"
               >
-                <UserPlus className="w-4 h-4 text-[#38BDF8]" />
+                <UserPlus className="icon-sm text-[#38BDF8]" />
                 Add Customer
               </button>
             )}
           </div>
+
+          {!isCreating && (
+            <div className="relative">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 icon-md text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search customers by name, phone..."
+                className="w-full pl-10 pr-10 py-2 bg-slate-50 border-2 border-slate-150 rounded-xl text-slate-800 text-body-sm font-semibold focus:outline-none focus:border-[#38BDF8] focus:bg-white focus:ring-4 focus:ring-sky-50 transition-all placeholder-slate-400"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                >
+                  <X className="icon-md" />
+                </button>
+              )}
+            </div>
+          )}
 
           {isCreating ? (
             /* CREATE CUSTOMER FORM */
@@ -743,19 +765,19 @@ export default function CustomersSection({
               )}
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">NAME*</label>
+                <label className="block text-label-caps text-slate-600">NAME*</label>
                 <input
                   type="text"
                   required
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="e.g. Ali Khan"
-                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-sm font-medium focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all"
+                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-body font-medium focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">
+                <label className="block text-label-caps text-slate-600">
                   MOBILE NUMBER{isNameDuplicate && <span className="text-red-500">* (Required - Name already exists)</span>}
                 </label>
                 <input
@@ -764,47 +786,53 @@ export default function CustomersSection({
                   value={newPhone}
                   onChange={(e) => setNewPhone(e.target.value)}
                   placeholder="e.g. 0300-1234567"
-                  className={`w-full px-4 py-2.5 border-2 rounded-xl text-slate-800 text-sm font-medium focus:outline-none focus:ring-4 focus:ring-sky-100 transition-all ${isNameDuplicate ? 'border-amber-300 focus:border-amber-500' : 'border-slate-200 focus:border-[#38BDF8]'}`}
+                  className={`w-full px-4 py-2.5 border-2 rounded-xl text-slate-800 text-body font-medium focus:outline-none focus:ring-4 focus:ring-sky-100 transition-all ${isNameDuplicate ? 'border-amber-300 focus:border-amber-500' : 'border-slate-200 focus:border-[#38BDF8]'}`}
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">ADDRESS</label>
+                <label className="block text-label-caps text-slate-600">ADDRESS</label>
                 <input
                   type="text"
                   value={newAddress}
                   onChange={(e) => setNewAddress(e.target.value)}
                   placeholder="e.g. House 45, Tariq Road, Karachi"
-                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-sm font-medium focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all"
+                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-body font-medium focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-600 block uppercase tracking-wider">NOTE</label>
+                <label className="block text-label-caps text-slate-600">NOTE</label>
                 <textarea
                   value={newNotes}
                   onChange={(e) => setNewNotes(e.target.value)}
                   placeholder="Preferred fits, specific styling instructions..."
                   rows={2}
-                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-sm font-medium focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all"
+                  className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-body font-medium focus:outline-none focus:border-[#38BDF8] focus:ring-4 focus:ring-sky-100 transition-all"
                 />
               </div>
             </form>
           ) : (
-            /* RECENT CUSTOMER LIST (LIMIT 6) */
+            /* RECENT CUSTOMER OR SEARCH LIST */
             <div className="space-y-3">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
-                Newly Added Customers
+              <span className="text-caption-xs font-extrabold text-slate-400 uppercase block">
+                {searchQuery ? `Search Results (${customers.length})` : 'Newly Added Customers'}
               </span>
 
               <div className="space-y-1 max-h-[380px] overflow-y-auto pr-1">
-                {recentLoading && recentCustomers.length === 0 && (
-                  <p className="text-center text-slate-400 py-3 text-[10px] font-bold uppercase tracking-wider animate-pulse">Loading...</p>
+                {loading && (
+                  <p className="text-center text-slate-400 py-3 text-caption-xs font-bold uppercase tracking-wider animate-pulse">Searching...</p>
                 )}
-                {!recentLoading && recentCustomers.length === 0 && (
-                  <p className="text-center text-slate-400 py-6 text-[10px] font-bold uppercase tracking-wider">No customers found.</p>
+                {!loading && searchQuery && customers.length === 0 && (
+                  <p className="text-center text-slate-400 py-6 text-caption-xs font-bold uppercase tracking-wider">No matching customers found.</p>
                 )}
-                {recentCustomers.map((c) => (
+                {!searchQuery && recentLoading && recentCustomers.length === 0 && (
+                  <p className="text-center text-slate-400 py-3 text-caption-xs font-bold uppercase tracking-wider animate-pulse">Loading...</p>
+                )}
+                {!searchQuery && !recentLoading && recentCustomers.length === 0 && (
+                  <p className="text-center text-slate-400 py-6 text-caption-xs font-bold uppercase tracking-wider">No customers found.</p>
+                )}
+                {(searchQuery ? customers : recentCustomers).map((c) => (
                   <button
                     key={c.id}
                     onClick={() => {
@@ -817,19 +845,19 @@ export default function CustomersSection({
                     }`}
                   >
                     <div className="space-y-0.5">
-                      <p className="font-bold text-slate-800 text-xs">{c.name}</p>
+                      <p className="font-bold text-slate-800 text-body-sm">{c.name}</p>
                       {c.phone && !c.phone.startsWith('NO-PHONE-') ? (
-                        <div className="flex items-center gap-1 text-slate-500 text-[10px] font-semibold">
-                          <Phone className="w-3 h-3 shrink-0" />
+                        <div className="flex items-center gap-1 text-slate-500 text-caption-xs font-semibold">
+                          <Phone className="icon-sm text-slate-400 shrink-0" />
                           <span>{c.phone}</span>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-1 text-slate-400 text-[10px] font-medium italic">
+                        <div className="flex items-center gap-1 text-slate-400 text-caption-xs font-medium italic">
                           No phone
                         </div>
                       )}
                     </div>
-                    <ChevronRight className={`w-4 h-4 shrink-0 ${selectedCustomer?.id === c.id ? 'text-sky-500' : 'text-slate-400'}`} />
+                    <ChevronRight className={`icon-md shrink-0 ${selectedCustomer?.id === c.id ? 'text-sky-500' : 'text-slate-400'}`} />
                   </button>
                 ))}
               </div>
@@ -871,47 +899,42 @@ export default function CustomersSection({
             {/* Header */}
             <div className="border-b border-slate-100 pb-3 space-y-2">
               <div className="space-y-0.5">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Customer Profile</span>
-                <h1 className="text-lg font-bold text-slate-900 tracking-tight uppercase">{selectedCustomer.name}</h1>
+                <span className="text-caption-xs font-bold text-slate-400 uppercase block">Active Customer Profile</span>
+                <h1 className="text-h2 font-bold text-slate-900 tracking-tight uppercase">{selectedCustomer.name}</h1>
               </div>
 
               {/* Attributes display */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
                 <div className="space-y-3">
                   <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Customer Name</span>
-                    <span className="text-sm font-extrabold text-slate-800 block mt-0.5">{selectedCustomer.name}</span>
-                  </div>
-
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Phone Number</span>
+                    <span className="text-caption-xs font-bold text-slate-400 uppercase block">Phone Number</span>
                     {selectedCustomer.phone && !selectedCustomer.phone.startsWith('NO-PHONE-') ? (
-                      <span className="text-sm font-semibold text-slate-700 flex items-center gap-1.5 mt-0.5">
-                        <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+                      <span className="text-body-sm font-semibold text-slate-700 flex items-center gap-1.5 mt-0.5">
+                        <Phone className="icon-sm text-slate-400 shrink-0" />
                         {selectedCustomer.phone}
                       </span>
                     ) : (
-                      <span className="text-xs text-slate-400 italic block mt-0.5">No phone number provided</span>
+                      <span className="text-caption text-slate-400 italic block mt-0.5">No phone number provided</span>
                     )}
                   </div>
 
                   <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Address</span>
+                    <span className="text-caption-xs font-bold text-slate-400 uppercase block">Address</span>
                     {selectedCustomer.address ? (
-                      <span className="text-sm font-semibold text-slate-700 flex items-center gap-1.5 mt-0.5">
-                        <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
+                      <span className="text-body-sm font-semibold text-slate-700 flex items-center gap-1.5 mt-0.5">
+                        <MapPin className="icon-sm text-slate-400 shrink-0" />
                         {selectedCustomer.address}
                       </span>
                     ) : (
-                      <span className="text-xs text-slate-400 italic block mt-0.5">No address provided</span>
+                      <span className="text-caption text-slate-400 italic block mt-0.5">No address provided</span>
                     )}
                   </div>
                 </div>
 
                 <div className="space-y-3">
                   <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Last Updated</span>
-                    <span className="text-sm font-extrabold text-slate-700 block mt-0.5">
+                    <span className="text-caption-xs font-bold text-slate-400 uppercase block">Last Updated</span>
+                    <span className="text-body-sm font-extrabold text-slate-700 block mt-0.5">
                       {getLastUpdated().toLocaleString('en-US', {
                         year: 'numeric',
                         month: 'short',
@@ -921,34 +944,27 @@ export default function CustomersSection({
                       })}
                     </span>
                   </div>
-
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Measurement Unit</span>
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-2xs font-extrabold uppercase tracking-wider bg-sky-50 text-sky-800 border border-sky-200 mt-1">
-                      {measurementUnit}
-                    </span>
-                  </div>
                 </div>
               </div>
 
               {/* Extra details (optional parameters if exist) */}
               {(selectedCustomer.email || selectedCustomer.whatsapp || selectedCustomer.notes) && (
-                <div className="pt-2 space-y-1.5 text-xs text-slate-600 font-medium border-t border-slate-100">
+                <div className="pt-2 space-y-1.5 text-caption text-slate-600 font-medium border-t border-slate-100">
                   {selectedCustomer.email && (
                     <p className="flex items-center gap-1.5">
-                      <Mail className="w-4 h-4 text-slate-400" />
+                      <Mail className="icon-sm text-slate-400" />
                       Email: <span className="text-slate-800 font-semibold">{selectedCustomer.email}</span>
                     </p>
                   )}
                   {selectedCustomer.whatsapp && (
                     <p className="flex items-center gap-1.5 text-emerald-600">
-                      <MessageCircle className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <MessageCircle className="icon-sm text-emerald-500 shrink-0" />
                       WhatsApp: <span className="text-slate-800 font-semibold">{selectedCustomer.whatsapp}</span>
                     </p>
                   )}
                   {selectedCustomer.notes && (
-                    <div className="flex items-start gap-2 bg-slate-50 p-3 rounded-xl border border-slate-150/50 mt-2 text-slate-600 text-xs">
-                      <FileText className="w-4.5 h-4.5 mt-0.5 shrink-0 text-slate-400" />
+                    <div className="flex items-start gap-2 bg-slate-50 p-3 rounded-xl border border-slate-150/50 mt-2 text-slate-600 text-body-sm">
+                      <FileText className="icon-md mt-0.5 shrink-0 text-slate-400" />
                       <p className="leading-relaxed">{selectedCustomer.notes}</p>
                     </div>
                   )}
@@ -959,21 +975,21 @@ export default function CustomersSection({
               <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100">
                 <button
                   onClick={() => onBookOrder(selectedCustomer)}
-                  className="px-4 py-3 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all border border-slate-900 shadow-sm"
+                  className="px-4 py-3 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl text-btn-sm uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all border border-slate-900 shadow-sm"
                 >
-                  <ShoppingCart className="w-4 h-4 text-[#38BDF8]" />
+                  <ShoppingCart className="icon-sm text-[#38BDF8]" />
                   Create New Order
                 </button>
 
                 <button
                   onClick={() => setShowHistory(!showHistory)}
-                  className={`px-4 py-3 font-bold rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-colors border ${
+                  className={`px-4 py-3 text-[#0F172A] rounded-xl text-btn-sm uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-colors border ${
                     showHistory
                       ? 'bg-sky-50 border-[#38BDF8] text-[#0369A1]'
                       : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                   }`}
                 >
-                  <FileText className="w-4 h-4 text-sky-500" />
+                  <FileText className="icon-sm text-sky-500" />
                   Order History ({orderHistory.length})
                 </button>
               </div>
@@ -1049,8 +1065,8 @@ export default function CustomersSection({
               {/* Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
                 <div>
-                  <h3 className="text-base font-black text-slate-900 uppercase tracking-wider font-display flex items-center gap-1.5">
-                    <Layers className="w-5 h-5 text-[#38BDF8]" />
+                  <h3 className="text-h3 font-bold text-slate-900 uppercase tracking-wider font-display flex items-center gap-1.5">
+                    <Layers className="icon-md text-[#38BDF8]" />
                     MEASUREMENTS
                   </h3>
                 </div>
@@ -1066,17 +1082,17 @@ export default function CustomersSection({
                         }
                         setNewProfileMeasurements({});
                       }}
-                      className="px-3 py-1.5 bg-slate-950 hover:bg-slate-850 text-white font-extrabold text-3xs uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer transition-all"
+                      className="px-3 py-1.5 bg-slate-950 hover:bg-slate-850 text-white font-extrabold text-caption-xs uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer transition-all"
                     >
-                      <Plus className="w-3.5 h-3.5 text-[#38BDF8]" />
+                      <Plus className="icon-xs text-[#38BDF8]" />
                       Add Profile
                     </button>
                     {profiles.length > 0 && (
                       <button
                         onClick={handlePrintAllProfiles}
-                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-3xs uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer transition-all border border-slate-200"
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-caption-xs uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer transition-all border border-slate-200"
                       >
-                        <Printer className="w-3.5 h-3.5 text-slate-500" />
+                        <Printer className="icon-sm text-slate-500" />
                         Print All
                       </button>
                     )}
@@ -1229,16 +1245,16 @@ export default function CustomersSection({
                           <button
                             type="button"
                             onClick={() => setEditingProfileId(null)}
-                            className="px-2.5 py-1.5 text-slate-500 hover:text-slate-800 font-extrabold text-3xs uppercase tracking-wider cursor-pointer"
+                            className="px-2.5 py-1.5 text-slate-500 hover:text-slate-800 font-extrabold text-caption-xs uppercase tracking-wider cursor-pointer"
                           >
                             Cancel
                           </button>
                           <button
                             type="button"
                             onClick={() => handleEditProfileSave(activeProfile.id)}
-                            className="px-3 py-1.5 bg-[#0F172A] hover:bg-[#1E293B] text-white font-black text-3xs uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                            className="px-3 py-1.5 bg-[#0F172A] hover:bg-[#1E293B] text-white font-black text-caption-xs uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
                           >
-                            <Check className="w-3.5 h-3.5 text-[#38BDF8]" />
+                            <Check className="icon-sm text-[#38BDF8]" />
                             Save
                           </button>
                         </>
@@ -1253,7 +1269,7 @@ export default function CustomersSection({
                             className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-250/50 rounded-lg cursor-pointer transition-colors"
                             title="Edit measurements"
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
+                            <Edit2 className="icon-sm" />
                           </button>
                           <button
                             type="button"
@@ -1261,7 +1277,7 @@ export default function CustomersSection({
                             className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-250/50 rounded-lg cursor-pointer transition-colors"
                             title="Print profile sheet"
                           >
-                            <Printer className="w-3.5 h-3.5" />
+                            <Printer className="icon-sm" />
                           </button>
                           <button
                             type="button"
@@ -1269,7 +1285,7 @@ export default function CustomersSection({
                             className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg cursor-pointer transition-colors"
                             title="Delete profile"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="icon-sm" />
                           </button>
                         </>
                       )}
@@ -1283,7 +1299,7 @@ export default function CustomersSection({
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-white p-4 rounded-xl border border-slate-200">
                         {activeGarmentType.measurement_fields.map((field) => (
                           <div key={field.name} className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block truncate">
+                            <label className="text-caption-xs font-bold text-slate-500 uppercase block truncate">
                               {field.name} {field.required ? '*' : ''} ({getUnitAbbreviation(measurementUnit)})
                             </label>
                             <input
@@ -1313,14 +1329,14 @@ export default function CustomersSection({
                           const val = activeProfile.values[field.name];
                           return (
                             <div key={field.name} className="p-3.5 bg-white border border-slate-150 rounded-xl flex flex-col justify-between shadow-2xs">
-                              <span className="text-[10px] font-extrabold text-slate-400 truncate uppercase tracking-wider">
+                              <span className="text-caption-xs font-bold text-slate-400 truncate uppercase">
                                 {field.name}
                               </span>
                               <span className="text-base font-black text-slate-800 mt-1 block">
                                 {val !== undefined && val !== '' ? (
                                   <span className="flex items-baseline gap-0.5">
                                     {val}
-                                    <span className="text-3xs font-extrabold text-slate-400 ml-0.5">
+                                    <span className="text-caption-xs font-bold text-slate-400 ml-0.5">
                                       {getUnitAbbreviation(measurementUnit)}
                                     </span>
                                   </span>

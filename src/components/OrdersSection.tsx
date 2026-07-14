@@ -4,9 +4,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Calendar, DollarSign, Plus, Trash2, Printer, CheckCircle, Clock, ShieldAlert, ArrowRight, ChevronRight, Edit3, Search, UserPlus, ChevronLeft, Sparkles, Scissors, Palette, Layers, Info, Check } from 'lucide-react';
+import { ShoppingCart, Calendar, DollarSign, Plus, Trash2, Printer, CheckCircle, Clock, ShieldAlert, ArrowRight, ChevronRight, Edit3, Search, UserPlus, ChevronLeft, Sparkles, Scissors, Palette, Layers, Info, Check, QrCode, Camera, Video, Smartphone } from 'lucide-react';
 import { Customer, Order, OrderItem, OrderStatus, UserRole, PipelineStage, GarmentType, StylingCategory, MeasurementProfile } from '../types';
 import QRCode from 'qrcode';
+import jsQR from 'jsqr';
 
 interface OrdersSectionProps {
   token: string;
@@ -18,6 +19,8 @@ interface OrdersSectionProps {
   onClearActiveCustomer?: () => void;
   activeOrderId?: string;
   onClearActiveOrderId?: () => void;
+  activeItemIdx?: number;
+  onClearActiveItemIdx?: () => void;
   shopName: string;
   shopPhone: string;
   shopAddress: string;
@@ -33,6 +36,8 @@ export default function OrdersSection({
   onClearActiveCustomer,
   activeOrderId,
   onClearActiveOrderId,
+  activeItemIdx,
+  onClearActiveItemIdx,
   shopName,
   shopPhone,
   shopAddress,
@@ -59,11 +64,21 @@ export default function OrdersSection({
   // Selected order details
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
+  const [qrCodeUrls, setQrCodeUrls] = useState<string[]>([]);
 
-  // Dynamically generate QR code whenever selectedOrder changes
+  // Scanner and Compact Action Screen States
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [scannedGarmentItem, setScannedGarmentItem] = useState<{
+    order: Order;
+    itemIdx: number;
+  } | null>(null);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [updateSuccessState, setUpdateSuccessState] = useState(false);
+
+  // Dynamically generate QR codes (order-level & garment-level) whenever selectedOrder changes
   useEffect(() => {
     if (selectedOrder) {
-      // Direct deep link query parameter URL that opens this specific order
+      // 1. Generate Order-level QR Code
       const orderUrl = `${window.location.origin}${window.location.pathname}?orderId=${selectedOrder.id}`;
       QRCode.toDataURL(orderUrl, {
         width: 150,
@@ -79,8 +94,34 @@ export default function OrdersSection({
         .catch((err) => {
           console.error('Failed to generate QR Code data URL:', err);
         });
+
+      // 2. Generate Garment-level QR Codes
+      if (selectedOrder.items && selectedOrder.items.length > 0) {
+        const itemPromises = selectedOrder.items.map((item, idx) => {
+          const itemUrl = `${window.location.origin}${window.location.pathname}?orderId=${selectedOrder.id}&itemIdx=${idx}`;
+          return QRCode.toDataURL(itemUrl, {
+            width: 120,
+            margin: 1,
+            color: {
+              dark: '#000000',
+              light: '#ffffff',
+            },
+          });
+        });
+
+        Promise.all(itemPromises)
+          .then((urls) => {
+            setQrCodeUrls(urls);
+          })
+          .catch((err) => {
+            console.error('Failed to generate garment QR Codes:', err);
+          });
+      } else {
+        setQrCodeUrls([]);
+      }
     } else {
       setQrCodeUrl('');
+      setQrCodeUrls([]);
     }
   }, [selectedOrder]);
 
@@ -94,7 +135,20 @@ export default function OrdersSection({
           });
           if (res.ok) {
             const fullOrder = await res.json();
-            setSelectedOrder(fullOrder);
+            
+            // If activeItemIdx is specified, trigger the scanned garment action modal!
+            if (activeItemIdx !== undefined && fullOrder.items && fullOrder.items[activeItemIdx]) {
+              setScannedGarmentItem({
+                order: fullOrder,
+                itemIdx: activeItemIdx,
+              });
+              if (onClearActiveItemIdx) {
+                onClearActiveItemIdx();
+              }
+            } else {
+              setSelectedOrder(fullOrder);
+            }
+            
             setIsCreating(false);
             setIsEditing(false);
             if (onClearActiveOrderId) {
@@ -109,7 +163,7 @@ export default function OrdersSection({
       };
       fetchAndSelectOrder();
     }
-  }, [activeOrderId, token]);
+  }, [activeOrderId, activeItemIdx, token]);
   
   // Create Order Form State
   const [isCreating, setIsCreating] = useState(false);
@@ -558,7 +612,7 @@ export default function OrdersSection({
       id: Math.random().toString(36).substring(2, 11),
       garment_type_id: garmentType.id,
       type: garmentType.name,
-      price: 0,
+      price: garmentType.price || 0,
       delivery_date: sharedDeliveryDate || d.toISOString().split('T')[0],
       measurement_snapshot,
       styling_snapshot,
@@ -690,6 +744,7 @@ export default function OrdersSection({
         ...item,
         garment_type_id: selectedGarmentType.id,
         type: selectedGarmentType.name,
+        price: selectedGarmentType.price || 0,
         measurement_snapshot,
         styling_snapshot
       };
@@ -1010,6 +1065,174 @@ export default function OrdersSection({
     }
   };
 
+  // CAMERA SCANNER & OVERLAY HELPERS
+  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  const [cameraPermissionError, setCameraPermissionError] = useState<string | null>(null);
+  const [scannerActiveTab, setScannerActiveTab] = useState<'camera' | 'simulator'>('camera');
+
+  // Handle scanned value (parsed from QR code URL or simulated selection)
+  const handleScannedValue = async (value: string) => {
+    try {
+      // Parse the scanned URL
+      let urlObj: URL;
+      try {
+        urlObj = new URL(value);
+      } catch (e) {
+        // Fallback in case it's just raw parameters or a relative URL
+        urlObj = new URL(value, window.location.origin);
+      }
+      
+      const orderId = urlObj.searchParams.get('orderId');
+      const itemIdxStr = urlObj.searchParams.get('itemIdx');
+      
+      if (!orderId) {
+        alert('Invalid QR code scanned. It does not contain an Order ID.');
+        return;
+      }
+
+      // Close scanner modal
+      setIsScannerOpen(false);
+
+      // Trigger a gentle vibration for haptic feedback
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(100);
+      }
+
+      // Fetch order details
+      const res = await fetch(`/api/orders/${orderId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const fullOrder = await res.json();
+        const itemIdx = itemIdxStr !== null ? parseInt(itemIdxStr, 10) : 0;
+        
+        setScannedGarmentItem({
+          order: fullOrder,
+          itemIdx: itemIdx,
+        });
+      } else {
+        alert('Could not locate the scanned order record.');
+      }
+    } catch (err) {
+      console.error('Error handling scanned QR code:', err);
+      alert('Error parsing scanned QR Code.');
+    }
+  };
+
+  // Camera stream and scanning loop effect
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    let animationFrameId: number;
+
+    if (isScannerOpen && scannerActiveTab === 'camera') {
+      setCameraPermissionError(null);
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        .then((s) => {
+          stream = s;
+          if (videoRef.current) {
+            videoRef.current.srcObject = s;
+            videoRef.current.setAttribute('playsinline', 'true');
+            videoRef.current.play().catch(e => console.error("Error playing video:", e));
+            
+            // Start frame scan loop
+            const scan = () => {
+              if (!videoRef.current || !canvasRef.current || !isScannerOpen || scannerActiveTab !== 'camera') {
+                return;
+              }
+
+              const video = videoRef.current;
+              const canvas = canvasRef.current;
+              const context = canvas.getContext('2d');
+
+              if (video.readyState === video.HAVE_ENOUGH_DATA && context) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                  inversionAttempts: 'dontInvert',
+                });
+
+                if (code) {
+                  handleScannedValue(code.data);
+                  return; // Exit loop on success
+                }
+              }
+              animationFrameId = requestAnimationFrame(scan);
+            };
+            animationFrameId = requestAnimationFrame(scan);
+          }
+        })
+        .catch((err) => {
+          console.error('Error accessing camera:', err);
+          setCameraPermissionError('Could not access device camera. Please grant permissions, or use the Simulator tab.');
+          setScannerActiveTab('simulator');
+        });
+    }
+
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [isScannerOpen, scannerActiveTab]);
+
+  // Update status from Scanned Garment Compact Action Screen
+  const handleUpdateScannedStatus = async (nextStatus: string) => {
+    if (!scannedGarmentItem) return;
+    const { order } = scannedGarmentItem;
+    
+    setUpdatingStatus(true);
+    try {
+      const res = await fetch(`/api/orders/${order.id}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      
+      if (res.ok) {
+        const updatedOrder = await res.json();
+        
+        // Update local orders list state
+        setOrders((prev) => prev.map(o => o.id === order.id ? { ...o, status: nextStatus } : o));
+        
+        // Update selectedOrder if it matches
+        if (selectedOrder && selectedOrder.id === order.id) {
+          setSelectedOrder(updatedOrder);
+        }
+        
+        // Trigger success state and slide away the compact action modal
+        setUpdateSuccessState(true);
+        setTimeout(() => {
+          setUpdateSuccessState(false);
+          setScannedGarmentItem(null);
+          fetchOrders(); // Refresh queue
+        }, 1200);
+      } else {
+        const errData = await res.json();
+        alert(errData.error || 'Failed to update garment stage.');
+      }
+    } catch (err) {
+      console.error('Error updating garment stage:', err);
+      alert('Error communicating with server.');
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
+  const handlePrintAgainScanned = (order: Order) => {
+    setSelectedOrder(order);
+    setTimeout(() => {
+      window.print();
+    }, 200);
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
       
@@ -1017,15 +1240,15 @@ export default function OrdersSection({
       {!isCreating && (
         <div className="lg:col-span-5 bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-5">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight font-display uppercase">
+            <h2 className="text-h1 font-bold text-slate-900 tracking-tight font-display uppercase">
               {viewMode === 'Active' ? 'Active Queue' : 'Archived Vault'}
             </h2>
             {!isCreating && (
               <button
                 onClick={startNewBooking}
-                className="px-3.5 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold rounded-xl flex items-center gap-1.5 cursor-pointer text-xs uppercase tracking-wider transition-colors"
+                className="px-3.5 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold rounded-xl flex items-center gap-1.5 cursor-pointer text-btn-sm uppercase tracking-wider transition-colors"
               >
-                <ShoppingCart className="w-4 h-4 text-[#38BDF8]" />
+                <ShoppingCart className="icon-sm text-[#38BDF8]" />
                 Book Order
               </button>
             )}
@@ -1039,7 +1262,7 @@ export default function OrdersSection({
                 setViewMode('Active');
                 setActiveFilter('All');
               }}
-              className={`py-2 text-xs font-bold rounded-lg cursor-pointer transition-all text-center uppercase tracking-wider ${
+              className={`py-2 text-btn-sm font-bold rounded-lg cursor-pointer transition-all text-center uppercase tracking-wider ${
                 viewMode === 'Active'
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-500 hover:text-slate-850'
@@ -1053,7 +1276,7 @@ export default function OrdersSection({
                 setViewMode('Archived');
                 setActiveFilter('Archived');
               }}
-              className={`py-2 text-xs font-bold rounded-lg cursor-pointer transition-all text-center uppercase tracking-wider ${
+              className={`py-2 text-btn-sm font-bold rounded-lg cursor-pointer transition-all text-center uppercase tracking-wider ${
                 viewMode === 'Archived'
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-500 hover:text-slate-850'
@@ -1074,7 +1297,7 @@ export default function OrdersSection({
                     key={tabId}
                     type="button"
                     onClick={() => setActiveFilter(tabId)}
-                    className={`py-1.5 px-2.5 rounded-lg text-2xs font-extrabold transition-all cursor-pointer text-center uppercase tracking-wider truncate border border-transparent ${
+                    className={`py-1.5 px-2.5 rounded-lg text-btn-sm font-extrabold transition-all cursor-pointer text-center uppercase tracking-wider truncate border border-transparent ${
                       isSelected
                         ? 'bg-[#1E293B] text-white border-slate-700 shadow-sm font-black'
                         : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
@@ -1087,26 +1310,40 @@ export default function OrdersSection({
               })}
             </div>
           ) : (
-            <div className="p-2 bg-purple-50 rounded-xl border border-purple-100 text-center text-purple-700 text-xs font-bold uppercase tracking-wider">
+            <div className="p-2 bg-purple-50 rounded-xl border border-purple-100 text-center text-purple-700 text-btn-sm font-bold uppercase tracking-wider">
               Displaying Archived Vault Records
             </div>
           )}
 
-          {/* Search */}
+          {/* Search & Scanner */}
           <div className="space-y-3">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search order #, customer name..."
-              className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs placeholder-slate-400 font-medium focus:outline-none focus:border-[#38BDF8] focus:ring-2 focus:ring-sky-100 transition-all"
-            />
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 icon-sm text-slate-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search order #, customer name..."
+                  className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-800 text-body-sm placeholder-slate-400 font-medium focus:outline-none focus:border-[#38BDF8] focus:ring-2 focus:ring-sky-100 transition-all"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsScannerOpen(true)}
+                className="px-3.5 py-1.5 bg-[#F8FAFC] hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer text-btn-sm font-extrabold uppercase tracking-wide transition-all"
+                title="Scan QR Code from Device Camera"
+              >
+                <QrCode className="icon-sm text-[#38BDF8]" />
+                <span>Scan QR</span>
+              </button>
+            </div>
 
             {/* Active List */}
             <div className="space-y-1.5 max-h-[440px] overflow-y-auto pr-1">
-              {loading && <p className="text-center text-slate-400 text-[10px] font-bold uppercase tracking-wider py-3">Refreshing Queue...</p>}
+              {loading && <p className="text-center text-slate-400 text-caption-xs font-bold uppercase tracking-wider py-3">Refreshing Queue...</p>}
               {!loading && orders.length === 0 && (
-                <p className="text-center text-slate-400 py-6 text-[10px] font-bold uppercase tracking-wider">No active orders.</p>
+                <p className="text-center text-slate-400 py-6 text-caption-xs font-bold uppercase tracking-wider">No active orders.</p>
               )}
               {orders.map((o) => {
                 const isSelected = selectedOrder?.id === o.id;
@@ -1122,24 +1359,24 @@ export default function OrdersSection({
                   >
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-slate-800 text-xs">{o.order_number}</span>
+                        <span className="font-bold text-slate-800 text-body-sm">{o.order_number}</span>
                         <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase ${getStatusBadgeStyle(o.status)}`}>
                           {stagesList.find(s => s.id === o.status)?.name || o.status}
                         </span>
                       </div>
-                      <p className="font-bold text-slate-800 text-xs">{o.customer_name}</p>
-                      <p className="text-slate-400 text-[10px] uppercase tracking-wider font-bold">Due: {new Date(o.due_date).toLocaleDateString()}</p>
+                      <p className="font-bold text-slate-800 text-body-sm">{o.customer_name}</p>
+                      <p className="text-slate-400 text-caption-xs uppercase tracking-wider font-bold">Due: {new Date(o.due_date).toLocaleDateString()}</p>
                     </div>
                     <div className="text-right space-y-0.5 shrink-0">
-                      <span className="text-base font-black text-slate-850 block font-display">
+                      <span className="text-body font-black text-slate-850 block font-display">
                         {currency}{o.total_amount}
                       </span>
                       {o.total_amount - o.paid_amount > 0 ? (
-                        <span className="text-3xs bg-red-50 text-red-700 font-bold px-1.5 py-0.5 rounded border border-red-100">
+                        <span className="text-[10px] bg-red-50 text-red-700 font-bold px-1.5 py-0.5 rounded border border-red-100">
                           Due: {currency}{o.total_amount - o.paid_amount}
                         </span>
                       ) : (
-                        <span className="text-3xs bg-emerald-50 text-emerald-700 font-bold px-1.5 py-0.5 rounded border border-emerald-100">
+                        <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-1.5 py-0.5 rounded border border-emerald-100">
                           Paid
                         </span>
                       )}
@@ -1151,7 +1388,7 @@ export default function OrdersSection({
                 <button
                   onClick={loadMoreOrders}
                   disabled={loading}
-                  className="w-full mt-3 py-2.5 px-4 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-200 cursor-pointer text-center flex items-center justify-center gap-1.5 transition-all shadow-3xs"
+                  className="w-full mt-3 py-2.5 px-4 bg-white hover:bg-slate-50 text-slate-700 font-bold text-btn-sm uppercase tracking-wider rounded-xl border border-slate-200 cursor-pointer text-center flex items-center justify-center gap-1.5 transition-all shadow-3xs"
                 >
                   {loading ? 'Loading...' : 'Load More Orders'}
                 </button>
@@ -1218,12 +1455,12 @@ export default function OrdersSection({
                 {!showCreateCustomer ? (
                   <div className="space-y-3">
                     <div className="relative">
-                      <Search className="absolute left-3 top-2.5 w-4.5 h-4.5 text-slate-400" />
+                      <Search className="absolute left-3 top-2.5 icon-md text-slate-400" />
                       <input
                         type="text"
                         value={customerSearch}
                         onChange={(e) => setCustomerSearch(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl font-bold text-slate-800 text-xs focus:outline-none focus:border-[#38BDF8] focus:bg-white transition-colors"
+                        className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl font-bold text-slate-800 text-body-sm focus:outline-none focus:border-[#38BDF8] focus:bg-white transition-colors"
                         placeholder="Search customer by name, phone or email..."
                       />
                     </div>
@@ -1232,11 +1469,11 @@ export default function OrdersSection({
                     {customerSearch.trim() && (
                       <div className="bg-white border-2 border-slate-100 rounded-xl max-h-60 overflow-y-auto divide-y divide-slate-100 shadow-sm">
                         {searching ? (
-                          <div className="p-4 text-center text-slate-400 text-2xs uppercase tracking-wider font-extrabold">
+                          <div className="p-4 text-center text-slate-400 text-caption-xs uppercase tracking-wider font-extrabold">
                             Searching client logs...
                           </div>
                         ) : searchResults.length === 0 ? (
-                          <div className="p-4 text-center text-slate-400 text-2xs uppercase tracking-wider font-extrabold">
+                          <div className="p-4 text-center text-slate-400 text-caption-xs uppercase tracking-wider font-extrabold">
                             No matching customers found
                           </div>
                         ) : (
@@ -1248,15 +1485,15 @@ export default function OrdersSection({
                               className="w-full text-left p-3 hover:bg-sky-50/50 flex justify-between items-center transition-colors cursor-pointer group"
                             >
                               <div>
-                                <h4 className="font-bold text-slate-800 text-xs group-hover:text-sky-600">
+                                <h4 className="font-bold text-slate-800 text-body-sm group-hover:text-sky-600">
                                   {cust.name}
                                 </h4>
-                                <p className="text-slate-450 text-2xs mt-0.5">
+                                <p className="text-slate-450 text-caption mt-0.5">
                                   {cust.phone && !cust.phone.startsWith('NO-PHONE-') ? cust.phone : 'No Phone'}
                                   {cust.email ? ` • ${cust.email}` : ''}
                                 </p>
                               </div>
-                              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                              <ChevronRight className="icon-sm text-slate-400 group-hover:translate-x-0.5 transition-transform" />
                             </button>
                           ))
                         )}
@@ -1264,15 +1501,15 @@ export default function OrdersSection({
                     )}
 
                     <div className="text-center py-4">
-                      <span className="text-slate-400 text-2xs font-extrabold uppercase tracking-widest block mb-2">
+                      <span className="text-slate-400 text-caption-xs font-extrabold uppercase tracking-widest block mb-2">
                         - OR -
                       </span>
                       <button
                         type="button"
                         onClick={() => setShowCreateCustomer(true)}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold rounded-lg text-2xs uppercase tracking-wider transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold rounded-lg text-btn-sm uppercase tracking-wider transition-colors cursor-pointer"
                       >
-                        <UserPlus className="w-4 h-4 text-[#38BDF8]" />
+                        <UserPlus className="icon-sm text-[#38BDF8]" />
                         Create New Customer
                       </button>
                     </div>
@@ -1281,13 +1518,13 @@ export default function OrdersSection({
                   /* INLINE CUSTOMER CREATION */
                   <form onSubmit={handleInlineCreateCustomer} className="space-y-4 p-4 bg-slate-50 border border-slate-200/60 rounded-xl">
                     <div className="flex justify-between items-center">
-                      <span className="font-extrabold text-xs text-slate-700 uppercase tracking-wider">
+                      <span className="font-extrabold text-label-caps text-slate-700">
                         New Customer
                       </span>
                       <button
                         type="button"
                         onClick={() => setShowCreateCustomer(false)}
-                        className="text-slate-500 hover:text-slate-800 text-2xs font-bold uppercase tracking-wider cursor-pointer"
+                        className="text-slate-500 hover:text-slate-800 text-btn-sm font-bold uppercase tracking-wider cursor-pointer"
                       >
                         Cancel
                       </button>
@@ -1400,7 +1637,7 @@ export default function OrdersSection({
                     onClick={handleAddBookingItem}
                     className="px-3 py-1.5 border border-slate-200 hover:border-[#38BDF8] bg-white text-slate-800 hover:bg-sky-50 transition-all font-semibold rounded-lg text-2xs uppercase tracking-wider flex items-center gap-1 cursor-pointer"
                   >
-                    <Plus className="w-3.5 h-3.5 text-[#38BDF8]" /> Add Garment Item
+                    ADD ITEM
                   </button>
                 </div>
 
@@ -1468,8 +1705,11 @@ export default function OrdersSection({
                             <input
                               type="number"
                               min="0"
-                              value={item.price || ''}
-                              onChange={(e) => handleUpdateBookingItemField(item.id, 'price', Number(e.target.value))}
+                              value={item.price !== undefined ? item.price : ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                handleUpdateBookingItemField(item.id, 'price', val === '' ? '' : Number(val));
+                              }}
                               className="w-full px-2.5 py-1.5 bg-white border-2 border-slate-200 rounded-lg font-bold text-slate-800 text-xs focus:outline-none focus:border-[#38BDF8]"
                               placeholder="0"
                             />
@@ -1727,7 +1967,7 @@ export default function OrdersSection({
                       onClick={handleEditAddItem}
                       className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-2xs uppercase tracking-wider flex items-center gap-1 cursor-pointer border border-slate-200"
                     >
-                      <Plus className="w-3.5 h-3.5" /> Add Item
+                      ADD ITEM
                     </button>
                   </div>
 
@@ -1853,13 +2093,13 @@ export default function OrdersSection({
                 <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-5 gap-4">
                   <div className="space-y-1">
                     <div className="flex items-center gap-3">
-                      <span className="font-extrabold text-2xl text-slate-900 tracking-tight font-display">{selectedOrder.order_number}</span>
-                      <span className={`px-2.5 py-1 rounded-md text-3xs font-extrabold uppercase ${getStatusBadgeStyle(selectedOrder.status)}`}>
+                      <span className="font-extrabold text-display-lg text-slate-900 tracking-tight font-display">{selectedOrder.order_number}</span>
+                      <span className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase ${getStatusBadgeStyle(selectedOrder.status)}`}>
                         {selectedOrder.status}
                       </span>
                     </div>
-                    <p className="font-extrabold text-lg text-slate-800 font-display">{selectedOrder.customer_name}</p>
-                    <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                    <p className="font-extrabold text-h2 text-slate-800 font-display">{selectedOrder.customer_name}</p>
+                    <p className="text-slate-500 text-caption font-semibold uppercase tracking-wider flex items-center gap-1.5">
                       Contact: <span className="text-slate-800 font-bold">{selectedOrder.customer_phone && !selectedOrder.customer_phone.startsWith('NO-PHONE-') ? selectedOrder.customer_phone : 'Not Provided'}</span>
                     </p>
                   </div>
@@ -1867,15 +2107,15 @@ export default function OrdersSection({
                   <div className="flex flex-wrap items-center gap-2 print:hidden">
                     <button
                       onClick={triggerPrintReceipt}
-                      className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors"
+                      className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold rounded-xl text-btn-sm uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors"
                     >
-                      <Printer className="w-4 h-4 text-slate-500" />
+                      <Printer className="icon-sm text-slate-500" />
                       Print Receipt
                     </button>
 
                     <button
                       onClick={() => handleDuplicateOrder(selectedOrder)}
-                      className="px-3.5 py-2 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors"
+                      className="px-3.5 py-2 bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-bold rounded-xl text-btn-sm uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors"
                     >
                       Duplicate Order
                     </button>
@@ -1889,18 +2129,18 @@ export default function OrdersSection({
                           setEditedSnapshot({ ...selectedOrder.measurement_snapshot });
                           setIsEditing(true);
                         }}
-                        className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors"
+                        className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-btn-sm uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors"
                       >
-                        <Edit3 className="w-4 h-4 text-[#38BDF8]" />
+                        <Edit3 className="icon-sm text-[#38BDF8]" />
                         Edit Order
                       </button>
                     )}
 
                     <button
                       onClick={() => handleDeleteOrder(selectedOrder)}
-                      className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold rounded-xl text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors"
+                      className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold rounded-xl text-btn-sm uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors"
                     >
-                      <Trash2 className="w-4 h-4 text-red-500" />
+                      <Trash2 className="icon-sm text-red-500" />
                       Delete
                     </button>
                   </div>
@@ -2348,6 +2588,14 @@ export default function OrdersSection({
                             </div>
                           </div>
                         )}
+
+                        {/* Piece QR Code for fast workshop tracking */}
+                        {qrCodeUrls && qrCodeUrls[idx] && (
+                          <div className="pt-2 mt-2 border-t border-dashed border-gray-200 flex flex-col items-center">
+                            <img src={qrCodeUrls[idx]} alt={`Piece #${idx + 1} QR`} className="w-24 h-24 border border-gray-300 p-1 bg-white" referrerPolicy="no-referrer" />
+                            <p className="text-[8px] font-extrabold text-slate-500 uppercase tracking-wider mt-1 text-center">Scan Piece #{idx + 1} to Change Stage</p>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -2368,6 +2616,14 @@ export default function OrdersSection({
                           </p>
                         ) : (
                           <p className="text-2xs text-gray-400 italic mt-1">No custom styling details specified.</p>
+                        )}
+
+                        {/* Piece QR Code for fast workshop tracking */}
+                        {qrCodeUrls && qrCodeUrls[idx] && (
+                          <div className="pt-2 mt-2 border-t border-dashed border-gray-200 flex flex-col items-center">
+                            <img src={qrCodeUrls[idx]} alt={`Piece #${idx + 1} QR`} className="w-24 h-24 border border-gray-300 p-1 bg-white" referrerPolicy="no-referrer" />
+                            <p className="text-[8px] font-extrabold text-slate-500 uppercase tracking-wider mt-1 text-center">Scan Piece #{idx + 1} to Change Stage</p>
+                          </div>
                         )}
                       </div>
                     ))}
@@ -2424,7 +2680,7 @@ export default function OrdersSection({
               Where would you like to restore order <strong className="text-slate-800 font-bold">{selectedOrder.order_number}</strong>?
               It will return to the active production queue in the selected stage.
             </p>
-
+            
             <div className="space-y-1">
               <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Select Active Stage</label>
               <select
@@ -2456,6 +2712,305 @@ export default function OrdersSection({
                 Restore to Active Queue
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* CAMERA SCANNER MODAL */}
+      {isScannerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/75 backdrop-blur-md">
+          <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2.5">
+                <QrCode className="w-5 h-5 text-[#38BDF8]" />
+                <h3 className="font-extrabold text-xs text-slate-900 uppercase tracking-wider">Garment Scanner</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsScannerOpen(false)}
+                className="w-7 h-7 rounded-full bg-slate-200/60 hover:bg-slate-200 text-slate-500 hover:text-slate-700 flex items-center justify-center cursor-pointer transition-all border-none font-bold text-sm"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Tab Selectors */}
+            <div className="grid grid-cols-2 border-b border-slate-100 bg-slate-50/50 p-1">
+              <button
+                type="button"
+                onClick={() => setScannerActiveTab('camera')}
+                className={`py-2 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 rounded-xl transition-all cursor-pointer ${
+                  scannerActiveTab === 'camera'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                <Camera className="w-3.5 h-3.5" />
+                Live Camera
+              </button>
+              <button
+                type="button"
+                onClick={() => setScannerActiveTab('simulator')}
+                className={`py-2 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 rounded-xl transition-all cursor-pointer ${
+                  scannerActiveTab === 'simulator'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-400 hover:text-slate-600'
+                }`}
+              >
+                <Smartphone className="w-3.5 h-3.5" />
+                Simulate Scan
+              </button>
+            </div>
+
+            {/* Content Area */}
+            <div className="p-6 overflow-y-auto flex-1">
+              {/* CAMERA TAB */}
+              {scannerActiveTab === 'camera' && (
+                <div className="space-y-4">
+                  {cameraPermissionError ? (
+                    <div className="p-4 bg-red-50 rounded-2xl border border-red-100 text-center space-y-3">
+                      <ShieldAlert className="w-8 h-8 text-red-500 mx-auto" />
+                      <p className="text-xs text-red-700 font-semibold leading-relaxed">
+                        {cameraPermissionError}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setScannerActiveTab('simulator')}
+                        className="px-4 py-2 bg-slate-950 hover:bg-slate-800 text-white rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer transition-all border-none"
+                      >
+                        Switch to Simulator Tab
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="relative aspect-square w-full max-w-[320px] mx-auto rounded-3xl overflow-hidden bg-slate-950 border border-slate-800 shadow-inner flex items-center justify-center">
+                      {/* Hidden canvas used for scanning frames */}
+                      <canvas ref={canvasRef} className="hidden" />
+                      <video
+                        ref={videoRef}
+                        className="absolute inset-0 w-full h-full object-cover"
+                        playsInline
+                        muted
+                      />
+                      {/* Decorative scanning radar lines */}
+                      <div className="absolute inset-0 border-2 border-[#38BDF8]/40 rounded-3xl pointer-events-none">
+                        <div className="absolute inset-x-0 h-0.5 bg-[#38BDF8]" style={{
+                          animation: 'scan-line 3s ease-in-out infinite',
+                        }} />
+                      </div>
+                      <span className="absolute bottom-3 bg-black/75 px-3 py-1 rounded-full text-[10px] font-bold text-slate-300 tracking-wider uppercase border border-slate-700">
+                        Align QR within frame
+                      </span>
+                    </div>
+                  )}
+                  <p className="text-center text-3xs text-slate-400 font-bold uppercase tracking-widest leading-normal">
+                    Place a workshop printed QR code in front of your camera.
+                  </p>
+                </div>
+              )}
+
+              {/* SIMULATOR TAB */}
+              {scannerActiveTab === 'simulator' && (
+                <div className="space-y-4">
+                  <div className="p-3 bg-sky-50 rounded-xl border border-sky-100 flex items-start gap-2.5">
+                    <Info className="w-4 h-4 text-[#38BDF8] shrink-0 mt-0.5" />
+                    <p className="text-3xs text-sky-800 font-medium leading-relaxed">
+                      This simulator bypasses physical hardware limits inside sandboxed environments. Click any garment piece below to instantly simulate a barcode scan.
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2.5 max-h-[350px] overflow-y-auto pr-1">
+                    {orders.filter(o => o.status !== 'Delivered' && o.status !== 'Archived').map((o) => (
+                      <div key={o.id} className="border border-slate-100 rounded-2xl p-3 bg-slate-50/50 space-y-2">
+                        <div className="flex justify-between items-center pb-1.5 border-b border-slate-200/50">
+                          <div>
+                            <span className="font-extrabold text-xs text-slate-800">{o.order_number}</span>
+                            <span className="text-2xs text-slate-400 font-bold ml-2">({o.customer_name})</span>
+                          </div>
+                          <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${getStatusBadgeStyle(o.status)}`}>
+                            {stagesList.find(s => s.id === o.status)?.name || o.status}
+                          </span>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1">
+                          {o.items?.map((item, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => {
+                                setIsScannerOpen(false);
+                                setScannedGarmentItem({
+                                  order: o,
+                                  itemIdx: idx,
+                                });
+                              }}
+                              className="p-2.5 bg-white hover:bg-sky-50 hover:border-sky-300 border border-slate-200 rounded-xl text-left cursor-pointer flex items-center justify-between group transition-all"
+                            >
+                              <div className="truncate max-w-[80%]">
+                                <p className="text-[11px] font-black text-slate-800 group-hover:text-sky-950 uppercase truncate">
+                                  {item.type}
+                                </p>
+                                <p className="text-[9px] font-semibold text-slate-400">
+                                  Piece #{idx + 1} {item.color ? `(${item.color})` : ''}
+                                </p>
+                              </div>
+                              <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-[#38BDF8] group-hover:translate-x-0.5 transition-all" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    {orders.filter(o => o.status !== 'Delivered' && o.status !== 'Archived').length === 0 && (
+                      <div className="text-center py-8 text-slate-400 text-2xs uppercase tracking-wider font-extrabold">
+                        No active pipeline orders found.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsScannerOpen(false)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs uppercase tracking-wider rounded-xl cursor-pointer border-none"
+              >
+                Close Scanner
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SCANNED GARMENT COMPACT ACTION MODAL */}
+      {scannedGarmentItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 space-y-6 relative overflow-hidden flex flex-col justify-between" style={{ minHeight: '420px' }}>
+            
+            {/* Header / Indicator */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping" />
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Live Garment Action Screen</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setScannedGarmentItem(null)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer border-none bg-transparent"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Main Details Panel */}
+            {updateSuccessState ? (
+              <div className="flex-1 flex flex-col items-center justify-center space-y-3 py-8 animate-scale-up">
+                <div className="w-16 h-16 bg-emerald-100 border border-emerald-300 rounded-full flex items-center justify-center text-emerald-600 shadow-md">
+                  <Check className="w-8 h-8" />
+                </div>
+                <h4 className="font-extrabold text-slate-900 text-base uppercase tracking-wider text-center">Status Updated!</h4>
+                <p className="text-2xs text-slate-500 font-bold uppercase tracking-wider text-center">Activity log saved with timestamp</p>
+              </div>
+            ) : (
+              <div className="space-y-4 flex-1 py-1">
+                {/* Visual Garment Avatar Row */}
+                <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200/50">
+                  <div className="w-10 h-10 bg-[#0F172A] rounded-xl flex items-center justify-center text-[#38BDF8] shadow-inner">
+                    <Scissors className="w-5 h-5" />
+                  </div>
+                  <div className="truncate">
+                    <span className="text-[9px] font-black uppercase text-[#38BDF8] tracking-widest bg-slate-900/5 px-2 py-0.5 rounded-full">
+                      Piece #{scannedGarmentItem.itemIdx + 1}
+                    </span>
+                    <h4 className="font-black text-slate-900 text-sm uppercase truncate mt-1">
+                      {scannedGarmentItem.order.items?.[scannedGarmentItem.itemIdx]?.type || 'Garment Item'}
+                    </h4>
+                  </div>
+                </div>
+
+                {/* Grid Details */}
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between items-center border-b border-slate-100 py-1.5">
+                    <span className="text-slate-400 uppercase font-bold tracking-wider text-[10px]">Order Number:</span>
+                    <span className="font-extrabold text-slate-900">{scannedGarmentItem.order.order_number}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-slate-100 py-1.5">
+                    <span className="text-slate-400 uppercase font-bold tracking-wider text-[10px]">Customer Name:</span>
+                    <span className="font-black text-slate-900">{scannedGarmentItem.order.customer_name}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-slate-100 py-1.5">
+                    <span className="text-slate-400 uppercase font-bold tracking-wider text-[10px]">Current Status:</span>
+                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${getStatusBadgeStyle(scannedGarmentItem.order.status)}`}>
+                      {stagesList.find(s => s.id === scannedGarmentItem.order.status)?.name || scannedGarmentItem.order.status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Large Thumb Actions - Sticky to Bottom */}
+            {!updateSuccessState && (
+              <div className="space-y-3 pt-3 border-t border-slate-100">
+                {/* Dynamically calculated valid next action */}
+                {(() => {
+                  const order = scannedGarmentItem.order;
+                  const currentIdx = activeWorkflowStages.findIndex(s => s.id === order.status);
+                  const nextStage = currentIdx !== -1 && currentIdx < activeWorkflowStages.length - 1
+                    ? activeWorkflowStages[currentIdx + 1]
+                    : null;
+
+                  if (nextStage) {
+                    return (
+                      <button
+                        type="button"
+                        disabled={updatingStatus}
+                        onClick={() => handleUpdateScannedStatus(nextStage.id)}
+                        className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-md flex items-center justify-center gap-2 cursor-pointer select-none border-b-4 border-emerald-800 hover:translate-y-[1px] hover:border-b-2 active:translate-y-[3px] active:border-b-0 transition-all h-[52px]"
+                      >
+                        {updatingStatus ? (
+                          <span>Updating...</span>
+                        ) : (
+                          <>
+                            <CheckCircle className="w-4 h-4 text-emerald-100" />
+                            <span>Move to {nextStage.name}</span>
+                          </>
+                        )}
+                      </button>
+                    );
+                  } else {
+                    return (
+                      <div className="p-3 bg-slate-50 text-slate-500 rounded-2xl text-center border border-slate-200/60 text-2xs font-bold uppercase tracking-wider">
+                        All production stages completed
+                      </div>
+                    );
+                  }
+                })()}
+
+                {/* Secondary Actions Row */}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedOrder(scannedGarmentItem.order);
+                      setScannedGarmentItem(null);
+                    }}
+                    className="py-3 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl font-extrabold text-[10px] uppercase tracking-wider text-center cursor-pointer flex items-center justify-center gap-1 bg-slate-900 h-11 border-none"
+                  >
+                    <Info className="w-3.5 h-3.5 text-[#38BDF8]" />
+                    View Details
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handlePrintAgainScanned(scannedGarmentItem.order)}
+                    className="py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-extrabold text-[10px] uppercase tracking-wider text-center cursor-pointer flex items-center justify-center gap-1 border border-slate-200 h-11"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    Print Again
+                  </button>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
       )}

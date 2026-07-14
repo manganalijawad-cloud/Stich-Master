@@ -118,6 +118,7 @@ export interface GarmentType {
   name: string;
   enabled: boolean;
   display_order: number;
+  price?: number;
   measurement_fields: MeasurementField[];
   created_at?: string;
   updated_at?: string;

@@ -581,8 +581,8 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
       {/* HEADER CONTROL BAR */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight font-display uppercase">Financial Command Center</h1>
-          <p className="text-xs text-slate-500 font-medium">Real-time revenue monitoring, payment collections, and liquidity trends</p>
+          <h1 className="text-h1 font-black text-slate-900 tracking-tight font-display uppercase">Financial Command Center</h1>
+          <p className="text-body-sm text-slate-500 font-medium">Real-time revenue monitoring, payment collections, and liquidity trends</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -598,7 +598,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
               <button
                 key={tab.id}
                 onClick={() => setDateFilter(tab.id as any)}
-                className={`py-1.5 px-3.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                className={`py-1.5 px-3.5 rounded-lg text-btn-sm font-bold uppercase tracking-wider transition-all cursor-pointer ${
                   dateFilter === tab.id
                     ? 'bg-[#0F172A] text-white shadow-sm'
                     : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
@@ -617,7 +617,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
               className={`p-2.5 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl shadow-2xs text-slate-600 hover:text-slate-800 transition-colors cursor-pointer ${!filteredOrders.length ? 'opacity-50 cursor-not-allowed' : ''}`}
               title="Download CSV Statement"
             >
-              <ArrowDownToLine className="w-4 h-4" />
+              <ArrowDownToLine className="icon-sm" />
             </button>
             <button
               onClick={handlePrint}
@@ -625,7 +625,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
               className={`p-2.5 bg-[#0F172A] hover:bg-slate-800 text-white rounded-xl shadow-md transition-colors cursor-pointer ${!filteredOrders.length ? 'opacity-50 cursor-not-allowed' : ''}`}
               title="Print Financial Statement"
             >
-              <Printer className="w-4 h-4" />
+              <Printer className="icon-sm" />
             </button>
           </div>
         </div>
@@ -669,8 +669,8 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
             <ShoppingBag className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-3xs font-black text-slate-400 uppercase tracking-wider block">Total Booked Volume</span>
-            <span className="text-2xl font-black mt-2 font-display text-slate-900 block">{currency}{stats.totalRevenue.toLocaleString()}</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Total Booked Volume</span>
+            <span className="text-display-lg font-black mt-2 font-display text-slate-900 block">{currency}{stats.totalRevenue.toLocaleString()}</span>
           </div>
           <div className="mt-2 flex items-center gap-1 text-2xs font-semibold">
             {trends.revenueChange >= 0 ? (
@@ -692,8 +692,8 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
             <DollarSign className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-3xs font-black text-slate-400 uppercase tracking-wider block">Total Liquid Collected</span>
-            <span className="text-2xl font-black mt-2 font-display text-emerald-600 block">{currency}{stats.totalCollected.toLocaleString()}</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Total Liquid Collected</span>
+            <span className="text-display-lg font-black mt-2 font-display text-emerald-600 block">{currency}{stats.totalCollected.toLocaleString()}</span>
           </div>
           <div className="mt-2 flex items-center gap-1 text-2xs font-semibold">
             {trends.collectionChange >= 0 ? (
@@ -715,12 +715,10 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
             <AlertCircle className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-3xs font-black text-slate-400 uppercase tracking-wider block">Outstanding Receivables</span>
-            <span className="text-2xl font-black mt-2 font-display text-amber-500 block">{currency}{stats.outstandingBalance.toLocaleString()}</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Outstanding Receivables</span>
+            <span className="text-display-lg font-black mt-2 font-display text-amber-500 block">{currency}{stats.outstandingBalance.toLocaleString()}</span>
           </div>
-          <div className="mt-2 text-2xs font-semibold text-slate-500">
-            Across <span className="text-amber-600 font-bold">{stats.pendingPaymentsCount}</span> pending payment orders
-          </div>
+
         </div>
 
         {/* Average Order Value & Sales Count */}
@@ -729,8 +727,8 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
             <FileText className="w-5 h-5" />
           </div>
           <div>
-            <span className="text-3xs font-black text-slate-400 uppercase tracking-wider block">Average Order Value</span>
-            <span className="text-2xl font-black mt-2 font-display text-purple-600 block">{currency}{Math.round(stats.averageOrderValue).toLocaleString()}</span>
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Average Order Value</span>
+            <span className="text-display-lg font-black mt-2 font-display text-purple-600 block">{currency}{Math.round(stats.averageOrderValue).toLocaleString()}</span>
           </div>
           <div className="mt-2 flex items-center gap-1 text-2xs font-semibold">
             <span className="text-purple-600 font-bold">{stats.totalOrders}</span>
@@ -1195,9 +1193,9 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
 
         {/* Statement Table */}
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-2xs">
+          <table className="w-full text-left border-collapse text-table-cell">
             <thead>
-              <tr className="border-b border-slate-200 text-slate-400 uppercase tracking-wider font-bold">
+              <tr className="border-b border-slate-200 text-table-header uppercase tracking-wider font-bold">
                 <th className="py-3 px-4">Order</th>
                 <th className="py-3 px-4">Customer</th>
                 <th className="py-3 px-4">Booking Date</th>

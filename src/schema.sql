@@ -283,6 +283,7 @@ CREATE TABLE IF NOT EXISTS public.garment_types (
     name TEXT NOT NULL,
     enabled BOOLEAN DEFAULT true NOT NULL,
     display_order INTEGER DEFAULT 0 NOT NULL,
+    price NUMERIC(12,2) DEFAULT 0.00 NOT NULL,
     measurement_fields JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,

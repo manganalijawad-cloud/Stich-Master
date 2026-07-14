@@ -69,6 +69,17 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'Customers' | 'Orders' | 'Financials' | 'Owner'>('Customers');
   const [activeCustomerIdForNewOrder, setActiveCustomerIdForNewOrder] = useState<string | undefined>(undefined);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem('sidebar_collapsed') === 'true';
+  });
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('sidebar_collapsed', String(next));
+      return next;
+    });
+  };
 
   // Shop configurations fetched from settings API
   const [shopName, setShopName] = useState('');
@@ -84,14 +95,19 @@ export default function App() {
   });
 
   const [activeOrderId, setActiveOrderId] = useState<string | undefined>(undefined);
+  const [activeItemIdx, setActiveItemIdx] = useState<number | undefined>(undefined);
   const [isVerifyingSession, setIsVerifyingSession] = useState(true);
 
   // Check URL query parameters for live order navigation (from QR Code scanning)
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const orderIdParam = urlParams.get('orderId');
+    const itemIdxParam = urlParams.get('itemIdx');
     if (orderIdParam) {
       setActiveOrderId(orderIdParam);
+      if (itemIdxParam !== null) {
+        setActiveItemIdx(parseInt(itemIdxParam, 10));
+      }
       setActiveTab('Orders');
       // Gracefully clean up the URL search parameters to keep links neat
       const newUrl = window.location.pathname;
@@ -317,25 +333,29 @@ export default function App() {
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col md:flex-row font-sans text-slate-800">
       
       {/* SIDEBAR FOR DESKTOP */}
-      <aside className="hidden md:flex flex-col w-72 bg-[#0F172A] text-white p-6 shrink-0 border-r border-slate-800 print:hidden sticky top-0 h-screen overflow-y-auto">
+      <aside className={`hidden md:flex flex-col bg-[#0F172A] text-white shrink-0 border-r border-slate-800 print:hidden sticky top-0 h-screen overflow-y-auto transition-all duration-[250ms] ease-in-out ${
+        isSidebarCollapsed ? 'w-16 p-3 items-center' : 'w-72 p-6'
+      }`}>
         
         {/* Brand Header */}
-        <div className="mb-10 mt-2">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-slate-800 rounded-xl flex items-center justify-center border border-slate-700">
-              <Shield className="w-6 h-6 text-[#38BDF8] shrink-0" />
+        <div className="mb-10 mt-2 w-full flex justify-center">
+          <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3'} w-full`}>
+            <div className="p-2 bg-slate-800 rounded-xl flex items-center justify-center border border-slate-700 shrink-0" title={isSidebarCollapsed ? (shopName || 'Tailor Shop') : undefined}>
+              <Shield className="icon-md text-[#38BDF8] shrink-0" />
             </div>
-            <div>
-              <span className="text-xl font-extrabold tracking-tight block text-[#38BDF8] font-display uppercase">{shopName || 'Unnamed Tailor Shop'}</span>
-              <span className="text-2xs font-bold text-slate-400 block uppercase tracking-wider">
-                Staff Workspace
-              </span>
-            </div>
+            {!isSidebarCollapsed && (
+              <div className="overflow-hidden whitespace-nowrap animate-fade-in">
+                <span className="text-h3 block text-[#38BDF8] font-display uppercase font-bold truncate">{shopName || 'Unnamed Tailor Shop'}</span>
+                <span className="text-caption-xs font-bold text-slate-400 block uppercase tracking-wider mt-0.5 truncate">
+                  Staff Workspace
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Navigation items aligned with StitchMaster style */}
-        <nav className="flex-1 space-y-1.5">
+        <nav className="flex-1 space-y-1.5 w-full">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -348,27 +368,43 @@ export default function App() {
                     setActiveCustomerIdForNewOrder(undefined);
                   }
                 }}
-                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-semibold text-sm transition-all cursor-pointer text-left border-l-4 ${
+                className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-4 border-l-4'} py-3 rounded-xl font-semibold text-btn-sm transition-all duration-[250ms] cursor-pointer text-left relative group ${
                   isActive
                     ? 'bg-[#1E293B] text-[#F1F5F9] border-[#38BDF8]'
                     : 'text-[#94A3B8] border-transparent hover:text-white hover:bg-slate-800/30'
                 }`}
               >
-                <Icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-[#38BDF8]' : 'text-[#94A3B8]'}`} />
-                <span>{item.label}</span>
+                <Icon className={`icon-md shrink-0 transition-colors ${isActive ? 'text-[#38BDF8]' : 'text-[#94A3B8]'}`} />
+                {!isSidebarCollapsed && (
+                  <span className="whitespace-nowrap truncate animate-fade-in">{item.label}</span>
+                )}
+                {isSidebarCollapsed && (
+                  <div className="absolute left-16 pl-2 hidden group-hover:block z-50 pointer-events-none">
+                    <div className="bg-[#1E293B] text-white text-xs font-semibold py-1.5 px-3 rounded-lg shadow-xl whitespace-nowrap border border-slate-700">
+                      {item.label}
+                    </div>
+                  </div>
+                )}
               </button>
             );
           })}
         </nav>
 
         {/* Footer/Logout Area */}
-        <div className="pt-6 border-t border-slate-800 mt-auto space-y-3.5">
+        <div className={`pt-6 border-t border-slate-800 mt-auto space-y-3.5 w-full ${isSidebarCollapsed ? 'flex justify-center' : ''}`}>
           <button
             onClick={handleLogout}
-            className="w-full py-2 px-3 bg-red-950/40 hover:bg-red-950/60 text-red-400 border border-red-900/30 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+            className={`w-full py-2 ${isSidebarCollapsed ? 'px-0 justify-center' : 'px-3'} bg-red-950/40 hover:bg-red-950/60 text-red-400 border border-red-900/30 rounded-xl text-btn-sm uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors relative group`}
           >
-            <LogOut className="w-3.5 h-3.5 shrink-0" />
-            <span>Sign Out</span>
+            <LogOut className="icon-sm shrink-0" />
+            {!isSidebarCollapsed && <span>Sign Out</span>}
+            {isSidebarCollapsed && (
+              <div className="absolute left-16 pl-2 hidden group-hover:block z-50 pointer-events-none">
+                <div className="bg-red-950 text-red-200 text-xs font-semibold py-1.5 px-3 rounded-lg shadow-xl whitespace-nowrap border border-red-900/40">
+                  Sign Out
+                </div>
+              </div>
+            )}
           </button>
         </div>
 
@@ -377,14 +413,14 @@ export default function App() {
       {/* MOBILE HEADER BAR */}
       <header className="md:hidden bg-[#0F172A] text-white py-4 px-6 flex items-center justify-between sticky top-0 z-50 print:hidden border-b border-slate-800">
         <div className="flex items-center gap-2">
-          <Shield className="w-6 h-6 text-[#38BDF8]" />
-          <span className="font-extrabold text-lg tracking-tight text-[#38BDF8] uppercase">{shopName}</span>
+          <Shield className="icon-md text-[#38BDF8]" />
+          <span className="font-extrabold text-h3 tracking-tight text-[#38BDF8] uppercase">{shopName}</span>
         </div>
         <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className="p-1 text-slate-400 hover:text-white cursor-pointer"
         >
-          {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          {isMobileMenuOpen ? <X className="icon-md" /> : <Menu className="icon-md" />}
         </button>
       </header>
 
@@ -405,11 +441,11 @@ export default function App() {
                       setActiveCustomerIdForNewOrder(undefined);
                     }
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-4 rounded-xl font-bold text-base transition-all ${
+                  className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-btn-sm transition-all ${
                     isActive ? 'bg-[#1E293B] text-white border-l-4 border-[#38BDF8]' : 'text-[#94A3B8] border-l-4 border-transparent'
                   }`}
                 >
-                  <Icon className="w-5 h-5 shrink-0" />
+                  <Icon className="icon-md shrink-0" />
                   <span>{item.label}</span>
                 </button>
               );
@@ -422,9 +458,9 @@ export default function App() {
                 setIsMobileMenuOpen(false);
                 handleLogout();
               }}
-              className="w-full py-2.5 px-3 bg-red-950/40 hover:bg-red-950/60 text-red-400 border border-red-900/30 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+              className="w-full py-2.5 px-3 bg-red-950/40 hover:bg-red-950/60 text-red-400 border border-red-900/30 rounded-xl text-btn-sm uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
             >
-              <LogOut className="w-3.5 h-3.5 shrink-0" />
+              <LogOut className="icon-sm shrink-0" />
               <span>Sign Out</span>
             </button>
           </div>
@@ -436,8 +472,15 @@ export default function App() {
         
         {/* DESKTOP TOP-BAR PANEL */}
         <header className="hidden md:flex items-center justify-between bg-white h-20 px-8 border-b border-slate-200 shrink-0 print:hidden">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900 tracking-tight">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={toggleSidebar}
+              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer flex items-center justify-center border border-slate-200"
+              title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+            >
+              <Menu className="icon-md" />
+            </button>
+            <h2 className="text-h2 font-bold text-slate-900 tracking-tight">
               {activeTab === 'Customers' 
                 ? 'Customer Registry' 
                 : activeTab === 'Orders' 
@@ -446,7 +489,6 @@ export default function App() {
                 ? 'Financial Analytics' 
                 : 'System Config'}
             </h2>
-            <p className="text-2xs text-slate-450 uppercase font-bold tracking-wider mt-0.5">Tailoring SaaS Workspace</p>
           </div>
 
           <div className="flex items-center gap-4">
@@ -485,6 +527,8 @@ export default function App() {
                 onClearActiveCustomer={() => setActiveCustomerIdForNewOrder(undefined)}
                 activeOrderId={activeOrderId}
                 onClearActiveOrderId={() => setActiveOrderId(undefined)}
+                activeItemIdx={activeItemIdx}
+                onClearActiveItemIdx={() => setActiveItemIdx(undefined)}
                 shopName={shopName}
                 shopPhone={shopPhone}
                 shopAddress={shopAddress}
@@ -511,12 +555,12 @@ export default function App() {
         </main>
 
         {/* COMPACT FOOTER */}
-        <footer className="mt-auto py-5 px-8 border-t border-slate-200 bg-white text-center text-slate-400 text-xs print:hidden flex flex-col sm:flex-row justify-between items-center gap-2">
+        <footer className="mt-auto py-5 px-8 border-t border-slate-200 bg-white text-center text-slate-400 text-caption print:hidden flex flex-col sm:flex-row justify-between items-center gap-2">
           <p className="font-medium">&copy; {new Date().getFullYear()} {shopName || 'Unnamed Tailor Shop'} StitchMaster. All rights reserved.</p>
           <div className="flex gap-4 text-slate-400">
-            <span className="font-semibold uppercase tracking-wider text-3xs">Tailored Suite Pro</span>
+            <span className="font-semibold uppercase tracking-wider text-caption-xs">Tailored Suite Pro</span>
             <span className="text-slate-300">|</span>
-            <span className="font-semibold uppercase tracking-wider text-3xs">Staff Portal</span>
+            <span className="font-semibold uppercase tracking-wider text-caption-xs">Staff Portal</span>
           </div>
         </footer>
 

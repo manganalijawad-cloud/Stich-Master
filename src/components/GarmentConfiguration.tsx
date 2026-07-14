@@ -61,8 +61,11 @@ export default function GarmentConfiguration({ token }: GarmentConfigurationProp
 
   // Garment Type Form States
   const [newTypeName, setNewTypeName] = useState('');
+  const [newTypePrice, setNewTypePrice] = useState('');
   const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
   const [editingTypeName, setEditingTypeName] = useState('');
+  const [selectedTypePrice, setSelectedTypePrice] = useState<number | '' | null>(null);
+  const [savingPrice, setSavingPrice] = useState(false);
 
   // Measurement Form Builder States
   const [builderFields, setBuilderFields] = useState<MeasurementField[]>([]);
@@ -102,6 +105,7 @@ export default function GarmentConfiguration({ token }: GarmentConfigurationProp
     setError(null);
     setSuccess(null);
     if (selectedType) {
+      setSelectedTypePrice(selectedType.price !== undefined ? selectedType.price : 0);
       // Synchronize measurement form builder
       setBuilderFields(
         [...(selectedType.measurement_fields || [])].sort((a, b) => a.display_order - b.display_order)
@@ -114,6 +118,7 @@ export default function GarmentConfiguration({ token }: GarmentConfigurationProp
       // Fetch styling categories for this garment type
       fetchStylingCategories(selectedType.id);
     } else {
+      setSelectedTypePrice(null);
       setBuilderFields([]);
       setStylingCategories([]);
       setSelectedStylingCategory(null);
@@ -181,6 +186,8 @@ export default function GarmentConfiguration({ token }: GarmentConfigurationProp
       return;
     }
 
+    const price = newTypePrice ? Number(newTypePrice) : 0;
+
     try {
       const res = await fetch('/api/garment-types', {
         method: 'POST',
@@ -191,6 +198,7 @@ export default function GarmentConfiguration({ token }: GarmentConfigurationProp
         body: JSON.stringify({
           name,
           enabled: true,
+          price,
           measurement_fields: []
         }),
       });
@@ -199,6 +207,7 @@ export default function GarmentConfiguration({ token }: GarmentConfigurationProp
       if (res.ok) {
         setSuccess(`Garment type "${name}" created successfully.`);
         setNewTypeName('');
+        setNewTypePrice('');
         // This will reload the list and preserve selection
         fetchGarmentTypes();
       } else {
@@ -206,6 +215,47 @@ export default function GarmentConfiguration({ token }: GarmentConfigurationProp
       }
     } catch (err) {
       setError('Connection failed.');
+    }
+  };
+
+  const handleSavePrice = async () => {
+    if (!selectedType || selectedTypePrice === null) return;
+    setError(null);
+    setSuccess(null);
+    setSavingPrice(true);
+
+    const priceToSave = selectedTypePrice === '' ? 0 : Number(selectedTypePrice);
+
+    try {
+      const res = await fetch(`/api/garment-types/${selectedType.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          price: priceToSave
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setSuccess(`Base price for "${selectedType.name}" updated to Rs. ${priceToSave} successfully.`);
+        // Update local list
+        setGarmentTypes(prev => prev.map(gt => {
+          if (gt.id === selectedType.id) {
+            return { ...gt, price: priceToSave };
+          }
+          return gt;
+        }));
+        setSelectedType(prev => prev ? { ...prev, price: priceToSave } : null);
+      } else {
+        setError(data.error || 'Failed to update base price.');
+      }
+    } catch (err) {
+      setError('Connection failed.');
+    } finally {
+      setSavingPrice(false);
     }
   };
 
@@ -923,23 +973,38 @@ Do you absolutely want to proceed with deletion?`;
         <div className="lg:col-span-4 space-y-4">
           
           {/* Create Form */}
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3.5 shadow-2xs">
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-2xs">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Add New Catalog Garment</span>
-            <form onSubmit={handleAddGarmentType} className="flex gap-2">
-              <input
-                type="text"
-                required
-                value={newTypeName}
-                onChange={(e) => setNewTypeName(e.target.value)}
-                placeholder="e.g. Shalwar Kameez, Suit, Shirt"
-                className="flex-1 px-3 py-2 bg-white border-2 border-slate-200 rounded-xl text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#38BDF8]"
-              />
+            <form onSubmit={handleAddGarmentType} className="space-y-2.5">
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Garment Name</label>
+                <input
+                  type="text"
+                  required
+                  value={newTypeName}
+                  onChange={(e) => setNewTypeName(e.target.value)}
+                  placeholder="e.g. Shalwar Kameez, Suit, Shirt"
+                  className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-xl text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#38BDF8]"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Base Price (Rs.)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={newTypePrice}
+                  onChange={(e) => setNewTypePrice(e.target.value)}
+                  placeholder="e.g. 2500"
+                  className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-xl text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#38BDF8]"
+                />
+              </div>
               <button
                 type="submit"
-                className="px-4 py-2.5 bg-[#0F172A] hover:bg-[#1E293B] text-white font-extrabold rounded-xl text-2xs uppercase tracking-wider cursor-pointer flex items-center gap-1.5 shrink-0 transition-colors"
+                className="w-full py-2.5 bg-[#0F172A] hover:bg-[#1E293B] text-white font-extrabold rounded-xl text-btn-sm uppercase tracking-wider cursor-pointer flex items-center justify-center gap-1.5 transition-colors"
               >
-                <Plus className="w-3.5 h-3.5 text-[#38BDF8]" />
-                Add
+                <Plus className="icon-sm text-[#38BDF8]" />
+                Add Garment
               </button>
             </form>
           </div>
@@ -1039,9 +1104,11 @@ Do you absolutely want to proceed with deletion?`;
                               <span className={`text-xs font-extrabold ${type.enabled ? 'text-slate-800' : 'text-slate-400 line-through'}`}>
                                 {type.name}
                               </span>
-                              <span className="text-[10px] font-bold text-slate-400 mt-0.5">
-                                {type.measurement_fields?.length || 0} measurements
-                              </span>
+                              <div className="flex gap-1.5 items-center text-[10px] font-bold text-slate-400 mt-0.5">
+                                <span>{type.measurement_fields?.length || 0} measurements</span>
+                                <span>•</span>
+                                <span className="text-emerald-600">Rs. {type.price || 0}</span>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1102,30 +1169,65 @@ Do you absolutely want to proceed with deletion?`;
           {selectedType ? (
             <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
               
+              {/* Garment Type General Settings / Price */}
+              <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Garment Category</span>
+                  <span className="text-body font-extrabold text-slate-800 font-display">{selectedType.name}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider sm:text-right">Base Price</span>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-body-sm font-bold text-slate-500">Rs.</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={selectedTypePrice !== null ? selectedTypePrice : (selectedType.price || 0)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSelectedTypePrice(val === '' ? '' : Number(val));
+                        }}
+                        className="w-24 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-body-sm font-bold text-slate-800 focus:outline-none focus:border-[#38BDF8]"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSavePrice}
+                        disabled={savingPrice || selectedTypePrice === null}
+                        className="px-3 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white font-extrabold rounded-lg text-btn-sm uppercase tracking-wider cursor-pointer flex items-center gap-1 shrink-0 transition-colors disabled:opacity-45"
+                      >
+                        {savingPrice ? 'Saving...' : 'Save Price'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Header Tab Switching */}
               <div className="flex border-b border-slate-200 bg-slate-50/50">
                 <button
                   type="button"
                   onClick={() => setActiveConfigSection('MeasurementForm')}
-                  className={`flex-1 py-3 px-4 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all cursor-pointer ${
+                  className={`flex-1 py-3 px-4 font-bold text-btn-sm uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all cursor-pointer ${
                     activeConfigSection === 'MeasurementForm'
                       ? 'border-[#0F172A] text-slate-800 bg-white'
                       : 'border-transparent text-slate-400 hover:text-slate-600'
                   }`}
                 >
-                  <Ruler className="w-4 h-4 text-[#38BDF8]" />
+                  <Ruler className="icon-sm text-[#38BDF8]" />
                   Measurement Form Builder
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveConfigSection('StylingLibrary')}
-                  className={`flex-1 py-3 px-4 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all cursor-pointer ${
+                  className={`flex-1 py-3 px-4 font-bold text-btn-sm uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all cursor-pointer ${
                     activeConfigSection === 'StylingLibrary'
                       ? 'border-[#0F172A] text-slate-800 bg-white'
                       : 'border-transparent text-slate-400 hover:text-slate-600'
                   }`}
                 >
-                  <Sparkles className="w-4 h-4 text-[#38BDF8]" />
+                  <Sparkles className="icon-sm text-[#38BDF8]" />
                   Styling Library options
                 </button>
               </div>
@@ -1137,10 +1239,10 @@ Do you absolutely want to proceed with deletion?`;
                 {activeConfigSection === 'MeasurementForm' && (
                   <div className="space-y-6">
                     <div>
-                      <h4 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 font-display">
+                      <h4 className="text-body font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 font-display">
                         Form Layout Builder: {selectedType.name}
                       </h4>
-                      <p className="text-[11px] text-slate-400 leading-normal mt-0.5">
+                      <p className="text-caption text-slate-400 leading-normal mt-0.5">
                         Define which measurements are required from customers when they order a {selectedType.name}. Add parameters (e.g. Chest, Inseam, Collar), rearrange their order, or mandate specific entries.
                       </p>
                     </div>
@@ -1327,9 +1429,9 @@ Do you absolutely want to proceed with deletion?`;
                       <button
                         type="button"
                         onClick={handleSaveMeasurementForm}
-                        className="px-5 py-2.5 bg-[#0F172A] hover:bg-slate-800 text-white font-extrabold rounded-xl text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-colors shadow-xs"
+                        className="px-5 py-2.5 bg-[#0F172A] hover:bg-slate-800 text-white font-extrabold rounded-xl text-btn-sm uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-colors shadow-xs"
                       >
-                        <Save className="w-4 h-4 text-[#38BDF8]" />
+                        <Save className="icon-sm text-[#38BDF8]" />
                         Save Form Layout
                       </button>
                     </div>
@@ -1341,10 +1443,10 @@ Do you absolutely want to proceed with deletion?`;
                 {activeConfigSection === 'StylingLibrary' && (
                   <div className="space-y-6">
                     <div>
-                      <h4 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 font-display">
+                      <h4 className="text-body font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 font-display">
                         Styling Library options: {selectedType.name}
                       </h4>
-                      <p className="text-[11px] text-slate-400 leading-normal mt-0.5">
+                      <p className="text-caption text-slate-400 leading-normal mt-0.5">
                         Define custom style categories (e.g. Collars, Cuffs, Sleeves, Pockets) specifically for {selectedType.name}s. Within each style category, register specific style design configurations.
                       </p>
                     </div>
@@ -1645,7 +1747,7 @@ Do you absolutely want to proceed with deletion?`;
                               <button
                                 type="button"
                                 onClick={handleSaveCategoryOptions}
-                                className="px-3.5 py-1.5 bg-[#0F172A] hover:bg-slate-800 text-white font-extrabold rounded-lg text-2xs uppercase tracking-wider cursor-pointer"
+                                className="px-3.5 py-1.5 bg-[#0F172A] hover:bg-slate-800 text-white font-extrabold rounded-lg text-btn-sm uppercase tracking-wider cursor-pointer"
                               >
                                 Save Option Layout
                               </button>
