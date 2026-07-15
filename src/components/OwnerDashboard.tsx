@@ -1,10 +1,5 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState, useEffect } from 'react';
-import { DollarSign, Settings, Database, Activity, Plus, Trash2, ArrowDown, ArrowUp, Calendar, Save, ListTodo, Sliders, Upload, Printer } from 'lucide-react';
+import { Settings, Database, Activity, Plus, Trash2, ArrowDown, ArrowUp, Calendar, Save, ListTodo, Sliders, Upload, Printer, Smartphone, Shield, ChevronRight } from 'lucide-react';
 import { AuditLog, ShopSettings, PipelineStage, GarmentType } from '../types';
 import GarmentConfiguration from './GarmentConfiguration';
 import DataImport from './DataImport';
@@ -19,7 +14,6 @@ interface OwnerDashboardProps {
 export default function OwnerDashboard({ token, currency, shopLogo, onSettingsUpdated }: OwnerDashboardProps) {
   const [activeTab, setActiveTab] = useState<'Settings' | 'GarmentConfig' | 'Backup' | 'Logs' | 'Import'>('Settings');
 
-  // Settings State
   const [settings, setSettings] = useState<ShopSettings | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [editedShopName, setEditedShopName] = useState('');
@@ -38,22 +32,35 @@ export default function OwnerDashboard({ token, currency, shopLogo, onSettingsUp
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [settingsSuccess, setSettingsSuccess] = useState(false);
   const [editedShopLogo, setEditedShopLogo] = useState('');
+  const [editedWhatsappTemplate, setEditedWhatsappTemplate] = useState('');
+  const [whatsappNotifyOnReady, setWhatsappNotifyOnReady] = useState(false);
 
-  // Backup & Restore State
+  const DEFAULT_WHATSAPP_TEMPLATE = `{ShopName}
+
+Assalam-o-Alaikum Sir {CustomerName},
+
+Your order is ready.
+
+Order:
+{OrderSummary}
+
+Remaining Amount: Rs. {RemainingBalance}
+
+Please visit our shop to collect your order.
+
+Note: This is an automated message. Please do not reply.`;
+
   const [archiveCutoff, setArchiveCutoff] = useState('');
   const [archiveSuccess, setArchiveSuccess] = useState<string | null>(null);
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreSuccess, setRestoreSuccess] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
 
-  // Audit Logs State
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
 
-  // Import State
   const [garmentTypes, setGarmentTypes] = useState<GarmentType[]>([]);
 
-  // Fetch Settings
   const fetchSettings = async () => {
     setSettingsLoading(true);
     try {
@@ -74,6 +81,8 @@ export default function OwnerDashboard({ token, currency, shopLogo, onSettingsUp
         setDefaultPrintReceipt(data.default_print_receipt !== false);
         setDefaultPrintMeasure(data.default_print_measure !== false);
         setEditedShopLogo(data.shop_logo || '');
+        setEditedWhatsappTemplate(data.whatsapp_message_template ?? DEFAULT_WHATSAPP_TEMPLATE);
+        setWhatsappNotifyOnReady(data.whatsapp_notify_on_ready === true);
         setEditedFields(data.measurement_fields || []);
         setEditedStages(data.pipeline_stages || [
           { id: 'Pending', name: 'Getting Ready', enabled: true },
@@ -89,7 +98,6 @@ export default function OwnerDashboard({ token, currency, shopLogo, onSettingsUp
     }
   };
 
-  // Fetch Logs
   const fetchLogs = async () => {
     setLogsLoading(true);
     try {
@@ -107,7 +115,6 @@ export default function OwnerDashboard({ token, currency, shopLogo, onSettingsUp
     }
   };
 
-  // Load appropriate data on tab click
   useEffect(() => {
     if (activeTab === 'Settings') fetchSettings();
     if (activeTab === 'Backup') {
@@ -126,7 +133,6 @@ export default function OwnerDashboard({ token, currency, shopLogo, onSettingsUp
     }
   }, [activeTab, token]);
 
-  // Handle Settings Update
   const handleUpdateSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setSettingsError(null);
@@ -153,6 +159,8 @@ export default function OwnerDashboard({ token, currency, shopLogo, onSettingsUp
           default_print_receipt: defaultPrintReceipt,
           default_print_measure: defaultPrintMeasure,
           shop_logo: editedShopLogo,
+          whatsapp_message_template: editedWhatsappTemplate,
+          whatsapp_notify_on_ready: whatsappNotifyOnReady,
         }),
       });
 
@@ -168,7 +176,6 @@ export default function OwnerDashboard({ token, currency, shopLogo, onSettingsUp
     }
   };
 
-  // Pipeline Stage Helpers
   const handleAddStage = () => {
     const stageName = newStageName.trim();
     if (!stageName) return;
@@ -176,7 +183,6 @@ export default function OwnerDashboard({ token, currency, shopLogo, onSettingsUp
       alert('A stage with this name already exists.');
       return;
     }
-    // Generate unique stage ID
     const newId = 'stage_' + Math.random().toString(36).substring(2, 11);
     setEditedStages([...editedStages, { id: newId, name: stageName, enabled: true }]);
     setNewStageName('');
@@ -200,7 +206,7 @@ export default function OwnerDashboard({ token, currency, shopLogo, onSettingsUp
       alert('The core start and archive stages cannot be deleted to maintain system integrity.');
       return;
     }
-    if (confirm(`Are you sure you want to delete the "${stage.name}" stage?`)) {
+    if (confirm('Are you sure you want to delete the "' + stage.name + '" stage?')) {
       setEditedStages(editedStages.filter((_, idx) => idx !== index));
     }
   };
@@ -211,16 +217,14 @@ export default function OwnerDashboard({ token, currency, shopLogo, onSettingsUp
 
     const updated = [...editedStages];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    
-    // Swap
+
     const temp = updated[index];
     updated[index] = updated[targetIndex];
     updated[targetIndex] = temp;
-    
+
     setEditedStages(updated);
   };
 
-  // Handle Database Backup download
   const triggerBackupDownload = async () => {
     setBackupLoading(true);
     try {
@@ -240,14 +244,14 @@ export default function OwnerDashboard({ token, currency, shopLogo, onSettingsUp
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    } catch (err: any) {
-      alert('Backup generation failed: ' + err.message);
+      URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      alert('Backup generation failed: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setBackupLoading(false);
     }
   };
 
-  // Handle Database Restore from file upload
   const handleRestoreUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -283,10 +287,9 @@ export default function OwnerDashboard({ token, currency, shopLogo, onSettingsUp
     reader.readAsText(file);
   };
 
-  // Handle Archiving Orders
   const handleArchiveOrders = async () => {
     if (!archiveCutoff) return;
-    if (!confirm(`Are you sure you want to archive all Completed/Delivered orders dated prior to ${archiveCutoff}? This clears active listings.`)) {
+    if (!confirm('Are you sure you want to archive all Completed/Delivered orders dated prior to ' + archiveCutoff + '? This clears active listings.')) {
       return;
     }
 
@@ -305,103 +308,101 @@ export default function OwnerDashboard({ token, currency, shopLogo, onSettingsUp
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      setArchiveSuccess(`Orders archived successfully! ${data.count !== undefined ? `${data.count} orders cleared.` : ''}`);
+      setArchiveSuccess('Orders archived successfully!' + (data.count !== undefined ? ' ' + data.count + ' orders cleared.' : ''));
     } catch (err: any) {
       alert('Archiving failed: ' + err.message);
     }
   };
 
+  const tabs = [
+    { id: 'Settings' as const, label: 'Shop Settings', icon: Settings },
+    { id: 'GarmentConfig' as const, label: 'Garment Config', icon: Sliders },
+    { id: 'Backup' as const, label: 'Backup & Archive', icon: Database },
+    { id: 'Logs' as const, label: 'Audit Logs', icon: Activity },
+    { id: 'Import' as const, label: 'Data Import', icon: Upload },
+  ];
+
   return (
     <div className="space-y-6">
-      
-      {/* Tab Navigation header - Styled as a premium command deck */}
-      <div className="flex flex-wrap gap-1.5 border-b border-slate-200 pb-3">
-        {[
-          { id: 'Settings', label: 'Shop Settings', icon: Settings },
-          { id: 'GarmentConfig', label: 'Garment Configuration', icon: Sliders },
-          { id: 'Backup', label: 'Backup & Archiving', icon: Database },
-          { id: 'Logs', label: 'Audit Logs', icon: Activity },
-          { id: 'Import', label: 'Data Import', icon: Upload },
-        ].map((tab) => {
+
+      {/* ─── Premium Tab Navigation ─── */}
+      <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl border border-slate-200 w-fit max-w-full overflow-x-auto">
+        {tabs.map((tab) => {
           const Icon = tab.icon;
           const isSelected = activeTab === tab.id;
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`py-2.5 px-4 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer border ${
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
                 isSelected
-                  ? 'bg-[#0F172A] text-[#F8FAFC] border-[#0F172A] border-b-2 border-b-[#38BDF8] shadow-sm'
-                  : 'bg-white text-slate-500 hover:text-slate-800 hover:bg-slate-50 border-slate-200'
+                  ? 'bg-white text-brand-sidebar shadow-sm border border-slate-200'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
               }`}
             >
-              <Icon className={`w-4 h-4 shrink-0 ${isSelected ? 'text-[#38BDF8]' : 'text-slate-400'}`} />
+              <Icon className={`icon-xs ${isSelected ? 'text-brand-sky' : 'text-slate-400'}`} />
               {tab.label}
             </button>
           );
         })}
       </div>
 
-      {/* Tab Body - Clean container frame */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 min-h-0">
-        
-        {/* TAB 1: SHOP SETTINGS */}
+      {/* ─── Content Area ─── */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
+
+        {/* ============================================================ */}
+        {/* TAB: SETTINGS                                                */}
+        {/* ============================================================ */}
         {activeTab === 'Settings' && (
-          <form onSubmit={handleUpdateSettings} className="space-y-6 animate-fade-in">
-            <h3 className="text-lg font-bold text-slate-900 uppercase tracking-wider font-display border-b border-slate-100 pb-2">Shop Identity & Parameters</h3>
+          <form onSubmit={handleUpdateSettings} className="divide-y divide-slate-100 animate-fade-in">
+
+            {/* Section header */}
+            <div className="px-6 py-5 flex items-center justify-between">
+              <div>
+                <h2 className="text-h2 text-brand-sidebar">Shop Identity & Parameters</h2>
+                <p className="text-caption mt-0.5">Configure how your tailor shop appears and operates in the system</p>
+              </div>
+              <button type="submit" className="btn-primary shrink-0">
+                <Save className="icon-xs text-brand-sky" />
+                Save Settings
+              </button>
+            </div>
 
             {settingsSuccess && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-xs font-semibold">
-                Shop settings updated successfully.
-              </div>
+              <div className="mx-6 mb-4 alert-success">Shop settings updated successfully.</div>
             )}
-
             {settingsError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs font-semibold">
-                {settingsError}
-              </div>
+              <div className="mx-6 mb-4 alert-error">{settingsError}</div>
             )}
 
-            <div className="max-w-xl">
-              <div className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Shop / Company Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={editedShopName}
-                    onChange={(e) => setEditedShopName(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-sm font-semibold focus:outline-none focus:border-[#38BDF8]"
-                  />
+            {/* ── Identity & Localization ── */}
+            <section className="px-6 py-5 space-y-5">
+              <div className="flex items-center gap-2.5 mb-1">
+                <div className="p-2 bg-brand-bg rounded-lg border border-slate-200">
+                  <Shield className="icon-sm text-brand-sky" />
                 </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Identity Phone Number</label>
-                  <input
-                    type="text"
-                    value={editedPhone}
-                    onChange={(e) => setEditedPhone(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-sm font-semibold focus:outline-none focus:border-[#38BDF8]"
-                  />
+                <div>
+                  <h3 className="text-sm font-bold text-brand-sidebar uppercase tracking-wider">Identity & Localization</h3>
+                  <p className="text-caption-xs">Basic shop profile, currency, and regional preferences</p>
                 </div>
+              </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-2xl">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Company Address</label>
-                  <textarea
-                    value={editedAddress}
-                    onChange={(e) => setEditedAddress(e.target.value)}
-                    rows={2}
-                    className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-sm font-semibold focus:outline-none focus:border-[#38BDF8]"
-                  />
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Shop Name</label>
+                  <input type="text" required value={editedShopName} onChange={(e) => setEditedShopName(e.target.value)} className="input-base" />
                 </div>
-
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">System Currency Symbol</label>
-                  <select
-                    value={editedCurrency}
-                    onChange={(e) => setEditedCurrency(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-lg font-bold text-slate-800 text-xs focus:outline-none focus:border-[#38BDF8]"
-                  >
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Phone Number</label>
+                  <input type="text" value={editedPhone} onChange={(e) => setEditedPhone(e.target.value)} className="input-base" />
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Address</label>
+                  <textarea value={editedAddress} onChange={(e) => setEditedAddress(e.target.value)} rows={2} className="textarea-base" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Currency</label>
+                  <select value={editedCurrency} onChange={(e) => setEditedCurrency(e.target.value)} className="select-base text-xs">
                     <option value="$">USD ($)</option>
                     <option value="PKR">PKR (Rs)</option>
                     <option value="INR">INR (₹)</option>
@@ -410,14 +411,17 @@ export default function OwnerDashboard({ token, currency, shopLogo, onSettingsUp
                     <option value="€">EUR (€)</option>
                   </select>
                 </div>
-
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Measurement Unit</label>
+                  <select value={editedMeasurementUnit} onChange={(e) => setEditedMeasurementUnit(e.target.value as any)} className="select-base text-xs">
+                    <option value="Inches">Inches</option>
+                    <option value="Centimeters">Centimeters (cm)</option>
+                    <option value="Feet">Feet (ft)</option>
+                  </select>
+                </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Auto-Archive Delivered Orders</label>
-                  <select
-                    value={editedAutoArchiveDays}
-                    onChange={(e) => setEditedAutoArchiveDays(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-lg font-bold text-slate-800 text-xs focus:outline-none focus:border-[#38BDF8]"
-                  >
+                  <select value={editedAutoArchiveDays} onChange={(e) => setEditedAutoArchiveDays(Number(e.target.value))} className="select-base text-xs">
                     <option value={0}>Never</option>
                     <option value={7}>7 Days</option>
                     <option value={15}>15 Days</option>
@@ -426,36 +430,23 @@ export default function OwnerDashboard({ token, currency, shopLogo, onSettingsUp
                     <option value={90}>90 Days</option>
                   </select>
                 </div>
+              </div>
+            </section>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Default Measurement Unit</label>
-                  <select
-                    value={editedMeasurementUnit}
-                    onChange={(e) => setEditedMeasurementUnit(e.target.value as any)}
-                    className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-lg font-bold text-slate-800 text-xs focus:outline-none focus:border-[#38BDF8]"
-                  >
-                    <option value="Inches">Inches</option>
-                    <option value="Centimeters">Centimeters (cm)</option>
-                    <option value="Feet">Feet (ft)</option>
-                  </select>
+            {/* ── Printing & Documents ── */}
+            <section className="px-6 py-5 space-y-5">
+              <div className="flex items-center gap-2.5 mb-1">
+                <div className="p-2 bg-brand-bg rounded-lg border border-slate-200">
+                  <Printer className="icon-sm text-brand-sky" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-brand-sidebar uppercase tracking-wider">Printing & Documents</h3>
+                  <p className="text-caption-xs">Receipt settings, logo, footer text, and default print behavior</p>
                 </div>
               </div>
-            </div>
 
-            {/* PRINTING SECTION */}
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 space-y-4">
-              <div>
-                <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 font-display">
-                  <Printer className="w-5 h-5 text-[#38BDF8]" />
-                  Printing
-                </h4>
-                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  Configure settings used for customer receipts and measurement slips.
-                </p>
-              </div>
-
-              <div className="space-y-4 max-w-xl">
-                <div className="space-y-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-2xl">
+                <div className="space-y-1 col-span-2">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Shop Logo</label>
                   <div className="flex items-center gap-3">
                     {editedShopLogo ? (
@@ -464,344 +455,287 @@ export default function OwnerDashboard({ token, currency, shopLogo, onSettingsUp
                         <button
                           type="button"
                           onClick={() => setEditedShopLogo('')}
-                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center cursor-pointer hover:bg-red-600 text-[10px] font-bold"
-                        >
-                          X
-                        </button>
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center cursor-pointer hover:bg-red-600 text-3xs font-bold"
+                          aria-label="Remove logo"
+                        >X</button>
                       </div>
                     ) : (
                       <div className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 flex items-center justify-center shrink-0">
-                        <span className="text-xs text-slate-400 font-bold">Logo</span>
+                        <span className="text-xs text-slate-400 font-semibold">Logo</span>
                       </div>
                     )}
-                    <label className="px-3 py-2 bg-white border-2 border-slate-200 rounded-lg text-xs font-bold text-slate-600 cursor-pointer hover:bg-slate-50 hover:border-slate-300 transition-colors uppercase tracking-wider">
+                    <label className="btn-secondary cursor-pointer">
                       {editedShopLogo ? 'Change' : 'Upload'}
-                      <input
-                        type="file"
-                        accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
-                        onChange={e => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          if (file.size > 2 * 1024 * 1024) {
-                            alert('Logo must be under 2MB.');
-                            return;
-                          }
-                          const reader = new FileReader();
-                          reader.onload = ev => setEditedShopLogo(ev.target?.result as string);
-                          reader.readAsDataURL(file);
-                        }}
-                        className="hidden"
-                      />
+                      <input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 2 * 1024 * 1024) { alert('Logo must be under 2MB.'); return; }
+                        const reader = new FileReader();
+                        reader.onload = ev => setEditedShopLogo(ev.target?.result as string);
+                        reader.readAsDataURL(file);
+                      }} className="hidden" />
                     </label>
                   </div>
                 </div>
-
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Receipt Footer Text</label>
-                  <input
-                    type="text"
-                    value={editedReceiptFooter}
-                    onChange={(e) => setEditedReceiptFooter(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-sm font-semibold focus:outline-none focus:border-[#38BDF8]"
-                    placeholder="Receipt is generated by Stitch Master - 03163455358"
-                  />
+                  <input type="text" value={editedReceiptFooter} onChange={(e) => setEditedReceiptFooter(e.target.value)} className="input-base" placeholder="Receipt is generated by Stitch Master - 03163455358" />
                 </div>
-
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Terms & Conditions</label>
-                  <textarea
-                    value={editedTermsConditions}
-                    onChange={(e) => setEditedTermsConditions(e.target.value)}
-                    rows={3}
-                    className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-sm font-semibold focus:outline-none focus:border-[#38BDF8] resize-y"
-                    placeholder="e.g. All orders are subject to our terms and conditions..."
-                  />
+                  <textarea value={editedTermsConditions} onChange={(e) => setEditedTermsConditions(e.target.value)} rows={3} className="textarea-base" placeholder="e.g. All orders are subject to our terms and conditions..." />
                 </div>
-
-                <div className="space-y-1">
+                <div className="col-span-2 space-y-2">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Default Print Preferences</label>
-                  <div className="flex flex-wrap gap-4 pt-1">
-                    <label className="flex items-center gap-2 text-xs font-bold text-slate-600 uppercase tracking-wider cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={defaultPrintReceipt}
-                        onChange={(e) => setDefaultPrintReceipt(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400 cursor-pointer"
-                      />
+                  <div className="flex flex-wrap gap-6">
+                    <label className="flex items-center gap-2.5 text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer select-none">
+                      <input type="checkbox" checked={defaultPrintReceipt} onChange={(e) => setDefaultPrintReceipt(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400 cursor-pointer" />
                       Customer Receipt
                     </label>
-                    <label className="flex items-center gap-2 text-xs font-bold text-slate-600 uppercase tracking-wider cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={defaultPrintMeasure}
-                        onChange={(e) => setDefaultPrintMeasure(e.target.checked)}
-                        className="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400 cursor-pointer"
-                      />
+                    <label className="flex items-center gap-2.5 text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer select-none">
+                      <input type="checkbox" checked={defaultPrintMeasure} onChange={(e) => setDefaultPrintMeasure(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400 cursor-pointer" />
                       Measurement Slip(s)
                     </label>
                   </div>
                 </div>
               </div>
-            </div>
+            </section>
 
-            {/* Custom Pipeline Queue Stages */}
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 space-y-4">
-              <div>
-                <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 font-display">
-                  <ListTodo className="w-5 h-5 text-[#38BDF8]" />
-                  Pipeline Queue Stages (Custom Workflow Builder)
-                </h4>
-                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  Customize the stages of your garment order pipeline. You can add new custom stages, rename them, toggle active status, and reorder them. Core stages (Getting Ready/Pending and Archived) are maintained for operational stability.
-                </p>
+            {/* ── WhatsApp Notifications ── */}
+            <section className="px-6 py-5 space-y-5">
+              <div className="flex items-center gap-2.5 mb-1">
+                <div className="p-2 bg-brand-bg rounded-lg border border-slate-200">
+                  <Smartphone className="icon-sm text-brand-sky" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-brand-sidebar uppercase tracking-wider">WhatsApp Notifications</h3>
+                  <p className="text-caption-xs">Automated customer notifications when orders are ready</p>
+                </div>
               </div>
 
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newStageName}
-                  onChange={(e) => setNewStageName(e.target.value)}
-                  placeholder="Add e.g., Stitching, Cutting, Fitting"
-                  className="flex-1 px-3 py-2 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#38BDF8]"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddStage}
-                  className="px-4 py-2 bg-[#0F172A] text-white font-bold rounded-lg text-xs uppercase tracking-wider cursor-pointer hover:bg-slate-800 flex items-center gap-1 shrink-0"
-                >
-                  <Plus className="w-4 h-4 text-[#38BDF8]" />
+              <label className="flex items-center gap-3 cursor-pointer select-none max-w-xl">
+                <input type="checkbox" checked={whatsappNotifyOnReady} onChange={(e) => setWhatsappNotifyOnReady(e.target.checked)} className="w-5 h-5 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400 cursor-pointer" />
+                <div>
+                  <span className="text-sm font-semibold text-slate-700">Auto-notify on Ready to Deliver</span>
+                  <p className="text-xs text-slate-500 mt-0.5">Show a prompt to send WhatsApp when an order moves to Ready to Deliver</p>
+                </div>
+              </label>
+
+              <div className="max-w-xl space-y-2">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Message Template</label>
+                <p className="text-xs text-slate-400 leading-relaxed">Supported placeholders: {'{ShopName}'}, {'{CustomerName}'}, {'{OrderSummary}'}, {'{RemainingBalance}'}</p>
+                <textarea value={editedWhatsappTemplate} onChange={(e) => setEditedWhatsappTemplate(e.target.value)} rows={10} className="textarea-base font-mono" placeholder={DEFAULT_WHATSAPP_TEMPLATE} />
+              </div>
+            </section>
+
+            {/* ── Pipeline Stages ── */}
+            <section className="px-6 py-5 space-y-5">
+              <div className="flex items-center gap-2.5 mb-1">
+                <div className="p-2 bg-brand-bg rounded-lg border border-slate-200">
+                  <ListTodo className="icon-sm text-brand-sky" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-brand-sidebar uppercase tracking-wider">Pipeline Stages</h3>
+                  <p className="text-caption-xs">Customize the order workflow stages for your tailoring process</p>
+                </div>
+              </div>
+
+              <div className="flex gap-2 max-w-lg">
+                <input type="text" value={newStageName} onChange={(e) => setNewStageName(e.target.value)} placeholder="Add e.g., Stitching, Cutting, Fitting" className="input-base flex-1" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddStage(); } }} />
+                <button type="button" onClick={handleAddStage} className="btn-primary shrink-0">
+                  <Plus className="icon-xs text-brand-sky" />
                   Add Stage
                 </button>
               </div>
 
-              <div className="space-y-2 max-h-[50vh] overflow-y-auto p-4 bg-white border border-slate-200 rounded-xl shadow-2xs">
+              <div className="space-y-2 max-w-xl">
                 {editedStages.map((stage, idx) => {
                   const isCore = stage.id === 'Pending' || stage.id === 'Archived' || stage.name.toLowerCase() === 'archived';
                   return (
-                    <div key={stage.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3.5 bg-slate-50/50 hover:bg-slate-50 border border-slate-150 rounded-xl gap-3 transition-colors">
-                      <div className="flex items-center gap-2.5 w-full sm:w-auto">
-                        {/* Up / Down arrows for sorting */}
-                        <div className="flex flex-col gap-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleMoveStage(idx, 'up')}
-                            disabled={idx === 0}
-                            className="p-0.5 rounded text-slate-400 hover:text-[#38BDF8] disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed hover:bg-white"
-                            title="Move Stage Up"
-                          >
-                            <ArrowUp className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleMoveStage(idx, 'down')}
-                            disabled={idx === editedStages.length - 1}
-                            className="p-0.5 rounded text-slate-400 hover:text-[#38BDF8] disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed hover:bg-white"
-                            title="Move Stage Down"
-                          >
-                            <ArrowDown className="w-4 h-4" />
-                          </button>
-                        </div>
-
-                        {/* Editable Name Input */}
-                        <input
-                          type="text"
-                          required
-                          value={stage.name}
-                          onChange={(e) => handleRenameStage(idx, e.target.value)}
-                          className="px-2 py-1 bg-white border border-slate-200 rounded-md text-slate-800 text-xs font-bold uppercase tracking-wider focus:outline-none focus:border-[#38BDF8] w-full max-w-[200px]"
-                        />
-
-                        {isCore && (
-                          <span className="text-xs font-extrabold bg-[#E0F2FE] text-[#0369A1] px-2 py-1 rounded uppercase tracking-wider shrink-0">
-                            Core
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-                        {/* Enable / Disable checkbox */}
-                        <label className="flex items-center gap-1.5 text-xs font-extrabold text-slate-500 uppercase select-none cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={stage.enabled}
-                            disabled={isCore}
-                            onChange={() => handleToggleStage(idx)}
-                            className="w-4 h-4 rounded border-slate-300 text-[#38BDF8] focus:ring-[#38BDF8] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                          />
-                          <span>{stage.enabled ? 'Enabled' : 'Disabled'}</span>
-                        </label>
-
-                        {/* Trash button to delete */}
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteStage(idx)}
-                          disabled={isCore}
-                          className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg cursor-pointer transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                          title="Delete Custom Stage"
-                        >
-                          <Trash2 className="w-4 h-4" />
+                    <div key={stage.id} className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl hover:border-slate-300 transition-colors">
+                      <div className="flex flex-col gap-0.5">
+                        <button type="button" onClick={() => handleMoveStage(idx, 'up')} disabled={idx === 0} className="p-0.5 rounded text-slate-400 hover:text-brand-sky disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed" title="Move up" aria-label="Move stage up">
+                          <ArrowUp className="icon-xs" />
+                        </button>
+                        <button type="button" onClick={() => handleMoveStage(idx, 'down')} disabled={idx === editedStages.length - 1} className="p-0.5 rounded text-slate-400 hover:text-brand-sky disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed" title="Move down" aria-label="Move stage down">
+                          <ArrowDown className="icon-xs" />
                         </button>
                       </div>
+                      <div className="flex-1 flex items-center gap-2.5">
+                        <input type="text" required value={stage.name} onChange={(e) => handleRenameStage(idx, e.target.value)} className="input-base max-w-[200px]" />
+                        <div className="flex items-center gap-2">
+                          {isCore && <span className="badge-blue">Core</span>}
+                          <label className="flex items-center gap-1.5 text-xs font-bold text-slate-500 uppercase select-none cursor-pointer">
+                            <input type="checkbox" checked={stage.enabled} disabled={isCore} onChange={() => handleToggleStage(idx)} className="w-4 h-4 rounded border-slate-300 text-brand-sky focus:ring-brand-sky cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" />
+                            {stage.enabled ? 'On' : 'Off'}
+                          </label>
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => handleDeleteStage(idx)} disabled={isCore} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg cursor-pointer transition-colors disabled:opacity-30 disabled:cursor-not-allowed" title="Delete stage" aria-label="Delete stage">
+                        <Trash2 className="icon-xs" />
+                      </button>
                     </div>
                   );
                 })}
               </div>
-            </div>
+            </section>
 
-            <button
-              type="submit"
-              className="w-full py-3 px-6 bg-[#0F172A] hover:bg-[#1E293B] text-white font-bold text-sm uppercase tracking-wider rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm"
-            >
-              <Save className="w-4 h-4 text-[#38BDF8]" />
-              Save Identity Settings
-            </button>
+            {/* Sticky save bar */}
+            <div className="px-6 py-4 bg-brand-bg border-t border-slate-200 flex justify-end rounded-b-2xl">
+              <button type="submit" className="btn-primary">
+                <Save className="icon-xs text-brand-sky" />
+                Save All Settings
+              </button>
+            </div>
           </form>
         )}
 
-        {/* TAB 4: BACKUP & ARCHIVING */}
-        {activeTab === 'Backup' && (
-          <div className="space-y-6 divide-y divide-slate-100 animate-fade-in">
-            {/* Backup download block */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider font-display flex items-center gap-1.5">
-                <Database className="w-5 h-5 text-[#38BDF8]" />
-                System Backups
-              </h3>
-              <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider max-w-xl leading-relaxed">
-                Generate and download full relational database backups. This produces a secure JSON file including all profiles, settings, frozen custom measurements, and orders.
-              </p>
-
-              <button
-                onClick={triggerBackupDownload}
-                disabled={backupLoading}
-                className="px-4 py-2.5 bg-[#0F172A] hover:bg-[#1E293B] disabled:opacity-50 text-white font-bold rounded-lg flex items-center gap-1.5 cursor-pointer text-xs uppercase tracking-wider border border-slate-800 transition-colors"
-              >
-                <ArrowDown className="w-4 h-4 text-[#38BDF8]" />
-                {backupLoading ? 'Compiling Backup...' : 'Download Full System Backup'}
-              </button>
-            </div>
-
-            {/* Restore upload block */}
-            <div className="pt-6 space-y-4">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider font-display flex items-center gap-1.5">
-                <ArrowUp className="w-5 h-5 text-emerald-500" />
-                Restore System Backup
-              </h3>
-              <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider max-w-xl leading-relaxed">
-                Upload a previously exported `.json` backup file to restore database tables. Existing customer records with duplicate phone numbers will safely merge.
-              </p>
-
-              {restoreSuccess && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-xs font-semibold max-w-xl animate-fade-in">
-                  {restoreSuccess}
-                </div>
-              )}
-
-              {restoreError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs font-semibold max-w-xl animate-fade-in">
-                  {restoreError}
-                </div>
-              )}
-
-              <input
-                type="file"
-                accept=".json"
-                onChange={handleRestoreUpload}
-                className="block text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:uppercase file:tracking-wider file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer"
-              />
-            </div>
-
-            {/* Archive Orders Block */}
-            <div className="pt-6 space-y-4">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider font-display flex items-center gap-1.5">
-                <Calendar className="w-5 h-5 text-amber-500" />
-                Archive Old Orders
-              </h3>
-              <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider max-w-xl leading-relaxed">
-                Batch-archive completed or delivered orders prior to the selected date to maintain instant database and active queue speeds. Archived metrics are preserved in historical records.
-              </p>
-
-              {archiveSuccess && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-xs font-semibold max-w-xl animate-fade-in">
-                  {archiveSuccess}
-                </div>
-              )}
-
-              <div className="flex flex-wrap gap-3 items-end">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 block uppercase tracking-wider">Archive Prior To:</label>
-                  <input
-                    type="date"
-                    value={archiveCutoff}
-                    onChange={(e) => setArchiveCutoff(e.target.value)}
-                    className="px-3 py-1.5 border-2 border-slate-200 rounded-lg text-slate-800 text-xs font-bold focus:outline-none focus:border-[#38BDF8]"
-                  />
-                </div>
-                <button
-                  onClick={handleArchiveOrders}
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-lg cursor-pointer text-xs uppercase tracking-wider border border-amber-500 transition-colors"
-                >
-                  Archive Closed Orders
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 4: UNIFIED GARMENT CONFIGURATION */}
+        {/* ============================================================ */}
+        {/* TAB: GARMENT CONFIG                                          */}
+        {/* ============================================================ */}
         {activeTab === 'GarmentConfig' && (
-          <div className="animate-fade-in">
+          <div className="p-6 animate-fade-in">
             <GarmentConfiguration token={token} />
           </div>
         )}
 
-        {/* TAB: DATA IMPORT */}
+        {/* ============================================================ */}
+        {/* TAB: DATA IMPORT                                             */}
+        {/* ============================================================ */}
         {activeTab === 'Import' && (
-          <DataImport
-            token={token}
-            garmentTypes={garmentTypes}
-            onComplete={() => setActiveTab('Settings')}
-          />
+          <div className="p-6 animate-fade-in">
+            <DataImport token={token} garmentTypes={garmentTypes} onComplete={() => setActiveTab('Settings')} />
+          </div>
         )}
 
-        {/* TAB: AUDIT LOGS */}
+        {/* ============================================================ */}
+        {/* TAB: BACKUP & ARCHIVE                                        */}
+        {/* ============================================================ */}
+        {activeTab === 'Backup' && (
+          <div className="p-6 space-y-6 animate-fade-in">
+
+            {/* Backup card */}
+            <div className="card-flat space-y-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-brand-bg rounded-xl border border-slate-200">
+                    <ArrowDown className="icon-md text-brand-sky" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-brand-sidebar uppercase tracking-wider">System Backup</h3>
+                    <p className="text-caption-xs mt-0.5">Export full database as a JSON file for safekeeping</p>
+                  </div>
+                </div>
+                <button onClick={triggerBackupDownload} disabled={backupLoading} className="btn-primary">
+                  <ArrowDown className="icon-xs text-brand-sky" />
+                  {backupLoading ? 'Compiling Backup...' : 'Download Backup'}
+                </button>
+              </div>
+            </div>
+
+            {/* Restore card */}
+            <div className="card-flat space-y-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-brand-bg rounded-xl border border-slate-200">
+                    <ArrowUp className="icon-md text-emerald-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-brand-sidebar uppercase tracking-wider">Restore Backup</h3>
+                    <p className="text-caption-xs mt-0.5">Upload a previously exported .json backup to restore data</p>
+                  </div>
+                </div>
+              </div>
+
+              {restoreSuccess && <div className="alert-success animate-fade-in">{restoreSuccess}</div>}
+              {restoreError && <div className="alert-error animate-fade-in">{restoreError}</div>}
+
+              <input type="file" accept=".json" onChange={handleRestoreUpload}
+                className="block text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:uppercase file:tracking-wider file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer" />
+            </div>
+
+            {/* Archive card */}
+            <div className="card-flat space-y-4">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-brand-bg rounded-xl border border-slate-200">
+                    <Calendar className="icon-md text-amber-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-brand-sidebar uppercase tracking-wider">Archive Old Orders</h3>
+                    <p className="text-caption-xs mt-0.5">Batch-archive completed orders to maintain database speed</p>
+                  </div>
+                </div>
+              </div>
+
+              {archiveSuccess && <div className="alert-success animate-fade-in">{archiveSuccess}</div>}
+
+              <div className="flex flex-wrap gap-3 items-end">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 block uppercase tracking-wider">Archive Prior To:</label>
+                  <input type="date" value={archiveCutoff} onChange={(e) => setArchiveCutoff(e.target.value)} className="input-base" />
+                </div>
+                <button onClick={handleArchiveOrders} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold rounded-lg cursor-pointer text-xs uppercase tracking-wider border border-amber-500 transition-colors">
+                  Archive Closed Orders
+                </button>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* TAB: AUDIT LOGS                                              */}
+        {/* ============================================================ */}
         {activeTab === 'Logs' && (
-          <div className="space-y-4 animate-fade-in">
-            <div className="space-y-1">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider font-display flex items-center gap-1.5">
-                <Activity className="w-5 h-5 text-indigo-500" />
-                Security Audit Logs
-              </h3>
-              <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider">
-                Real-time security log tracking logins, setting edits, or worker modifications.
-              </p>
+          <div className="p-6 space-y-4 animate-fade-in">
+
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2.5 bg-brand-bg rounded-xl border border-slate-200">
+                <Activity className="icon-md text-indigo-500" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-brand-sidebar uppercase tracking-wider">Security Audit Logs</h2>
+                <p className="text-caption-xs">Real-time tracking of logins, settings changes, and system modifications</p>
+              </div>
             </div>
 
             <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-              <div className="max-h-[50vh] overflow-y-auto divide-y divide-slate-100 bg-slate-50">
-                {logsLoading && <p className="p-6 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">Retrieving log buffers...</p>}
+              <div className="max-h-[55vh] overflow-y-auto divide-y divide-slate-100">
+                {logsLoading && (
+                  <div className="p-8 text-center text-slate-400 text-xs font-semibold uppercase tracking-wider">Loading logs...</div>
+                )}
                 {!logsLoading && logs.length === 0 && (
-                  <p className="p-10 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">No modification actions logged in session.</p>
+                  <div className="p-8 text-center">
+                    <div className="empty-state">
+                      <Activity className="empty-state-icon" />
+                      <p className="empty-state-title">No Logs Recorded</p>
+                      <p className="empty-state-text">System modifications and login events will appear here once they occur</p>
+                    </div>
+                  </div>
                 )}
                 {logs.map((log) => (
-                  <div key={log.id} className="p-4 bg-white hover:bg-slate-50/50 flex items-start justify-between text-xs transition-colors">
-                    <div className="space-y-1">
-                      <p className="font-bold text-slate-800 leading-normal">
-                        <span className="text-indigo-600 font-extrabold uppercase tracking-wide">[{log.action}]</span> by {log.user_email}
+                  <div key={log.id} className="p-4 bg-white hover:bg-slate-50/50 flex items-start justify-between gap-4 transition-colors">
+                    <div className="space-y-1 min-w-0">
+                      <p className="text-sm font-semibold text-slate-800">
+                        <span className="text-indigo-600 font-bold uppercase tracking-wide">[{log.action}]</span>
+                        <span className="text-slate-400 mx-1.5">by</span>
+                        {log.user_email}
                       </p>
                       {log.details && (
-                        <pre className="text-xs text-slate-500 bg-slate-50 p-2.5 border border-slate-200/60 rounded-lg mt-1.5 overflow-x-auto max-w-lg font-mono">
+                        <pre className="text-xs text-slate-500 bg-slate-50 p-2.5 border border-slate-200 rounded-lg mt-1.5 overflow-x-auto max-w-lg font-mono">
                           {JSON.stringify(log.details)}
                         </pre>
                       )}
                     </div>
-                    <span className="text-xs font-extrabold text-slate-400 shrink-0 ml-4">
+                    <time className="text-xs font-bold text-slate-400 shrink-0 whitespace-nowrap">
                       {new Date(log.created_at).toLocaleString()}
-                    </span>
+                    </time>
                   </div>
                 ))}
               </div>
             </div>
+
           </div>
         )}
 

@@ -6,3 +6,10 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Generated production configuration
+/config/
+
+# Electron build output
+release/
+out/

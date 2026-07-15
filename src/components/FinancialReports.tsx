@@ -19,7 +19,7 @@ import {
   Phone,
   RefreshCw
 } from 'lucide-react';
-import { Order, OrderStatus, PipelineStage } from '../types';
+import { Order, PipelineStage } from '../types';
 
 interface FinancialReportsProps {
   token: string;
@@ -253,7 +253,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
   const pipelineFinancials = useMemo(() => {
     if (!data) return [];
     
-    const stages = data.settings.pipeline_stages || [];
+    const stages = data?.settings?.pipeline_stages || [];
     const activeStages = stages.filter(s => s.enabled);
 
     return activeStages.map(stage => {
@@ -553,17 +553,17 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
 
   if (error) {
     return (
-      <div className="bg-rose-50 border border-rose-200 text-rose-800 p-6 rounded-2xl flex flex-col items-center justify-center text-center gap-4 space-y-2">
+      <div className="bg-red-50 border border-red-200 text-red-700 p-6 rounded-2xl flex flex-col items-center justify-center text-center gap-4 space-y-2">
         <AlertCircle className="w-12 h-12 text-rose-500" />
         <div>
-          <h3 className="font-bold text-lg">Failed to Load Financial Engine</h3>
+          <h3 className="font-semibold text-lg">Failed to Load Financial Engine</h3>
           <p className="text-sm mt-1 text-rose-600">{error}</p>
         </div>
         <button 
           onClick={fetchFinancials}
-          className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-sm font-bold shadow-sm transition-colors cursor-pointer flex items-center gap-2"
+          className="btn-danger"
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className="icon-xs" />
           Try Again
         </button>
       </div>
@@ -592,9 +592,9 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
               <button
                 key={tab.id}
                 onClick={() => setDateFilter(tab.id as any)}
-                className={`py-1.5 px-3.5 rounded-lg text-btn-md font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                className={`py-1.5 px-3.5 rounded-lg text-btn-md font-semibold uppercase tracking-wider transition-[background-color,color] cursor-pointer ${
                   dateFilter === tab.id
-                    ? 'bg-[#0F172A] text-white shadow-sm'
+                    ? 'bg-brand-sidebar text-white shadow-sm'
                     : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
                 }`}
               >
@@ -607,16 +607,18 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
             <button
               onClick={handleExportCSV}
               disabled={!filteredOrders.length}
-              className={`p-2.5 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl shadow-2xs text-slate-600 hover:text-slate-800 transition-colors cursor-pointer ${!filteredOrders.length ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`btn-secondary ${!filteredOrders.length ? 'opacity-50 cursor-not-allowed' : ''}`}
               title="Download CSV"
+              aria-label="Download CSV"
             >
               <ArrowDownToLine className="icon-sm" />
             </button>
             <button
               onClick={handlePrint}
               disabled={!filteredOrders.length}
-              className={`p-2.5 bg-[#0F172A] hover:bg-slate-800 text-white rounded-xl shadow-md transition-colors cursor-pointer ${!filteredOrders.length ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`btn-primary ${!filteredOrders.length ? 'opacity-50 cursor-not-allowed' : ''}`}
               title="Print Report"
+              aria-label="Print report"
             >
               <Printer className="icon-sm" />
             </button>
@@ -628,26 +630,26 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
       {dateFilter === 'Custom' && (
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-wrap gap-4 items-center animate-fade-in print:hidden">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">From:</span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">From:</span>
             <input
               type="date"
               value={customStartDate}
               onChange={(e) => setCustomStartDate(e.target.value)}
-              className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-hidden focus:border-slate-500"
+              className="input-base"
             />
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">To:</span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">To:</span>
             <input
               type="date"
               value={customEndDate}
               onChange={(e) => setCustomEndDate(e.target.value)}
-              className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-hidden focus:border-slate-500"
+              className="input-base"
             />
           </div>
           <button
             onClick={fetchFinancials}
-            className="px-4 py-1.5 bg-slate-900 text-white hover:bg-slate-800 text-xs font-bold uppercase tracking-wider rounded-xl cursor-pointer"
+            className="btn-primary"
           >
             Apply
           </button>
@@ -662,7 +664,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
           {/* Total Sales */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs min-h-32 flex flex-col justify-between relative overflow-hidden">
             <div className="absolute right-4 top-4 p-2 bg-blue-50 text-blue-600 rounded-xl">
-              <ShoppingBag className="w-5 h-5" />
+              <ShoppingBag className="icon-sm" />
             </div>
             <div>
               <span className="text-xs font-black text-slate-400 uppercase tracking-wider block" title="Total value of all orders placed during this period">Total Sales</span>
@@ -672,11 +674,11 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
             <div className="mt-2 flex items-center gap-1 text-xs font-semibold">
               {trends.revenueChange >= 0 ? (
                 <span className="text-emerald-600 flex items-center gap-0.5">
-                  <TrendingUp className="w-4 h-4" /> +{trends.revenueChange.toFixed(1)}%
+                  <TrendingUp className="icon-xs" /> +{trends.revenueChange.toFixed(1)}%
                 </span>
               ) : (
                 <span className="text-rose-600 flex items-center gap-0.5">
-                  <TrendingDown className="w-4 h-4" /> {trends.revenueChange.toFixed(1)}%
+                  <TrendingDown className="icon-xs" /> {trends.revenueChange.toFixed(1)}%
                 </span>
               )}
               <span className="text-slate-400">vs previous period</span>
@@ -686,7 +688,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
           {/* Payments Received */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs min-h-32 flex flex-col justify-between relative overflow-hidden">
             <div className="absolute right-4 top-4 p-2 bg-emerald-50 text-emerald-600 rounded-xl">
-              <DollarSign className="w-5 h-5" />
+              <DollarSign className="icon-sm" />
             </div>
             <div>
               <span className="text-xs font-black text-slate-400 uppercase tracking-wider block" title="Payments already received from customers">Payments Received</span>
@@ -696,11 +698,11 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
             <div className="mt-2 flex items-center gap-1 text-xs font-semibold">
               {trends.collectionChange >= 0 ? (
                 <span className="text-emerald-600 flex items-center gap-0.5">
-                  <TrendingUp className="w-4 h-4" /> +{trends.collectionChange.toFixed(1)}%
+                  <TrendingUp className="icon-xs" /> +{trends.collectionChange.toFixed(1)}%
                 </span>
               ) : (
                 <span className="text-rose-600 flex items-center gap-0.5">
-                  <TrendingDown className="w-4 h-4" /> {trends.collectionChange.toFixed(1)}%
+                  <TrendingDown className="icon-xs" /> {trends.collectionChange.toFixed(1)}%
                 </span>
               )}
               <span className="text-slate-400">vs previous period</span>
@@ -710,7 +712,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
           {/* Still to Collect */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs min-h-32 flex flex-col justify-between relative overflow-hidden">
             <div className="absolute right-4 top-4 p-2 bg-amber-50 text-amber-600 rounded-xl">
-              <Clock className="w-5 h-5" />
+              <Clock className="icon-sm" />
             </div>
             <div>
               <span className="text-xs font-black text-slate-400 uppercase tracking-wider block" title="Amount customers still need to pay you">Still to Collect</span>
@@ -725,7 +727,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
           {/* Average per Order */}
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs min-h-32 flex flex-col justify-between relative overflow-hidden">
             <div className="absolute right-4 top-4 p-2 bg-purple-50 text-purple-600 rounded-xl">
-              <FileText className="w-5 h-5" />
+              <FileText className="icon-sm" />
             </div>
             <div>
               <span className="text-xs font-black text-slate-400 uppercase tracking-wider block" title="Average amount per order">Avg per Order</span>
@@ -733,10 +735,10 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
               <span className="text-display-lg font-black mt-1 font-display text-purple-600 block">{currency}{Math.round(stats.averageOrderValue).toLocaleString()}</span>
             </div>
             <div className="mt-2 flex items-center gap-1 text-xs font-semibold">
-              <span className="text-purple-600 font-bold">{stats.totalOrders}</span>
+              <span className="text-purple-600 font-semibold">{stats.totalOrders}</span>
               <span className="text-slate-400">total orders</span>
               <span className="text-slate-300 mx-1">•</span>
-              <span className="text-emerald-600 font-bold">{stats.deliveredOrdersCount}</span>
+              <span className="text-emerald-600 font-semibold">{stats.deliveredOrdersCount}</span>
               <span className="text-slate-400">delivered</span>
             </div>
           </div>
@@ -771,7 +773,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
       {filteredOrders.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-3">
           <ShoppingBag className="w-12 h-12 text-slate-300" />
-          <h3 className="font-bold text-slate-800">No orders in this period</h3>
+          <h3 className="font-semibold text-slate-800">No orders in this period</h3>
           <p className="text-xs text-slate-400 max-w-sm leading-relaxed">There are no orders registered within the selected time window. Try adjusting your date filters or choose a custom range.</p>
         </div>
       ) : (
@@ -855,10 +857,10 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                     className="absolute bg-slate-900 text-white text-xs p-2.5 rounded-xl border border-slate-800 pointer-events-none shadow-md z-30 flex flex-col gap-1 w-36"
                     style={{ left: `${Math.min(activeTooltip.x - 50, 360)}px`, top: `${activeTooltip.y}px` }}
                   >
-                    <span className="font-bold text-slate-300 border-b border-slate-800 pb-1">{activeTooltip.label}</span>
+                    <span className="font-semibold text-slate-300 border-b border-slate-800 pb-1">{activeTooltip.label}</span>
                     <span className="flex justify-between mt-1">
                       <span>Sales:</span>
-                      <span className="font-black text-[#38BDF8]">{currency}{activeTooltip.revenue.toLocaleString()}</span>
+                      <span className="font-black text-brand-sky">{currency}{activeTooltip.revenue.toLocaleString()}</span>
                     </span>
                     <span className="flex justify-between">
                       <span>Payments:</span>
@@ -870,11 +872,11 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
 
               <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
                 <div className="flex gap-4">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     <span className="w-4 h-4 bg-sky-400 rounded-full inline-block" />
                     Sales
                   </div>
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     <span className="w-4 h-4 bg-emerald-500 rounded-full inline-block" />
                     Payments
                   </div>
@@ -909,13 +911,16 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                       const strokeFully = (fullyPaidVal / total) * circumference;
                       const strokePartially = (partiallyPaidVal / total) * circumference;
                       const strokeUnpaid = (unpaidVal / total) * circumference;
-                      return (
-                        <>
-                          <circle cx="80" cy="80" r={radius} fill="transparent" stroke="#FDA4AF" strokeWidth="14" strokeDasharray={circumference} strokeDashoffset={0} />
-                          <circle cx="80" cy="80" r={radius} fill="transparent" stroke="#FCD34D" strokeWidth="14" strokeDasharray={circumference} strokeDashoffset={strokeUnpaid} />
-                          <circle cx="80" cy="80" r={radius} fill="transparent" stroke="#34D399" strokeWidth="14" strokeDasharray={circumference} strokeDashoffset={strokeUnpaid + strokePartially} />
-                        </>
-                      );
+                      const segs = [
+                        { color: '#FDA4AF', length: strokeUnpaid, offset: 0 },
+                        { color: '#FCD34D', length: strokePartially, offset: strokeUnpaid },
+                        { color: '#34D399', length: strokeFully, offset: strokeUnpaid + strokePartially },
+                      ];
+                      return segs.filter(s => s.length > 0).map((s, i) => (
+                        <circle key={i} cx="80" cy="80" r={radius} fill="transparent" stroke={s.color} strokeWidth="14"
+                          strokeDasharray={`${s.length} ${circumference - s.length}`}
+                          strokeDashoffset={-s.offset} />
+                      ));
                     })()}
                   </svg>
                   <div className="absolute flex flex-col items-center justify-center text-center">
@@ -927,21 +932,21 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                 </div>
 
                 <div className="w-full space-y-2 border-t border-slate-100 pt-3">
-                  <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider">
+                  <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider">
                     <div className="flex items-center gap-1.5 text-slate-500">
                       <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full" />
                       Fully Paid ({paymentDistribution.fullyPaid.count})
                     </div>
                     <span className="text-emerald-600">{currency}{paymentDistribution.fullyPaid.value.toLocaleString()}</span>
                   </div>
-                  <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider">
+                  <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider">
                     <div className="flex items-center gap-1.5 text-slate-500">
                       <span className="w-2.5 h-2.5 bg-amber-300 rounded-full" />
                       Partly Paid ({paymentDistribution.partiallyPaid.count})
                     </div>
                     <span className="text-amber-500">{currency}{paymentDistribution.partiallyPaid.value.toLocaleString()}</span>
                   </div>
-                  <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider">
+                  <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wider">
                     <div className="flex items-center gap-1.5 text-slate-500">
                       <span className="w-2.5 h-2.5 bg-rose-300 rounded-full" />
                       Not Yet Paid ({paymentDistribution.unpaid.count})
@@ -960,7 +965,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded-md text-3xs font-black uppercase tracking-wider">{stage.count} orders</span>
-                          <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">{stage.name}</h4>
+                          <h4 className="font-semibold text-slate-800 text-xs uppercase tracking-wider">{stage.name}</h4>
                         </div>
                         <span className="font-extrabold text-slate-900 text-xs">{currency}{stage.totalValue.toLocaleString()}</span>
                       </div>
@@ -988,26 +993,26 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
               <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
                 <p className="text-3xs text-slate-400 font-medium">Customers who have orders in this period, showing what they still owe</p>
                 <div className="relative">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" />
+                  <Search className="icon-xs text-slate-400 absolute left-2.5 top-2.5" />
                   <input
                     type="text"
                     value={customerSearch}
                     onChange={(e) => setCustomerSearch(e.target.value)}
                     placeholder="Search customer..."
-                    className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-3xs font-bold text-slate-600 placeholder:text-slate-400 focus:outline-hidden focus:bg-white"
+                    className="input-base pl-8"
                   />
                 </div>
               </div>
 
               <div className="space-y-2.5 max-h-[50vh] overflow-y-auto pr-1">
                 {customerInsights.length === 0 ? (
-                  <p className="text-slate-400 text-center py-6 text-xs uppercase font-bold tracking-wider">No customer entries found.</p>
+                  <p className="text-slate-400 text-center py-6 text-xs uppercase font-semibold tracking-wider">No customer entries found.</p>
                 ) : (
                   customerInsights.slice(0, 20).map(cust => (
-                    <div key={cust.id} className="p-3 bg-white border border-slate-100 rounded-xl flex items-center justify-between hover:border-slate-300 transition-all hover:shadow-2xs">
+                    <div key={cust.id} className="p-3 bg-white border border-slate-100 rounded-xl flex items-center justify-between hover:border-slate-300 transition-[border-color,box-shadow] hover:shadow-2xs">
                       <div>
-                        <h4 className="font-bold text-slate-800 text-sm">{cust.name}</h4>
-                        <span className="text-3xs text-slate-400 font-bold mt-0.5 uppercase tracking-wide">
+                        <h4 className="font-semibold text-slate-800 text-sm">{cust.name}</h4>
+                        <span className="text-3xs text-slate-400 font-semibold mt-0.5 uppercase tracking-wide">
                           {cust.ordersCount} order{cust.ordersCount !== 1 ? 's' : ''} • Total ordered: {currency}{cust.totalBookings.toLocaleString()}
                         </span>
                       </div>
@@ -1022,7 +1027,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                           ) : (
                             <>
                               <span className="text-xs font-extrabold text-emerald-500 block">{currency}{cust.totalPaid.toLocaleString()}</span>
-                              <span className="text-3xs font-bold text-slate-400 block uppercase tracking-wide">Paid in Full</span>
+                              <span className="text-3xs font-semibold text-slate-400 block uppercase tracking-wide">Paid in Full</span>
                             </>
                           )}
                         </div>
@@ -1034,16 +1039,16 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                               className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-800 border border-slate-200 rounded-lg cursor-pointer transition-colors"
                               title="Call Customer"
                             >
-                              <Phone className="w-4 h-4" />
+                              <Phone className="icon-xs" />
                             </a>
                             <a
-                              href={`https://wa.me/${cust.phone.replace(/[^0-9]/g, '')}?text=Hi%20${encodeURIComponent(cust.name)}%2C%20this%20is%20a%20gentle%20reminder%20from%20our%20shop%20regarding%20your%20pending%20balance%20of%20${currency}${cust.outstanding}%20on%20your%20garment%20booking.%20Thank%20you!`}
+                              href={`https://wa.me/${cust.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hi ${cust.name}, this is a gentle reminder from our shop regarding your pending balance of ${currency}${cust.outstanding} on your garment booking. Thank you!`)}`}
                               target="_blank"
                               rel="noreferrer"
                               className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-100 rounded-lg cursor-pointer transition-colors"
                               title="Send WhatsApp Reminder"
                             >
-                              <MessageSquare className="w-4 h-4" />
+                              <MessageSquare className="icon-xs" />
                             </a>
                           </div>
                         )}
@@ -1088,7 +1093,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-table-cell">
             <thead>
-              <tr className="border-b border-slate-200 text-table-header uppercase tracking-wider font-bold">
+              <tr className="border-b border-slate-200 text-table-header uppercase tracking-wider font-semibold">
                 <th className="py-3 px-4">Order</th>
                 <th className="py-3 px-4">Customer</th>
                 <th className="py-3 px-4">Date</th>
@@ -1111,7 +1116,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                   return (
                     <tr key={o.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="py-3.5 px-4 font-black text-slate-950 uppercase">{o.order_number}</td>
-                      <td className="py-3.5 px-4 font-bold text-slate-700">{o.customer_name}</td>
+                      <td className="py-3.5 px-4 font-semibold text-slate-700">{o.customer_name}</td>
                       <td className="py-3.5 px-4 font-medium text-slate-500">{new Date(o.created_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}</td>
                       <td className="py-3.5 px-4 font-medium text-slate-500">{new Date(o.due_date).toLocaleDateString(undefined, { dateStyle: 'medium' })}</td>
                       <td className="py-3.5 px-4">
@@ -1125,8 +1130,8 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                           {o.status}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-right font-bold text-slate-800">{currency}{(Number(o.total_amount) || 0).toLocaleString()}</td>
-                      <td className="py-3.5 px-4 text-right font-bold text-slate-800">{currency}{(Number(o.paid_amount) || 0).toLocaleString()}</td>
+                      <td className="py-3.5 px-4 text-right font-semibold text-slate-800">{currency}{(Number(o.total_amount) || 0).toLocaleString()}</td>
+                      <td className="py-3.5 px-4 text-right font-semibold text-slate-800">{currency}{(Number(o.paid_amount) || 0).toLocaleString()}</td>
                       <td className={`py-3.5 px-4 text-right font-extrabold ${isPaid ? 'text-emerald-600' : 'text-amber-500'}`}>
                         {currency}{balance.toLocaleString()}
                       </td>

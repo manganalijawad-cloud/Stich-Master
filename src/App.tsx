@@ -4,18 +4,16 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Shield, Users, ShoppingBag, Settings, LogOut, Info, ShieldCheck, Menu, X, Key, DollarSign, Lock, Unlock } from 'lucide-react';
+import { Shield, Users, ShoppingBag, Settings, LogOut, Menu, X, DollarSign, Lock, Unlock } from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
 import CustomersSection from './components/CustomersSection';
 import OrdersSection from './components/OrdersSection';
 import OwnerDashboard from './components/OwnerDashboard';
 import FinancialReports from './components/FinancialReports';
+import SyncIndicator from './components/SyncIndicator';
 import { Customer, UserProfile, UserRole, PipelineStage } from './types';
 import { supabase } from './lib/supabase';
 
-// -------------------------------------------------------------------------
-// GLOBAL WINDOW.FETCH INTERCEPTOR FOR AUTH
-// -------------------------------------------------------------------------
 const originalFetch = window.fetch;
 const customFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const token = localStorage.getItem('tailor_token');
@@ -51,30 +49,33 @@ export default function App() {
     const savedUser = localStorage.getItem('tailor_user');
     if (savedUser) {
       try {
-        const parsed = JSON.parse(savedUser) as UserProfile;
-        if (parsed && parsed.role === 'Worker') {
-          parsed.role = 'Owner';
-          localStorage.setItem('tailor_user', JSON.stringify(parsed));
-        }
-        return parsed;
+        return JSON.parse(savedUser) as UserProfile;
       } catch (e) {
-        // ignore
+        /* ignore */
       }
     }
     return null;
   });
 
-  const activeRole = 'Owner' as UserRole;
+  useEffect(() => {
+    if (user?.role === 'Worker') {
+      setUser({ ...user, role: 'Owner' });
+      localStorage.setItem('tailor_user', JSON.stringify({ ...user, role: 'Owner' }));
+    }
+  }, []);
+
+  const activeRole = (user?.role ?? 'Owner') as UserRole;
 
   const [activeMode, setActiveMode] = useState<'Manager' | 'Owner'>(() => {
-    return (localStorage.getItem('tailor_active_role') as 'Manager' | 'Owner') || 'Manager';
+    const stored = localStorage.getItem('tailor_active_role');
+    return stored === 'Owner' ? 'Owner' : 'Manager';
   });
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [ownerPassword, setOwnerPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
 
-  const switchToOwner = async () => {
+  const switchToOwner = () => {
     if (!token) return;
     setShowPasswordModal(true);
   };
@@ -82,6 +83,12 @@ export default function App() {
   const switchToManager = () => {
     setActiveMode('Manager');
     localStorage.setItem('tailor_active_role', 'Manager');
+    if (token) {
+      fetch('/api/auth/exit-owner-mode', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(err => console.warn('exit-owner-mode failed:', err));
+    }
     if (activeTab === 'Owner' || activeTab === 'Financials') {
       setActiveTab('Customers');
     }
@@ -131,7 +138,6 @@ export default function App() {
     });
   };
 
-  // Shop configurations fetched from settings API
   const [shopName, setShopName] = useState('');
   const [shopPhone, setShopPhone] = useState('');
   const [shopAddress, setShopAddress] = useState('');
@@ -144,16 +150,12 @@ export default function App() {
   const [receiptFooterText, setReceiptFooterText] = useState('');
   const [defaultPrintReceipt, setDefaultPrintReceipt] = useState(true);
   const [defaultPrintMeasure, setDefaultPrintMeasure] = useState(true);
-  const [supabaseConfig, setSupabaseConfig] = useState<{ supabaseConnected: boolean; supabaseUrl: string | null }>({
-    supabaseConnected: true,
-    supabaseUrl: null,
-  });
-
+  const [whatsappMessageTemplate, setWhatsappMessageTemplate] = useState('');
+  const [whatsappNotifyOnReady, setWhatsappNotifyOnReady] = useState(false);
   const [activeOrderId, setActiveOrderId] = useState<string | undefined>(undefined);
   const [activeItemIdx, setActiveItemIdx] = useState<number | undefined>(undefined);
   const [isVerifyingSession, setIsVerifyingSession] = useState(true);
 
-  // Check URL query parameters for live order navigation (from QR Code scanning)
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const orderIdParam = urlParams.get('orderId');
@@ -164,13 +166,11 @@ export default function App() {
         setActiveItemIdx(parseInt(itemIdxParam, 10));
       }
       setActiveTab('Orders');
-      // Gracefully clean up the URL search parameters to keep links neat
       const newUrl = window.location.pathname;
       window.history.replaceState({}, document.title, newUrl);
     }
   }, []);
 
-  // Verify/Restore Supabase Session on Startup & Listen to Session Updates
   useEffect(() => {
     let isMounted = true;
 
@@ -273,18 +273,11 @@ export default function App() {
     };
   }, []);
 
-  // Fetch shop metadata
   const fetchShopMetadata = async () => {
     if (!token) return;
     try {
       const configRes = await fetch('/api/config-status');
       const configContentType = configRes.headers.get('content-type') || '';
-      if (configRes.ok && configContentType.includes('application/json')) {
-        const configData = await configRes.json();
-        setSupabaseConfig(configData);
-      }
-
-      // Fetch dynamic settings
       const settingsRes = await fetch('/api/settings', {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -299,6 +292,8 @@ export default function App() {
         setReceiptFooterText(settingsData.receipt_footer_text ?? '');
         setDefaultPrintReceipt(settingsData.default_print_receipt !== false);
         setDefaultPrintMeasure(settingsData.default_print_measure !== false);
+        setWhatsappMessageTemplate(settingsData.whatsapp_message_template ?? '');
+        setWhatsappNotifyOnReady(settingsData.whatsapp_notify_on_ready === true);
         setCurrency(settingsData.currency || '$');
         setMeasurementFields(settingsData.measurement_fields || []);
         setMeasurementUnit(settingsData.measurement_unit || 'Inches');
@@ -350,8 +345,8 @@ export default function App() {
 
   if (isVerifyingSession) {
     return (
-      <div className="min-h-screen bg-[#0F172A] flex flex-col items-center justify-center text-white">
-        <p className="text-lg font-semibold animate-pulse text-[#38BDF8]">Initializing Workspace...</p>
+      <div className="min-h-screen bg-brand-sidebar flex flex-col items-center justify-center text-white">
+        <p className="text-lg font-semibold animate-pulse text-brand-sky">Initializing Workspace…</p>
       </div>
     );
   }
@@ -365,7 +360,7 @@ export default function App() {
   const navItems = [
     {
       id: 'Customers' as const,
-      label: 'Customers Profile',
+      label: 'Customer Registry',
       icon: Users,
     },
     {
@@ -381,34 +376,46 @@ export default function App() {
       },
       {
         id: 'Owner' as const,
-        label: 'Administration Portal',
+        label: 'Administration',
         icon: Settings,
       },
     ] : []),
   ];
 
+  const pageTitle = activeTab === 'Customers'
+    ? 'Customer Registry'
+    : activeTab === 'Orders'
+    ? 'POS Order Queue'
+    : activeTab === 'Financials'
+    ? 'Financial Analytics'
+    : 'System Configuration';
+
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col md:flex-row font-sans text-slate-800">
-      
-      {/* SIDEBAR FOR DESKTOP */}
-      <aside className={`hidden md:flex flex-col bg-[#0F172A] text-white shrink-0 border-r border-slate-800 print:hidden sticky top-0 h-screen overflow-y-auto transition-all duration-[250ms] ease-in-out ${
-        isSidebarCollapsed ? 'w-14 p-2 items-center' : 'w-60 p-5'
-      }`}>
-        
-        {/* Brand Header */}
-        <div className="mb-6 mt-1 w-full flex justify-center">
+    <div className="min-h-screen bg-brand-bg flex flex-col md:flex-row font-sans text-slate-800">
+
+      {/* ──────────────────────────────────────────────────────────── */}
+      {/* DESKTOP SIDEBAR                                              */}
+      {/* ──────────────────────────────────────────────────────────── */}
+      <aside
+        className={`hidden md:flex flex-col bg-brand-sidebar text-white shrink-0 border-r border-slate-800 print:hidden sticky top-0 h-screen overflow-y-auto transition-[width,padding] duration-300 ease-in-out ${
+          isSidebarCollapsed ? 'w-16 py-4 items-center' : 'w-60 p-4'
+        }`}
+      >
+
+        {/* ── Logo / Brand Area ── */}
+        <div className={`${isSidebarCollapsed ? 'mb-6' : 'mb-6'} w-full flex justify-center`}>
           <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3'} w-full`}>
-            <div className="p-2 bg-slate-800 rounded-xl flex items-center justify-center border border-slate-700 shrink-0 overflow-hidden" title={isSidebarCollapsed ? (shopName || 'Tailor Shop') : undefined}>
+            <div className="p-2 bg-slate-800/80 rounded-xl flex items-center justify-center border border-slate-700/60 shrink-0 overflow-hidden">
               {shopLogo ? (
-                <img src={shopLogo} alt="Logo" className="w-7 h-7 object-contain shrink-0" />
+                <img src={shopLogo} alt={`${shopName} logo`} className="w-7 h-7 object-contain shrink-0" loading="lazy" />
               ) : (
-                <Shield className="icon-md text-[#38BDF8] shrink-0" />
+                <Shield className="icon-md text-brand-sky shrink-0" aria-hidden="true" />
               )}
             </div>
             {!isSidebarCollapsed && (
               <div className="overflow-hidden animate-fade-in min-w-0">
-                <span className="text-h3 block text-[#38BDF8] font-display uppercase font-bold break-words">{shopName || 'Unnamed Tailor Shop'}</span>
-                <span className="text-caption-xs font-bold text-slate-400 block uppercase tracking-wider mt-0.5">
+                <span className="text-lg block text-brand-sky font-display uppercase font-bold break-words truncate">{shopName || 'Unnamed Tailor Shop'}</span>
+                <span className="text-3xs font-semibold text-slate-500 block uppercase tracking-wider mt-0.5">
                   Staff Workspace
                 </span>
               </div>
@@ -416,8 +423,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* Navigation items aligned with StitchMaster style */}
-        <nav className="flex-1 space-y-1.5 w-full">
+        {/* ── Primary Navigation ── */}
+        <nav className="flex-1 w-full space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -430,21 +437,22 @@ export default function App() {
                     setActiveCustomerIdForNewOrder(undefined);
                   }
                 }}
-                className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center px-0' : 'gap-3 px-4 border-l-4'} py-3 rounded-xl font-semibold text-btn-sm transition-all duration-[250ms] cursor-pointer text-left relative group ${
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-[background-color,color] duration-200 cursor-pointer text-left relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-sky/60 ${
                   isActive
-                    ? 'bg-[#1E293B] text-[#F1F5F9] border-[#38BDF8]'
-                    : 'text-[#94A3B8] border-transparent hover:text-white hover:bg-slate-800/30'
+                    ? 'bg-brand-active text-slate-100'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/40'
                 }`}
               >
-                <Icon className={`icon-md shrink-0 transition-colors ${isActive ? 'text-[#38BDF8]' : 'text-[#94A3B8]'}`} />
+                {isActive && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-brand-sky rounded-full" aria-hidden="true" />
+                )}
+                <Icon className={`icon-md shrink-0 ${isActive ? 'text-brand-sky' : 'text-slate-400 group-hover:text-slate-300'}`} />
                 {!isSidebarCollapsed && (
-                  <span className="animate-fade-in break-words">{item.label}</span>
+                  <span className="truncate">{item.label}</span>
                 )}
                 {isSidebarCollapsed && (
-                  <div className="absolute left-16 pl-2 hidden group-hover:block z-50 pointer-events-none">
-                    <div className="bg-[#1E293B] text-white text-xs font-semibold py-1.5 px-3 rounded-lg shadow-xl whitespace-nowrap border border-slate-700">
-                      {item.label}
-                    </div>
+                  <div className="absolute left-full ml-2 hidden group-hover:block z-50 pointer-events-none">
+                    <div className="tooltip">{item.label}</div>
                   </div>
                 )}
               </button>
@@ -452,50 +460,47 @@ export default function App() {
           })}
         </nav>
 
-        {/* Footer/Logout Area */}
-        <div className={`pt-6 border-t border-slate-800 mt-auto space-y-3 w-full ${isSidebarCollapsed ? 'flex flex-col items-center' : ''}`}>
+        {/* ── Account / Session Section ── */}
+        <div className="w-full pt-4 mt-auto border-t border-slate-800/60 space-y-2">
           {activeMode === 'Manager' ? (
             <button
               onClick={switchToOwner}
-              className={`w-full py-2 ${isSidebarCollapsed ? 'px-0 justify-center' : 'px-3'} bg-amber-900/30 hover:bg-amber-900/50 text-amber-400 border border-amber-800/30 rounded-xl text-btn-sm uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors relative group`}
+              className={`w-full ${isSidebarCollapsed ? 'flex justify-center p-2' : 'flex items-center gap-2.5 px-3 py-2'} rounded-lg text-sm font-semibold uppercase tracking-wider bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 border border-amber-800/20 cursor-pointer transition-colors relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60`}
             >
               <Lock className="icon-sm shrink-0" />
-              {!isSidebarCollapsed && <span>Switch to Owner</span>}
+              {!isSidebarCollapsed && <span className="truncate">Switch to Owner</span>}
               {isSidebarCollapsed && (
-                <div className="absolute left-16 pl-2 hidden group-hover:block z-50 pointer-events-none">
-                  <div className="bg-amber-900 text-amber-200 text-xs font-semibold py-1.5 px-3 rounded-lg shadow-xl whitespace-nowrap border border-amber-800/50">
-                    Switch to Owner
-                  </div>
+                <div className="absolute left-full ml-2 hidden group-hover:block z-50 pointer-events-none">
+                  <div className="tooltip !bg-amber-900 !border-amber-800/50 !text-amber-200">Switch to Owner</div>
                 </div>
               )}
             </button>
           ) : (
             <button
               onClick={switchToManager}
-              className={`w-full py-2 ${isSidebarCollapsed ? 'px-0 justify-center' : 'px-3'} bg-emerald-900/30 hover:bg-emerald-900/50 text-emerald-400 border border-emerald-800/30 rounded-xl text-btn-sm uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors relative group`}
+              className={`w-full ${isSidebarCollapsed ? 'flex justify-center p-2' : 'flex items-center gap-2.5 px-3 py-2'} rounded-lg text-sm font-semibold uppercase tracking-wider bg-emerald-900/20 hover:bg-emerald-900/40 text-emerald-400 border border-emerald-800/20 cursor-pointer transition-colors relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60`}
             >
               <Unlock className="icon-sm shrink-0" />
-              {!isSidebarCollapsed && <span>Switch to Manager</span>}
+              {!isSidebarCollapsed && <span className="truncate">Switch to Manager</span>}
               {isSidebarCollapsed && (
-                <div className="absolute left-16 pl-2 hidden group-hover:block z-50 pointer-events-none">
-                  <div className="bg-emerald-900 text-emerald-200 text-xs font-semibold py-1.5 px-3 rounded-lg shadow-xl whitespace-nowrap border border-emerald-800/50">
-                    Switch to Manager
-                  </div>
+                <div className="absolute left-full ml-2 hidden group-hover:block z-50 pointer-events-none">
+                  <div className="tooltip !bg-emerald-900 !border-emerald-800/50 !text-emerald-200">Switch to Manager</div>
                 </div>
               )}
             </button>
           )}
+
+          <SyncIndicator token={token} collapsed={isSidebarCollapsed} />
+
           <button
             onClick={handleLogout}
-            className={`w-full py-2 ${isSidebarCollapsed ? 'px-0 justify-center' : 'px-3'} bg-red-950/40 hover:bg-red-950/60 text-red-400 border border-red-900/30 rounded-xl text-btn-sm uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors relative group`}
+            className={`w-full ${isSidebarCollapsed ? 'flex justify-center p-2' : 'flex items-center gap-2.5 px-3 py-2'} rounded-lg text-sm font-semibold uppercase tracking-wider bg-red-950/20 hover:bg-red-950/40 text-red-400 border border-red-900/20 cursor-pointer transition-colors relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60`}
           >
             <LogOut className="icon-sm shrink-0" />
-            {!isSidebarCollapsed && <span>Sign Out</span>}
+            {!isSidebarCollapsed && <span className="truncate">Sign Out</span>}
             {isSidebarCollapsed && (
-              <div className="absolute left-16 pl-2 hidden group-hover:block z-50 pointer-events-none">
-                <div className="bg-red-950 text-red-200 text-xs font-semibold py-1.5 px-3 rounded-lg shadow-xl whitespace-nowrap border border-red-900/40">
-                  Sign Out
-                </div>
+              <div className="absolute left-full ml-2 hidden group-hover:block z-50 pointer-events-none">
+                <div className="tooltip !bg-red-950 !border-red-900/40 !text-red-200">Sign Out</div>
               </div>
             )}
           </button>
@@ -503,28 +508,31 @@ export default function App() {
 
       </aside>
 
-      {/* MOBILE HEADER BAR */}
-      <header className="md:hidden bg-[#0F172A] text-white py-4 px-6 flex items-center justify-between sticky top-0 z-50 print:hidden border-b border-slate-800">
-        <div className="flex items-center gap-2">
+      {/* ──────────────────────────────────────────────────────────── */}
+      {/* MOBILE HEADER                                               */}
+      {/* ──────────────────────────────────────────────────────────── */}
+      <header className="md:hidden bg-brand-sidebar text-white py-3.5 px-5 flex items-center justify-between sticky top-0 z-50 print:hidden border-b border-slate-800">
+        <div className="flex items-center gap-2.5 min-w-0">
           {shopLogo ? (
-            <img src={shopLogo} alt="Logo" className="w-7 h-7 object-contain shrink-0" />
+            <img src={shopLogo} alt={`${shopName} logo`} className="w-7 h-7 object-contain shrink-0" loading="lazy" />
           ) : (
-            <Shield className="icon-md text-[#38BDF8]" />
+            <Shield className="icon-md text-brand-sky shrink-0" aria-hidden="true" />
           )}
-          <span className="font-extrabold text-h3 tracking-tight text-[#38BDF8] uppercase">{shopName}</span>
+          <span className="font-bold text-base tracking-tight text-brand-sky uppercase truncate">{shopName || 'StitchMaster'}</span>
         </div>
         <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-1 text-slate-400 hover:text-white cursor-pointer"
+          className="p-2 -mr-1 text-slate-400 hover:text-white cursor-pointer rounded-lg hover:bg-slate-800/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-sky/60"
+          aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
         >
-          {isMobileMenuOpen ? <X className="icon-md" /> : <Menu className="icon-md" />}
+          {isMobileMenuOpen ? <X className="icon-md" aria-hidden="true" /> : <Menu className="icon-md" aria-hidden="true" />}
         </button>
       </header>
 
-      {/* MOBILE DRAWER */}
+      {/* ── Mobile Menu Overlay ── */}
       {isMobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 top-[60px] bg-[#0F172A] z-40 p-6 flex flex-col space-y-6 animate-fade-in print:hidden">
-          <nav className="space-y-2">
+        <div className="md:hidden fixed inset-0 top-[57px] bg-brand-sidebar z-40 px-5 py-6 flex flex-col overflow-y-auto animate-fade-in print:hidden">
+          <nav className="space-y-1 flex-1">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -538,22 +546,24 @@ export default function App() {
                       setActiveCustomerIdForNewOrder(undefined);
                     }
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold text-btn-sm transition-all ${
-                    isActive ? 'bg-[#1E293B] text-white border-l-4 border-[#38BDF8]' : 'text-[#94A3B8] border-l-4 border-transparent'
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-colors cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-sky/60 ${
+                    isActive ? 'bg-brand-active text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800/40'
                   }`}
                 >
-                  <Icon className="icon-md shrink-0" />
+                  {isActive && <span className="w-1 h-5 bg-brand-sky rounded-full shrink-0" aria-hidden="true" />}
+                  {!isActive && <span className="w-1 h-5 shrink-0" aria-hidden="true" />}
+                  <Icon className={`icon-md shrink-0 ${isActive ? 'text-brand-sky' : 'text-slate-400'}`} />
                   <span>{item.label}</span>
                 </button>
               );
             })}
           </nav>
 
-          <div className="pt-6 border-t border-slate-800 mt-auto space-y-3">
+          <div className="pt-5 mt-auto border-t border-slate-800/60 space-y-2">
             {activeMode === 'Manager' ? (
               <button
                 onClick={() => { setIsMobileMenuOpen(false); switchToOwner(); }}
-                className="w-full py-2.5 px-3 bg-amber-900/30 hover:bg-amber-900/50 text-amber-400 border border-amber-800/30 rounded-xl text-btn-sm uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wider bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 border border-amber-800/20 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60"
               >
                 <Lock className="icon-sm shrink-0" />
                 <span>Unlock Owner Mode</span>
@@ -561,7 +571,7 @@ export default function App() {
             ) : (
               <button
                 onClick={() => { setIsMobileMenuOpen(false); switchToManager(); }}
-                className="w-full py-2.5 px-3 bg-emerald-900/30 hover:bg-emerald-900/50 text-emerald-400 border border-emerald-800/30 rounded-xl text-btn-sm uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wider bg-emerald-900/20 hover:bg-emerald-900/40 text-emerald-400 border border-emerald-800/20 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
               >
                 <Unlock className="icon-sm shrink-0" />
                 <span>Switch to Manager</span>
@@ -572,7 +582,7 @@ export default function App() {
                 setIsMobileMenuOpen(false);
                 handleLogout();
               }}
-              className="w-full py-2.5 px-3 bg-red-950/40 hover:bg-red-950/60 text-red-400 border border-red-900/30 rounded-xl text-btn-sm uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+              className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wider bg-red-950/20 hover:bg-red-950/40 text-red-400 border border-red-900/20 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60"
             >
               <LogOut className="icon-sm shrink-0" />
               <span>Sign Out</span>
@@ -581,55 +591,49 @@ export default function App() {
         </div>
       )}
 
-      {/* MAIN WORKSPACE WRAPPER */}
+      {/* ──────────────────────────────────────────────────────────── */}
+      {/* MAIN WORKSPACE                                              */}
+      {/* ──────────────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0">
-        
-        {/* DESKTOP TOP-BAR PANEL */}
+
+        {/* ── Desktop Top Header ── */}
         <header className="hidden md:flex items-center justify-between bg-white h-14 px-6 border-b border-slate-200 shrink-0 print:hidden">
           <div className="flex items-center gap-4">
             <button
               onClick={toggleSidebar}
-              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer flex items-center justify-center border border-slate-200"
+              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-sky/60"
               title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+              aria-label={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
             >
-              <Menu className="icon-md" />
+              <Menu className="icon-md" aria-hidden="true" />
             </button>
-            <h2 className="text-h2 font-bold text-slate-900 tracking-tight">
-              {activeTab === 'Customers' 
-                ? 'Customer Registry' 
-                : activeTab === 'Orders' 
-                ? 'POS Order Queue' 
-                : activeTab === 'Financials' 
-                ? 'Financial Analytics' 
-                : 'System Config'}
-            </h2>
+            <div className="h-5 w-px bg-slate-200" aria-hidden="true" />
+            <h1 className="text-lg font-semibold text-slate-900 tracking-tight">{pageTitle}</h1>
           </div>
 
           <div className="flex items-center gap-3">
             {activeMode === 'Manager' ? (
               <button
                 onClick={switchToOwner}
-                className="flex items-center gap-2 px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-btn-sm font-bold uppercase tracking-wider cursor-pointer transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60"
               >
-                <Lock className="icon-sm" />
-                <span className="hidden sm:inline">Manager Mode</span>
+                <Lock className="icon-xs" aria-hidden="true" />
+                <span>Manager Mode</span>
               </button>
             ) : (
               <button
                 onClick={switchToManager}
-                className="flex items-center gap-2 px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-btn-sm font-bold uppercase tracking-wider cursor-pointer transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
               >
-                <Unlock className="icon-sm" />
-                <span className="hidden sm:inline">Owner Mode</span>
+                <Unlock className="icon-xs" aria-hidden="true" />
+                <span>Owner Mode</span>
               </button>
             )}
           </div>
         </header>
 
-        {/* CORE WORKSPACE CONTENT AREA */}
-        <main className="flex-1 p-3 md:p-4">
-          
-          {/* ACTIVE MODULE CONTAINER */}
+        {/* ── Page Content ── */}
+        <main className="flex-1 p-3 md:p-5">
           <div className="animate-fade-in">
             {activeTab === 'Customers' && (
               <CustomersSection
@@ -669,6 +673,9 @@ export default function App() {
                 receiptFooterText={receiptFooterText}
                 defaultPrintReceipt={defaultPrintReceipt}
                 defaultPrintMeasure={defaultPrintMeasure}
+                isOwnerMode={activeMode === 'Owner'}
+                whatsappMessageTemplate={whatsappMessageTemplate}
+                whatsappNotifyOnReady={whatsappNotifyOnReady}
               />
             )}
 
@@ -688,22 +695,21 @@ export default function App() {
               />
             )}
           </div>
-
         </main>
 
-        {/* PASSWORD MODAL FOR OWNER MODE UNLOCK */}
+        {/* ── Password Modal ── */}
         {showPasswordModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => { setShowPasswordModal(false); setPasswordError(null); setOwnerPassword(''); }}>
-            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 w-full max-w-sm mx-4 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+          <div role="presentation" className="modal-overlay" onClick={() => { setShowPasswordModal(false); setPasswordError(null); setOwnerPassword(''); }}>
+            <div className="modal-content max-w-sm" onClick={(e) => e.stopPropagation()}>
               <div className="text-center mb-5">
                 <div className="inline-flex items-center justify-center p-3 bg-amber-100 rounded-xl mb-3">
-                  <Shield className="icon-lg text-amber-600" />
+                  <Shield className="icon-lg text-amber-600" aria-hidden="true" />
                 </div>
-                <h3 className="text-h3 font-bold text-slate-900">Unlock Owner Mode</h3>
-                <p className="text-caption-xs text-slate-500 mt-1">Enter your account password to access administrative features.</p>
+                <h3 className="text-lg font-semibold text-slate-900">Unlock Owner Mode</h3>
+                <p className="text-xs text-slate-500 mt-1">Enter your account password to access administrative features.</p>
               </div>
               {passwordError && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-caption-xs font-semibold">
+                <div className="alert-error mb-4">
                   {passwordError}
                 </div>
               )}
@@ -712,36 +718,35 @@ export default function App() {
                 value={ownerPassword}
                 onChange={(e) => setOwnerPassword(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handlePasswordSubmit(); }}
-                placeholder="Enter password"
-                className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl text-slate-800 text-body-sm placeholder-slate-400 focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-100 font-medium transition-all mb-4"
+                placeholder="Enter password…"
+                className="input-base mb-4"
                 autoFocus
               />
               <div className="flex gap-3">
                 <button
                   onClick={() => { setShowPasswordModal(false); setPasswordError(null); setOwnerPassword(''); }}
-                  className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-btn-sm font-bold cursor-pointer transition-colors border border-slate-200"
+                  className="btn-secondary flex-1"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handlePasswordSubmit}
                   disabled={isVerifyingPassword || !ownerPassword}
-                  className="flex-1 py-2.5 px-4 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-btn-sm font-bold cursor-pointer transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="flex-1 py-2 px-4 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  {isVerifyingPassword ? 'Verifying...' : 'Unlock'}
+                  {isVerifyingPassword ? 'Verifying…' : 'Unlock'}
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* COMPACT FOOTER */}
-        <footer className="mt-auto py-3 px-6 border-t border-slate-200 bg-white text-center text-slate-400 text-caption print:hidden flex flex-col sm:flex-row justify-between items-center gap-2">
+        <footer className="footer-base flex flex-col sm:flex-row sm:justify-between items-center gap-2">
           <p className="font-medium">&copy; {new Date().getFullYear()} {shopName || 'Unnamed Tailor Shop'} StitchMaster. All rights reserved.</p>
           <div className="flex gap-4 text-slate-400">
-            <span className="font-semibold uppercase tracking-wider text-caption-xs">Tailored Suite Pro</span>
-            <span className="text-slate-300">|</span>
-            <span className="font-semibold uppercase tracking-wider text-caption-xs">Staff Portal</span>
+            <span className="font-semibold uppercase tracking-wider text-3xs">Tailored Suite Pro</span>
+            <span className="text-slate-300" aria-hidden="true">|</span>
+            <span className="font-semibold uppercase tracking-wider text-3xs">Staff Portal</span>
           </div>
         </footer>
 

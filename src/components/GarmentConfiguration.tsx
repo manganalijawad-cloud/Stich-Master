@@ -401,7 +401,8 @@ Do you absolutely want to proceed with deletion?`;
     e.preventDefault();
   };
 
-  const handleDropType = async (idx: number) => {
+  const handleDropType = async (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
     if (draggedTypeIdx === null || draggedTypeIdx === idx) return;
 
     const reordered = [...garmentTypes];
@@ -524,7 +525,8 @@ Do you absolutely want to proceed with deletion?`;
     e.preventDefault();
   };
 
-  const handleDropField = (idx: number) => {
+  const handleDropField = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
     if (draggedFieldIdx === null || draggedFieldIdx === idx) return;
 
     const reordered = [...builderFields];
@@ -763,7 +765,8 @@ Do you absolutely want to proceed with deletion?`;
     e.preventDefault();
   };
 
-  const handleDropCategory = async (idx: number) => {
+  const handleDropCategory = async (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
     if (!selectedType) return;
     if (draggedCategoryIdx === null || draggedCategoryIdx === idx) return;
 
@@ -886,7 +889,8 @@ Do you absolutely want to proceed with deletion?`;
     e.preventDefault();
   };
 
-  const handleDropOption = (idx: number) => {
+  const handleDropOption = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
     if (draggedOptionIdx === null || draggedOptionIdx === idx) return;
 
     const reordered = [...builderOptions];
@@ -942,8 +946,8 @@ Do you absolutely want to proceed with deletion?`;
     <div className="space-y-6">
       {/* Title & Description */}
       <div>
-        <h3 className="text-lg font-bold text-slate-900 uppercase tracking-wider font-display flex items-center gap-2">
-          <Sliders className="w-5 h-5 text-[#38BDF8]" />
+        <h3 className="text-lg font-semibold text-slate-900 uppercase tracking-wider font-display flex items-center gap-2">
+          <Sliders className="icon-sm text-brand-sky" />
           Garment Configuration
         </h3>
         <p className="text-xs text-slate-500 mt-1 leading-relaxed max-w-3xl">
@@ -953,15 +957,15 @@ Do you absolutely want to proceed with deletion?`;
 
       {/* Unified Error & Success Banners */}
       {error && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold flex items-center gap-2 shadow-2xs">
-          <X className="w-4 h-4 shrink-0" />
+        <div className="alert-error">
+          <X className="icon-xs shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {success && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-semibold flex items-center gap-2 shadow-2xs animate-fade-in">
-          <Check className="w-4 h-4 shrink-0 text-emerald-600" />
+        <div className="alert-success">
+          <Check className="icon-xs shrink-0 text-emerald-600" />
           <span>{success}</span>
         </div>
       )}
@@ -973,22 +977,22 @@ Do you absolutely want to proceed with deletion?`;
         <div className="lg:col-span-4 space-y-4">
           
           {/* Create Form */}
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-2xs">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Add New Catalog Garment</span>
+          <div className="card">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Add New Catalog Garment</span>
             <form onSubmit={handleAddGarmentType} className="space-y-2.5">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Garment Name</label>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest block">Garment Name</label>
                 <input
                   type="text"
                   required
                   value={newTypeName}
                   onChange={(e) => setNewTypeName(e.target.value)}
                   placeholder="e.g. Shalwar Kameez, Suit, Shirt"
-                  className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-xl text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#38BDF8]"
+                  className="input-base"
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Base Price (Rs.)</label>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest block">Base Price (Rs.)</label>
                 <input
                   type="number"
                   min="0"
@@ -996,29 +1000,29 @@ Do you absolutely want to proceed with deletion?`;
                   value={newTypePrice}
                   onChange={(e) => setNewTypePrice(e.target.value)}
                   placeholder="e.g. 2500"
-                  className="w-full px-3 py-2 bg-white border-2 border-slate-200 rounded-xl text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#38BDF8]"
+                  className="input-base"
                 />
               </div>
               <button
                 type="submit"
-                className="w-full py-2.5 bg-[#0F172A] hover:bg-[#1E293B] text-white font-extrabold rounded-xl text-btn-md uppercase tracking-wider cursor-pointer flex items-center justify-center gap-1.5 transition-colors"
+                className="btn-primary w-full"
               >
-                <Plus className="icon-sm text-[#38BDF8]" />
+                <Plus className="icon-sm text-brand-sky" />
                 Add Garment
               </button>
             </form>
           </div>
 
           {/* List of Garment Types */}
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
+          <div className="card">
             <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
               <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Garment Catalog List</span>
-              <span className="text-3xs font-bold text-slate-400 uppercase tracking-widest">{garmentTypes.length} registered</span>
+              <span className="text-3xs font-semibold text-slate-400 uppercase tracking-widest">{garmentTypes.length} registered</span>
             </div>
 
             <div className="divide-y divide-slate-150 max-h-[55vh] overflow-y-auto bg-white">
               {loading && garmentTypes.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">
+                <div className="p-8 text-center text-slate-400 text-xs font-semibold uppercase tracking-wider">
                   Retrieving catalog data...
                 </div>
               ) : garmentTypes.length === 0 ? (
@@ -1037,18 +1041,18 @@ Do you absolutely want to proceed with deletion?`;
                       draggable={!isEditing}
                       onDragStart={() => handleDragStartType(idx)}
                       onDragOver={(e) => handleDragOverType(e, idx)}
-                      onDrop={() => handleDropType(idx)}
+                      onDrop={(e) => handleDropType(e, idx)}
                       onClick={() => !isEditing && setSelectedType(type)}
-                      className={`group p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition-all border-l-4 select-none ${
+                      className={`group p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition-[background-color,border-color] border-l-4 select-none ${
                         isSelected 
-                          ? 'bg-[#F1F5F9] border-[#0F172A]' 
+                          ? 'bg-slate-100 border-brand-sidebar' 
                           : 'hover:bg-slate-50/70 border-transparent'
                       }`}
                     >
                       <div className="flex items-center gap-2.5 flex-1 min-w-0">
                         {/* Drag Handle */}
                         <div className="text-slate-300 group-hover:text-slate-400 transition-colors p-0.5 shrink-0 cursor-grab active:cursor-grabbing">
-                          <GripVertical className="w-4 h-4" />
+                          <GripVertical className="icon-xs" />
                         </div>
 
                         {/* Move buttons */}
@@ -1057,19 +1061,19 @@ Do you absolutely want to proceed with deletion?`;
                             type="button"
                             onClick={(e) => { e.stopPropagation(); handleMoveGarmentType(idx, 'up'); }}
                             disabled={idx === 0}
-                            className="p-0.5 rounded text-slate-400 hover:text-[#38BDF8] disabled:opacity-20 cursor-pointer hover:bg-slate-100"
+                            className="p-0.5 rounded text-slate-400 hover:text-brand-sky disabled:opacity-20 cursor-pointer hover:bg-slate-100"
                             title="Move Up"
                           >
-                            <ArrowUp className="w-4 h-4" />
+                            <ArrowUp className="icon-xs" />
                           </button>
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); handleMoveGarmentType(idx, 'down'); }}
                             disabled={idx === garmentTypes.length - 1}
-                            className="p-0.5 rounded text-slate-400 hover:text-[#38BDF8] disabled:opacity-20 cursor-pointer hover:bg-slate-100"
+                            className="p-0.5 rounded text-slate-400 hover:text-brand-sky disabled:opacity-20 cursor-pointer hover:bg-slate-100"
                             title="Move Down"
                           >
-                            <ArrowDown className="w-4 h-4" />
+                            <ArrowDown className="icon-xs" />
                           </button>
                         </div>
 
@@ -1082,21 +1086,21 @@ Do you absolutely want to proceed with deletion?`;
                                 required
                                 value={editingTypeName}
                                 onChange={(e) => setEditingTypeName(e.target.value)}
-                                className="px-2 py-1 bg-white border border-slate-300 rounded-md text-xs font-bold text-slate-800 focus:outline-none focus:border-[#38BDF8] w-full"
+                                className="input-base text-xs"
                               />
                               <button
                                 type="button"
                                 onClick={() => handleRenameGarmentType(type.id)}
                                 className="p-1 text-emerald-600 hover:bg-emerald-50 rounded cursor-pointer shrink-0"
                               >
-                                <Check className="w-4 h-4" />
+                                <Check className="icon-xs" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setEditingTypeId(null)}
                                 className="p-1 text-red-500 hover:bg-red-50 rounded cursor-pointer shrink-0"
                               >
-                                <X className="w-4 h-4" />
+                                <X className="icon-xs" />
                               </button>
                             </div>
                           ) : (
@@ -1104,7 +1108,7 @@ Do you absolutely want to proceed with deletion?`;
                               <span className={`text-xs font-extrabold ${type.enabled ? 'text-slate-800' : 'text-slate-400 line-through'}`}>
                                 {type.name}
                               </span>
-                              <div className="flex gap-1.5 items-center text-xs font-bold text-slate-400 mt-0.5">
+                              <div className="flex gap-1.5 items-center text-xs font-semibold text-slate-400 mt-0.5">
                                 <span>{type.measurement_fields?.length || 0} measurements</span>
                                 <span>•</span>
                                 <span className="text-emerald-600">Rs. {type.price || 0}</span>
@@ -1121,7 +1125,7 @@ Do you absolutely want to proceed with deletion?`;
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); handleToggleGarmentTypeEnable(type); }}
-                            className={`p-1 rounded-md text-3xs font-bold uppercase tracking-wider cursor-pointer transition-colors ${
+                            className={`p-1 rounded-md text-3xs font-semibold uppercase tracking-wider cursor-pointer transition-colors ${
                               type.enabled 
                                 ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' 
                                 : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
@@ -1139,10 +1143,10 @@ Do you absolutely want to proceed with deletion?`;
                               setEditingTypeId(type.id);
                               setEditingTypeName(type.name);
                             }}
-                            className="p-1 text-slate-500 hover:text-[#38BDF8] hover:bg-slate-100 rounded cursor-pointer transition-colors"
+                            className="p-1 text-slate-500 hover:text-brand-sky hover:bg-slate-100 rounded cursor-pointer transition-colors"
                             title="Rename"
                           >
-                            <Edit2 className="w-4 h-4" />
+                            <Edit2 className="icon-xs" />
                           </button>
 
                           {/* Delete */}
@@ -1152,7 +1156,7 @@ Do you absolutely want to proceed with deletion?`;
                             className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded cursor-pointer transition-colors"
                             title="Delete Garment Type & All Configs"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="icon-xs" />
                           </button>
                         </div>
                       )}
@@ -1167,19 +1171,19 @@ Do you absolutely want to proceed with deletion?`;
         {/* DETAILS SECTION (8/12 cols): Config panel for the selected garment type */}
         <div className="lg:col-span-8">
           {selectedType ? (
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
+            <div className="card">
               
               {/* Garment Type General Settings / Price */}
               <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex flex-col">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Garment Category</span>
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Garment Category</span>
                   <span className="text-body font-extrabold text-slate-800 font-display">{selectedType.name}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="flex flex-col">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider sm:text-right">Base Price</span>
+                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider sm:text-right">Base Price</span>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-body-sm font-bold text-slate-500">Rs.</span>
+                      <span className="text-body-sm font-semibold text-slate-500">Rs.</span>
                       <input
                         type="number"
                         min="0"
@@ -1189,13 +1193,13 @@ Do you absolutely want to proceed with deletion?`;
                           const val = e.target.value;
                           setSelectedTypePrice(val === '' ? '' : Number(val));
                         }}
-                        className="w-24 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-body-sm font-bold text-slate-800 focus:outline-none focus:border-[#38BDF8]"
+                        className="input-base w-24"
                       />
                       <button
                         type="button"
                         onClick={handleSavePrice}
                         disabled={savingPrice || selectedTypePrice === null}
-                        className="px-3 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white font-extrabold rounded-lg text-btn-md uppercase tracking-wider cursor-pointer flex items-center gap-1 shrink-0 transition-colors disabled:opacity-45"
+                        className="btn-primary shrink-0"
                       >
                         {savingPrice ? 'Saving...' : 'Save Price'}
                       </button>
@@ -1209,25 +1213,25 @@ Do you absolutely want to proceed with deletion?`;
                 <button
                   type="button"
                   onClick={() => setActiveConfigSection('MeasurementForm')}
-                  className={`flex-1 py-3 px-4 font-bold text-btn-md uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all cursor-pointer ${
+                  className={`flex-1 py-3 px-4 font-semibold text-btn-md uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-[border-color,color,background-color] cursor-pointer ${
                     activeConfigSection === 'MeasurementForm'
-                      ? 'border-[#0F172A] text-slate-800 bg-white'
+                      ? 'border-brand-sidebar text-slate-800 bg-white'
                       : 'border-transparent text-slate-400 hover:text-slate-600'
                   }`}
                 >
-                  <Ruler className="icon-sm text-[#38BDF8]" />
+                  <Ruler className="icon-sm text-brand-sky" />
                   Measurement Form Builder
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveConfigSection('StylingLibrary')}
-                  className={`flex-1 py-3 px-4 font-bold text-btn-md uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all cursor-pointer ${
+                  className={`flex-1 py-3 px-4 font-semibold text-btn-md uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-[border-color,color,background-color] cursor-pointer ${
                     activeConfigSection === 'StylingLibrary'
-                      ? 'border-[#0F172A] text-slate-800 bg-white'
+                      ? 'border-brand-sidebar text-slate-800 bg-white'
                       : 'border-transparent text-slate-400 hover:text-slate-600'
                   }`}
                 >
-                  <Sparkles className="icon-sm text-[#38BDF8]" />
+                  <Sparkles className="icon-sm text-brand-sky" />
                   Styling Library options
                 </button>
               </div>
@@ -1248,16 +1252,16 @@ Do you absolutely want to proceed with deletion?`;
                     </div>
 
                     {/* New Field Creator Form */}
-                    <form onSubmit={handleAddField} className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-wrap gap-3 items-end">
+                    <form onSubmit={handleAddField} className="card flex flex-wrap gap-3 items-end">
                       <div className="flex-1 min-w-[200px] space-y-1">
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Parameter Name</label>
+                        <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest block">Parameter Name</label>
                         <input
                           type="text"
                           required
                           value={newFieldName}
                           onChange={(e) => setNewFieldName(e.target.value)}
                           placeholder="e.g. Chest Circumference, Sleeve"
-                          className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs font-semibold focus:outline-none focus:border-[#38BDF8]"
+                          className="input-base"
                         />
                       </div>
 
@@ -1265,12 +1269,12 @@ Do you absolutely want to proceed with deletion?`;
                         <button
                           type="button"
                           onClick={() => setNewFieldRequired(!newFieldRequired)}
-                          className="flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 transition-colors cursor-pointer select-none"
+                          className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 transition-colors cursor-pointer select-none"
                         >
                           {newFieldRequired ? (
-                            <CheckSquare className="w-4 h-4 text-[#38BDF8] shrink-0" />
+                            <CheckSquare className="icon-xs text-brand-sky shrink-0" />
                           ) : (
-                            <Square className="w-4 h-4 text-slate-300 shrink-0" />
+                            <Square className="icon-xs text-slate-300 shrink-0" />
                           )}
                           <span>Required Entry</span>
                         </button>
@@ -1278,16 +1282,16 @@ Do you absolutely want to proceed with deletion?`;
 
                       <button
                         type="submit"
-                        className="px-4 py-2 bg-[#0F172A] hover:bg-slate-800 text-white font-extrabold text-xs uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer transition-colors shrink-0 h-9"
+                        className="btn-primary shrink-0 h-9"
                       >
-                        <Plus className="w-4 h-4 text-[#38BDF8]" />
+                        <Plus className="icon-xs text-brand-sky" />
                         Insert Field
                       </button>
                     </form>
 
                     {/* Draggable fields layout */}
                     <div className="space-y-2">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-widest block">Fields Layout & Preview</span>
+                      <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest block">Fields Layout & Preview</span>
                       
                       {builderFields.length === 0 ? (
                         <div className="p-8 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400 text-xs font-semibold uppercase tracking-wider">
@@ -1304,13 +1308,13 @@ Do you absolutely want to proceed with deletion?`;
                                 draggable={!isFieldEditing}
                                 onDragStart={() => handleDragStartField(idx)}
                                 onDragOver={(e) => handleDragOverField(e, idx)}
-                                onDrop={() => handleDropField(idx)}
+                                 onDrop={(e) => handleDropField(e, idx)}
                                 className="group p-3 flex items-center justify-between gap-3 hover:bg-slate-50/50 transition-colors select-none"
                               >
                                 <div className="flex items-center gap-2.5 flex-1 min-w-0">
                                   {/* Drag icon */}
                                   <div className="text-slate-300 group-hover:text-slate-400 transition-colors cursor-grab active:cursor-grabbing p-0.5">
-                                    <GripVertical className="w-4 h-4" />
+                                    <GripVertical className="icon-xs" />
                                   </div>
 
                                   {/* Move arrows */}
@@ -1319,19 +1323,19 @@ Do you absolutely want to proceed with deletion?`;
                                       type="button"
                                       onClick={() => handleMoveField(idx, 'up')}
                                       disabled={idx === 0}
-                                      className="p-0.5 text-slate-400 hover:text-[#38BDF8] disabled:opacity-10 cursor-pointer"
+                                      className="p-0.5 text-slate-400 hover:text-brand-sky disabled:opacity-10 cursor-pointer"
                                       title="Move Up"
                                     >
-                                      <ArrowUp className="w-4 h-4" />
+                                      <ArrowUp className="icon-xs" />
                                     </button>
                                     <button
                                       type="button"
                                       onClick={() => handleMoveField(idx, 'down')}
                                       disabled={idx === builderFields.length - 1}
-                                      className="p-0.5 text-slate-400 hover:text-[#38BDF8] disabled:opacity-10 cursor-pointer"
+                                      className="p-0.5 text-slate-400 hover:text-brand-sky disabled:opacity-10 cursor-pointer"
                                       title="Move Down"
                                     >
-                                      <ArrowDown className="w-4 h-4" />
+                                      <ArrowDown className="icon-xs" />
                                     </button>
                                   </div>
 
@@ -1344,21 +1348,21 @@ Do you absolutely want to proceed with deletion?`;
                                           required
                                           value={editingFieldName}
                                           onChange={(e) => setEditingFieldName(e.target.value)}
-                                          className="px-2 py-1 bg-white border border-slate-300 rounded-md text-xs font-bold text-slate-800 focus:outline-none w-full"
+                                          className="input-base text-xs"
                                         />
                                         <button
                                           type="button"
                                           onClick={() => handleSaveFieldName(idx)}
                                           className="p-1 text-emerald-600 hover:bg-emerald-50 rounded cursor-pointer shrink-0"
                                         >
-                                          <Check className="w-4 h-4" />
+                                          <Check className="icon-xs" />
                                         </button>
                                         <button
                                           type="button"
                                           onClick={() => setEditingFieldIndex(null)}
                                           className="p-1 text-red-500 hover:bg-red-50 rounded cursor-pointer shrink-0"
                                         >
-                                          <X className="w-4 h-4" />
+                                          <X className="icon-xs" />
                                         </button>
                                       </div>
                                     ) : (
@@ -1380,7 +1384,7 @@ Do you absolutely want to proceed with deletion?`;
                                     <button
                                       type="button"
                                       onClick={() => handleToggleFieldRequired(idx)}
-                                      className={`px-2 py-1 text-3xs font-bold rounded uppercase cursor-pointer ${
+                                      className={`px-2 py-1 text-3xs font-semibold rounded uppercase cursor-pointer ${
                                         field.required 
                                           ? 'bg-red-50 text-red-600 hover:bg-red-100' 
                                           : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
@@ -1397,7 +1401,7 @@ Do you absolutely want to proceed with deletion?`;
                                       className="p-1 text-slate-400 hover:text-slate-600 rounded cursor-pointer"
                                       title="Rename parameter"
                                     >
-                                      <Edit2 className="w-4 h-4" />
+                                      <Edit2 className="icon-xs" />
                                     </button>
                                     <button
                                       type="button"
@@ -1405,7 +1409,7 @@ Do you absolutely want to proceed with deletion?`;
                                       className="p-1 text-red-500 hover:text-red-700 rounded cursor-pointer"
                                       title="Remove parameter"
                                     >
-                                      <Trash2 className="w-4 h-4" />
+                                      <Trash2 className="icon-xs" />
                                     </button>
                                   </div>
                                 )}
@@ -1418,10 +1422,10 @@ Do you absolutely want to proceed with deletion?`;
 
                     {/* Save Button for layouts */}
                     <div className="flex items-center justify-between border-t border-slate-100 pt-4 mt-2">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
                         {saveFieldsSuccess && (
                           <span className="text-emerald-600 flex items-center gap-1 animate-fade-in">
-                            <Check className="w-4 h-4 text-emerald-500" />
+                            <Check className="icon-xs text-emerald-500" />
                             Layout persisted successfully
                           </span>
                         )}
@@ -1429,9 +1433,9 @@ Do you absolutely want to proceed with deletion?`;
                       <button
                         type="button"
                         onClick={handleSaveMeasurementForm}
-                        className="px-5 py-2.5 bg-[#0F172A] hover:bg-slate-800 text-white font-extrabold rounded-xl text-btn-md uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-colors shadow-xs"
+                        className="btn-primary"
                       >
-                        <Save className="icon-sm text-[#38BDF8]" />
+                        <Save className="icon-sm text-brand-sky" />
                         Save Form Layout
                       </button>
                     </div>
@@ -1457,7 +1461,7 @@ Do you absolutely want to proceed with deletion?`;
                       {/* Left: Styling categories inside the selected garment */}
                       <div className="md:col-span-5 space-y-4">
                         <div className="space-y-2">
-                          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">1. Style Categories</span>
+                          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">1. Style Categories</span>
                           
                           {/* New category name creator */}
                           <form onSubmit={handleAddStylingCategory} className="flex gap-1.5">
@@ -1467,14 +1471,14 @@ Do you absolutely want to proceed with deletion?`;
                               value={newCategoryName}
                               onChange={(e) => setNewCategoryName(e.target.value)}
                               placeholder="e.g. Collar Type"
-                              className="flex-1 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-800 text-xs font-semibold focus:outline-none"
+                              className="input-base flex-1"
                             />
                             <button
                               type="submit"
-                              className="p-2 bg-[#0F172A] hover:bg-slate-800 rounded-lg text-white cursor-pointer shrink-0"
+                              className="p-2 bg-brand-sidebar hover:bg-slate-800 rounded-lg text-white cursor-pointer shrink-0"
                               title="Create style category"
                             >
-                              <Plus className="w-4 h-4" />
+                              <Plus className="icon-xs" />
                             </button>
                           </form>
 
@@ -1493,23 +1497,23 @@ Do you absolutely want to proceed with deletion?`;
                                     draggable={!isCategoryEditing}
                                     onDragStart={() => handleDragStartCategory(idx)}
                                     onDragOver={(e) => handleDragOverCategory(e, idx)}
-                                    onDrop={() => handleDropCategory(idx)}
+                                     onDrop={(e) => handleDropCategory(e, idx)}
                                     onClick={() => !isCategoryEditing && setSelectedStylingCategory(category)}
                                     className={`p-2.5 flex items-center justify-between gap-2 cursor-pointer select-none transition-colors border-l-3 ${
                                       isCategorySelected 
-                                        ? 'bg-slate-100/80 border-[#0F172A]' 
+                                        ? 'bg-slate-100/80 border-brand-sidebar' 
                                         : 'hover:bg-slate-50 border-transparent'
                                     }`}
                                   >
                                     <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                                      <GripVertical className="w-4 h-4 text-slate-300 shrink-0 cursor-grab" />
+                                      <GripVertical className="icon-xs text-slate-300 shrink-0 cursor-grab" />
                                       
                                       <div className="flex flex-col shrink-0 text-slate-400">
                                         <button
                                           type="button"
                                           disabled={idx === 0}
                                           onClick={(e) => { e.stopPropagation(); handleMoveStylingCategory(idx, 'up'); }}
-                                          className="p-0.5 hover:text-[#38BDF8] disabled:opacity-20 cursor-pointer"
+                                          className="p-0.5 hover:text-brand-sky disabled:opacity-20 cursor-pointer"
                                         >
                                           <ArrowUp className="w-2.5 h-2.5" />
                                         </button>
@@ -1517,7 +1521,7 @@ Do you absolutely want to proceed with deletion?`;
                                           type="button"
                                           disabled={idx === stylingCategories.length - 1}
                                           onClick={(e) => { e.stopPropagation(); handleMoveStylingCategory(idx, 'down'); }}
-                                          className="p-0.5 hover:text-[#38BDF8] disabled:opacity-20 cursor-pointer"
+                                          className="p-0.5 hover:text-brand-sky disabled:opacity-20 cursor-pointer"
                                         >
                                           <ArrowDown className="w-2.5 h-2.5" />
                                         </button>
@@ -1531,27 +1535,27 @@ Do you absolutely want to proceed with deletion?`;
                                               required
                                               value={editingCategoryName}
                                               onChange={(e) => setEditingCategoryName(e.target.value)}
-                                              className="px-1 py-0.5 bg-white border border-slate-300 rounded text-xs font-bold text-slate-800 focus:outline-none w-full"
+                                              className="input-base text-xs px-1 py-0.5"
                                             />
                                             <button
                                               type="button"
                                               onClick={() => handleRenameStylingCategory(category.id)}
                                               className="text-emerald-600 p-0.5 hover:bg-emerald-50 rounded shrink-0"
                                             >
-                                              <Check className="w-4 h-4" />
+                                              <Check className="icon-xs" />
                                             </button>
                                             <button
                                               type="button"
                                               onClick={() => setEditingCategoryId(null)}
                                               className="text-red-500 p-0.5 hover:bg-red-50 rounded shrink-0"
                                             >
-                                              <X className="w-4 h-4" />
+                                              <X className="icon-xs" />
                                             </button>
                                           </div>
                                         ) : (
                                           <div className="flex flex-col">
                                             <span className="text-xs font-extrabold text-slate-800 break-words">{category.name}</span>
-                                            <span className="text-xs font-bold text-slate-400 mt-0.5">{category.options?.length || 0} design options</span>
+                                            <span className="text-xs font-semibold text-slate-400 mt-0.5">{category.options?.length || 0} design options</span>
                                           </div>
                                         )}
                                       </div>
@@ -1568,14 +1572,14 @@ Do you absolutely want to proceed with deletion?`;
                                           }}
                                           className="p-1 text-slate-400 hover:text-slate-600 rounded cursor-pointer"
                                         >
-                                          <Edit2 className="w-4 h-4" />
+                                          <Edit2 className="icon-xs" />
                                         </button>
                                         <button
                                           type="button"
                                           onClick={(e) => { e.stopPropagation(); handleDeleteStylingCategory(category); }}
                                           className="p-1 text-red-500 hover:text-red-700 rounded cursor-pointer"
                                         >
-                                          <Trash2 className="w-4 h-4" />
+                                          <Trash2 className="icon-xs" />
                                         </button>
                                       </div>
                                     )}
@@ -1589,12 +1593,12 @@ Do you absolutely want to proceed with deletion?`;
 
                       {/* Right: Style Options creator inside selected category */}
                       <div className="md:col-span-7 space-y-4">
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">2. Options in Category</span>
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">2. Options in Category</span>
                         
                         {selectedStylingCategory ? (
-                          <div className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-4">
+                          <div className="card">
                             <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                              <span className="text-xs font-extrabold text-[#38BDF8] uppercase tracking-wide">
+                              <span className="text-xs font-extrabold text-brand-sky uppercase tracking-wide">
                                 Category: {selectedStylingCategory.name}
                               </span>
                               <span className="text-3xs text-slate-400 font-extrabold uppercase">
@@ -1610,11 +1614,11 @@ Do you absolutely want to proceed with deletion?`;
                                 value={newOptionName}
                                 onChange={(e) => setNewOptionName(e.target.value)}
                                 placeholder="e.g. Mandarin, Button-Down, Double Cuff"
-                                className="flex-1 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none"
+                                className="input-base flex-1"
                               />
                               <button
                                 type="submit"
-                                className="px-3.5 py-1.5 bg-[#0F172A] hover:bg-slate-800 text-white font-extrabold rounded-lg text-xs uppercase tracking-wider cursor-pointer"
+                                className="btn-primary"
                               >
                                 Insert Option
                               </button>
@@ -1623,7 +1627,7 @@ Do you absolutely want to proceed with deletion?`;
                             {/* Option list and sorting */}
                             <div className="space-y-1.5 max-h-[35vh] overflow-y-auto">
                               {builderOptions.length === 0 ? (
-                                <p className="p-6 border border-dashed border-slate-150 rounded-lg text-center text-slate-400 text-3xs font-bold uppercase tracking-wider">
+                                <p className="p-6 border border-dashed border-slate-150 rounded-lg text-center text-slate-400 text-3xs font-semibold uppercase tracking-wider">
                                   No options built. Insert options using the field above.
                                 </p>
                               ) : (
@@ -1637,18 +1641,18 @@ Do you absolutely want to proceed with deletion?`;
                                         draggable={!isOptionEditing}
                                         onDragStart={() => handleDragStartOption(oIdx)}
                                         onDragOver={(e) => handleDragOverOption(e, oIdx)}
-                                        onDrop={() => handleDropOption(oIdx)}
+                                         onDrop={(e) => handleDropOption(e, oIdx)}
                                         className="group p-2.5 flex items-center justify-between gap-2 hover:bg-slate-50/50 transition-colors select-none"
                                       >
                                         <div className="flex items-center gap-2 flex-1 min-w-0">
-                                          <GripVertical className="w-4 h-4 text-slate-300 cursor-grab shrink-0" />
+                                          <GripVertical className="icon-xs text-slate-300 cursor-grab shrink-0" />
                                           
                                           <div className="flex flex-col shrink-0 text-slate-400">
                                             <button
                                               type="button"
                                               disabled={oIdx === 0}
                                               onClick={() => handleMoveOption(oIdx, 'up')}
-                                              className="p-0.2 hover:text-[#38BDF8] disabled:opacity-20 cursor-pointer"
+                                              className="p-0.2 hover:text-brand-sky disabled:opacity-20 cursor-pointer"
                                             >
                                               <ArrowUp className="w-2.5 h-2.5" />
                                             </button>
@@ -1656,7 +1660,7 @@ Do you absolutely want to proceed with deletion?`;
                                               type="button"
                                               disabled={oIdx === builderOptions.length - 1}
                                               onClick={() => handleMoveOption(oIdx, 'down')}
-                                              className="p-0.2 hover:text-[#38BDF8] disabled:opacity-20 cursor-pointer"
+                                              className="p-0.2 hover:text-brand-sky disabled:opacity-20 cursor-pointer"
                                             >
                                               <ArrowDown className="w-2.5 h-2.5" />
                                             </button>
@@ -1670,21 +1674,21 @@ Do you absolutely want to proceed with deletion?`;
                                                   required
                                                   value={editingOptionName}
                                                   onChange={(e) => setEditingOptionName(e.target.value)}
-                                                  className="px-2 py-1 bg-white border border-slate-300 rounded text-xs font-bold text-slate-800 focus:outline-none w-full"
+                                                  className="px-2 py-1 bg-white border border-slate-300 rounded text-xs font-semibold text-slate-800 focus-visible:outline-none w-full"
                                                 />
                                                 <button
                                                   type="button"
                                                   onClick={() => handleSaveOptionName(oIdx)}
                                                   className="p-0.5 text-emerald-600 hover:bg-emerald-50 rounded cursor-pointer shrink-0"
                                                 >
-                                                  <Check className="w-4 h-4" />
+                                                  <Check className="icon-xs" />
                                                 </button>
                                                 <button
                                                   type="button"
                                                   onClick={() => setEditingOptionIndex(null)}
                                                   className="p-0.5 text-red-500 hover:bg-red-50 rounded cursor-pointer shrink-0"
                                                 >
-                                                  <X className="w-4 h-4" />
+                                                  <X className="icon-xs" />
                                                 </button>
                                               </div>
                                             ) : (
@@ -1700,7 +1704,7 @@ Do you absolutely want to proceed with deletion?`;
                                             <button
                                               type="button"
                                               onClick={() => handleToggleOptionEnable(oIdx)}
-                                              className={`px-2 py-1 text-3xs font-bold rounded uppercase cursor-pointer ${
+                                              className={`px-2 py-1 text-3xs font-semibold rounded uppercase cursor-pointer ${
                                                 opt.enabled 
                                                   ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' 
                                                   : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
@@ -1716,14 +1720,14 @@ Do you absolutely want to proceed with deletion?`;
                                               }}
                                               className="p-0.5 text-slate-400 hover:text-slate-600 rounded cursor-pointer"
                                             >
-                                              <Edit2 className="w-4 h-4" />
+                                              <Edit2 className="icon-xs" />
                                             </button>
                                             <button
                                               type="button"
                                               onClick={() => handleRemoveOption(oIdx)}
                                               className="p-0.5 text-red-500 hover:text-red-700 rounded cursor-pointer"
                                             >
-                                              <Trash2 className="w-4 h-4" />
+                                              <Trash2 className="icon-xs" />
                                             </button>
                                           </div>
                                         )}
@@ -1739,7 +1743,7 @@ Do you absolutely want to proceed with deletion?`;
                               <div>
                                 {saveOptionsSuccess && (
                                   <span className="text-emerald-600 text-3xs font-extrabold uppercase flex items-center gap-0.5 animate-fade-in">
-                                    <Check className="w-4 h-4 text-emerald-500" />
+                                    <Check className="icon-xs text-emerald-500" />
                                     Saved successfully
                                   </span>
                                 )}
@@ -1747,7 +1751,7 @@ Do you absolutely want to proceed with deletion?`;
                               <button
                                 type="button"
                                 onClick={handleSaveCategoryOptions}
-                                className="px-3.5 py-1.5 bg-[#0F172A] hover:bg-slate-800 text-white font-extrabold rounded-lg text-btn-md uppercase tracking-wider cursor-pointer"
+                                className="btn-primary"
                               >
                                 Save Option Layout
                               </button>
@@ -1770,7 +1774,7 @@ Do you absolutely want to proceed with deletion?`;
             <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400 flex flex-col items-center justify-center gap-3 min-h-[400px]">
               <HelpCircle className="w-12 h-12 text-slate-300" />
               <div className="space-y-1">
-                <p className="text-sm font-bold uppercase tracking-wider text-slate-600">No active garment selected</p>
+                <p className="text-sm font-semibold uppercase tracking-wider text-slate-600">No active garment selected</p>
                 <p className="text-xs text-slate-400 max-w-md">
                   Please select a garment type from the list, or create a brand new custom garment category to define its measurement specification form and style layout.
                 </p>
@@ -1783,8 +1787,8 @@ Do you absolutely want to proceed with deletion?`;
 
       {/* Custom Confirmation Modal */}
       {confirmModal && confirmModal.isOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-md w-full overflow-hidden p-6 space-y-4">
+        <div className="modal-overlay">
+          <div className="modal-content">
             <div className="flex items-start gap-3">
               <div className={`p-2 rounded-xl shrink-0 ${confirmModal.isDangerous ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'}`}>
                 <AlertTriangle className="w-6 h-6" />
@@ -1802,17 +1806,17 @@ Do you absolutely want to proceed with deletion?`;
               <button
                 type="button"
                 onClick={() => setConfirmModal(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                className="btn-secondary"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={confirmModal.onConfirm}
-                className={`px-4 py-2 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer ${
+                className={`px-4 py-2 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
                   confirmModal.isDangerous 
                     ? 'bg-red-600 hover:bg-red-700' 
-                    : 'bg-[#0F172A] hover:bg-slate-800'
+                    : 'bg-brand-sidebar hover:bg-slate-800'
                 }`}
               >
                 Confirm
@@ -1824,8 +1828,8 @@ Do you absolutely want to proceed with deletion?`;
 
       {/* Custom Alert Modal */}
       {alertModal && alertModal.isOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-md w-full overflow-hidden p-6 space-y-4">
+        <div className="modal-overlay">
+          <div className="modal-content">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-xl shrink-0 bg-amber-50 text-amber-600">
                 <Info className="w-6 h-6" />
@@ -1843,7 +1847,7 @@ Do you absolutely want to proceed with deletion?`;
               <button
                 type="button"
                 onClick={() => setAlertModal(null)}
-                className="px-4 py-2 bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                className="btn-primary"
               >
                 OK
               </button>
