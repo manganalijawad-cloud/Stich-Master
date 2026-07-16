@@ -10,6 +10,10 @@ coverage/
 # Generated production configuration
 /config/
 
+# Nested Astro starter projects (removed)
+/squalid-spectrum/
+/teal-telescope/
+
 # Electron build output
 release/
 out/
