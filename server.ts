@@ -235,21 +235,40 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   const missing = [];
   if (!SUPABASE_URL) missing.push("SUPABASE_URL");
   if (!SUPABASE_ANON_KEY) missing.push("SUPABASE_ANON_KEY");
-  throw new Error(
-    `Missing Supabase configuration: ${missing.join(", ")}.\n\n` +
-    "Ensure environment variables are set or rebuild the application with valid configuration."
+  console.error(
+    `[server.ts] Missing Supabase configuration: ${missing.join(", ")}.\n` +
+    "Server will start in degraded mode — routes requiring Supabase will return errors."
   );
 }
 
 // Service role client is used for administrative operations (like worker user creation/deletion)
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY, {
-  auth: { persistSession: false }
-}, true);
+let supabaseAdmin: SupabaseClient;
+let supabaseAnon: SupabaseClient;
 
-// Anon client for general startup checks
-const supabaseAnon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: { persistSession: false }
-}, false);
+try {
+  supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY, {
+    auth: { persistSession: false }
+  }, true);
+
+  supabaseAnon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false }
+  }, false);
+} catch (err) {
+  console.error("[server.ts] Failed to create Supabase clients:", err);
+  // Create stub clients so the module loads without crashing;
+  // any API handler that actually uses them will get a runtime error.
+  const stubOpts = { auth: { persistSession: false } };
+  supabaseAdmin = supabaseCreateClient(
+    SUPABASE_URL || "https://placeholder.supabase.co",
+    SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY || "placeholder-key",
+    stubOpts
+  );
+  supabaseAnon = supabaseCreateClient(
+    SUPABASE_URL || "https://placeholder.supabase.co",
+    SUPABASE_ANON_KEY || "placeholder-key",
+    stubOpts
+  );
+}
 
 // Helper to get a dynamic user-scoped client that respects Row Level Security
 function getSupabaseClient(token?: string) {
@@ -3100,6 +3119,25 @@ app.post("/api/import/customers", requireAuth, async (req: AuthenticatedRequest,
 // Catch-all for undefined /api routes (must be after all specific API routes)
 app.all("/api/*", (req: Request, res: Response) => {
   res.status(404).json({ error: `API endpoint ${req.method} ${req.path} not found.` });
+});
+
+// -------------------------------------------------------------------------
+// EXPRESS GLOBAL ERROR HANDLER (must be registered after all routes)
+// -------------------------------------------------------------------------
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  console.error("[server.ts] Unhandled error processing request:", {
+    method: req.method,
+    path: req.path,
+    error: err?.message || String(err),
+    stack: process.env.NODE_ENV !== "production" ? err?.stack : undefined,
+  });
+  if (res.headersSent) {
+    return next(err);
+  }
+  res.status(500).json({
+    error: "Internal server error. Please check server logs for details.",
+    ...(process.env.NODE_ENV !== "production" ? { detail: err?.message || String(err) } : {}),
+  });
 });
 
 // -------------------------------------------------------------------------
