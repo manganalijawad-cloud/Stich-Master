@@ -3139,12 +3139,16 @@ async function startServer() {
   }
 
   if (!process.env.VERCEL && process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa"
-    });
-    app.use(vite.middlewares);
+    try {
+      const { createServer: createViteServer } = require("vite");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa"
+      });
+      app.use(vite.middlewares);
+    } catch {
+      // Vite dev server unavailable (require failed in ESM mode)
+    }
   }
 
   return new Promise<void>((resolve, reject) => {
