@@ -41,7 +41,7 @@ function validateConfig() {
     if (!key) missing.push('SUPABASE_ANON_KEY');
     dialog.showErrorBox(
       'Configuration Required',
-      'StitchMaster cannot start without Supabase configuration.\n\n' +
+      'Hello Darzi cannot start without Supabase configuration.\n\n' +
       'Missing: ' + missing.join(', ') + '\n\n' +
       'Please rebuild the application with valid configuration:\n' +
       '  npm run electron:build\n\n' +
@@ -127,7 +127,7 @@ process.on('uncaughtException', (err) => {
   console.error('Uncaught exception:', err);
   dialog.showErrorBox(
     'Unexpected Error',
-    `StitchMaster encountered an unexpected error and needs to restart.\n\n${err.message}`
+    `Hello Darzi encountered an unexpected error and needs to restart.\n\n${err.message}`
   );
   app.quit();
 });
@@ -196,7 +196,7 @@ async function createWindow() {
     y: state.y,
     minWidth: 1024,
     minHeight: 600,
-    title: 'StitchMaster',
+    title: 'Hello Darzi',
     backgroundColor: '#F8FAFC',
     show: false,
     icon: (function() { const p = path.join(__dirname, '..', 'dist', 'favicon.ico'); try { if (fs.existsSync(p)) return p; } catch {} return path.join(__dirname, '..', 'public', 'favicon.ico'); })(),

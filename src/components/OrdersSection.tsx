@@ -2354,7 +2354,7 @@ Note: This is an automated message. Please do not reply.`;
                     })}
                   </div>
 
-                  {/* Pricing grid styled with StitchMaster Pro colors (#0F172A slate card) */}
+                  {/* Pricing grid styled with Hello Darzi colors (#0F172A slate card) */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-brand-sidebar text-white p-4 rounded-xl border border-slate-800">
                     <div>
                       <span className="text-xs text-slate-400 font-semibold block uppercase tracking-wider">Total</span>
@@ -2541,7 +2541,7 @@ Note: This is an automated message. Please do not reply.`;
                     </div>
                   )}
                   <div className="text-[6.5pt] text-gray-400 font-medium mt-0.5">
-                    {receiptFooterText || 'Stitch Master'}
+                    {receiptFooterText || 'Hello Darzi'}
                   </div>
                 </div>
               </div>

@@ -12,7 +12,7 @@ import OwnerDashboard from './components/OwnerDashboard';
 import FinancialReports from './components/FinancialReports';
 import SyncIndicator from './components/SyncIndicator';
 import { Customer, UserProfile, UserRole, PipelineStage } from './types';
-import { supabase } from './lib/supabase';
+import { supabase, ensureSupabase } from './lib/supabase';
 
 const originalFetch = window.fetch;
 const customFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -63,6 +63,8 @@ export default function App() {
       localStorage.setItem('tailor_user', JSON.stringify({ ...user, role: 'Owner' }));
     }
   }, []);
+
+  useEffect(() => { ensureSupabase(); }, []);
 
   const activeRole = (user?.role ?? 'Owner') as UserRole;
 
@@ -405,16 +407,14 @@ export default function App() {
         {/* ── Logo / Brand Area ── */}
         <div className={`${isSidebarCollapsed ? 'mb-3' : 'mb-3'} w-full flex justify-center`}>
           <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3'} w-full`}>
-            <div className="p-2 bg-slate-800/80 rounded-xl flex items-center justify-center border border-slate-700/60 shrink-0 overflow-hidden">
-              {shopLogo ? (
-                <img src={shopLogo} alt={`${shopName} logo`} className="w-7 h-7 object-contain shrink-0" loading="lazy" />
-              ) : (
-                <Shield className="icon-md text-brand-sky shrink-0" aria-hidden="true" />
-              )}
-            </div>
+            {shopLogo ? (
+              <img src={shopLogo} alt={`${shopName} logo`} className="w-7 h-7 object-contain shrink-0" loading="lazy" />
+            ) : (
+              <img src="/favicon.svg" alt="Logo" className="w-7 h-7 object-contain shrink-0" />
+            )}
             {!isSidebarCollapsed && (
               <div className="overflow-hidden animate-fade-in min-w-0">
-                <span className="text-lg block text-brand-sky font-display uppercase font-bold break-words truncate">{shopName || 'Unnamed Tailor Shop'}</span>
+                <span className="text-lg block text-brand-sky font-display uppercase font-bold whitespace-normal">{shopName || 'Unnamed Tailor Shop'}</span>
                 <span className="text-3xs font-semibold text-slate-500 block uppercase tracking-wider mt-0.5">
                   Staff Workspace
                 </span>
@@ -516,9 +516,9 @@ export default function App() {
           {shopLogo ? (
             <img src={shopLogo} alt={`${shopName} logo`} className="w-7 h-7 object-contain shrink-0" loading="lazy" />
           ) : (
-            <Shield className="icon-md text-brand-sky shrink-0" aria-hidden="true" />
+            <img src="/favicon.svg" alt="Logo" className="w-6 h-6 object-contain shrink-0" />
           )}
-          <span className="font-bold text-base tracking-tight text-brand-sky uppercase truncate">{shopName || 'StitchMaster'}</span>
+          <span className="font-bold text-base tracking-tight text-brand-sky uppercase truncate">{shopName || 'Hello Darzi'}</span>
         </div>
         <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -742,7 +742,7 @@ export default function App() {
         )}
 
         <footer className="footer-base flex flex-col sm:flex-row sm:justify-between items-center gap-1">
-          <p className="font-medium">&copy; {new Date().getFullYear()} {shopName || 'Unnamed Tailor Shop'} StitchMaster. All rights reserved.</p>
+          <p className="font-medium">&copy; {new Date().getFullYear()} {shopName || 'Unnamed Tailor Shop'} Hello Darzi. All rights reserved.</p>
           <div className="flex gap-4 text-slate-400">
             <span className="font-semibold uppercase tracking-wider text-3xs">Tailored Suite Pro</span>
             <span className="text-slate-300" aria-hidden="true">|</span>

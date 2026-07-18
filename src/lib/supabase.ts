@@ -1,16 +1,28 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.NEXT_PUBLIC_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const buildUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const buildKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Supabase URL or Anon Key is missing from client environment variables.');
-}
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+let _supabase: SupabaseClient = createClient(buildUrl, buildKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
   }
 });
+
+export const supabase = _supabase;
+
+export async function ensureSupabase(): Promise<void> {
+  if (buildUrl && buildKey) return;
+  try {
+    const res = await fetch('/api/config-status');
+    const config = await res.json();
+    if (config.supabaseUrl && config.supabaseAnonKey) {
+      _supabase = createClient(config.supabaseUrl, config.supabaseAnonKey, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+      });
+      Object.assign(supabase, _supabase);
+    }
+  } catch {}
+}

@@ -10,13 +10,13 @@ interface SyncState {
   error: string | null;
 }
 
-export default function SyncIndicator({ token, collapsed }: { token?: string; collapsed: boolean }) {
-  const [state, setState] = useState<SyncState>({
-    status: 'idle',
+export default function SyncIndicator({ token, collapsed }: { token?: string | null; collapsed: boolean }) {
+  const [state, setState] = useState<SyncState>(() => ({
+    status: token ? 'idle' : 'offline',
     lastSync: null,
     pendingChanges: 0,
     error: null
-  });
+  }));
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -78,8 +78,8 @@ export default function SyncIndicator({ token, collapsed }: { token?: string; co
       colorClass = 'text-slate-500';
       break;
     default:
-      icon = <Cloud className={`${iconClass} text-slate-500`} />;
-      label = 'Connecting...';
+      icon = <CloudOff className={`${iconClass} text-slate-500`} />;
+      label = 'Disconnected';
       colorClass = 'text-slate-500';
   }
 

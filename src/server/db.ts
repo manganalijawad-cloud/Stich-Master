@@ -171,7 +171,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_updated_at ON orders(updated_at);
 `;
 
 export function initDatabase(dbPath?: string): void {
-  const resolvedPath = dbPath || path.join(process.cwd(), "data", "stitchmaster.db");
+  const resolvedPath = dbPath || path.join(process.cwd(), "data", "hellodarzi.db");
 
   const dir = path.dirname(resolvedPath);
   if (!fs.existsSync(dir)) {

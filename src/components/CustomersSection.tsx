@@ -1406,7 +1406,7 @@ export default function CustomersSection({
             )}
             <h1 className="text-3xl font-black tracking-tight uppercase">{shopName || 'Unnamed Tailor Shop'}</h1>
             <h2 className="text-xl font-semibold tracking-wider text-slate-500 uppercase">Customer Measurement Sheet</h2>
-            <p className="text-xs">Generated on: {new Date().toLocaleDateString(undefined, { dateStyle: 'medium' })} • Printed by StitchMaster</p>
+            <p className="text-xs">Generated on: {new Date().toLocaleDateString(undefined, { dateStyle: 'medium' })} • Printed by Hello Darzi</p>
           </div>
 
           <div className="grid grid-cols-2 gap-4 text-sm pb-4 border-b border-slate-300">

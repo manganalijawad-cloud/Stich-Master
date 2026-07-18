@@ -65,10 +65,8 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     <div className="min-h-screen bg-brand-sidebar flex flex-col justify-center items-center px-4 font-sans">
       <div className="w-full max-w-sm">
         <div className="text-center mb-4">
-          <div className="inline-flex items-center justify-center p-2 bg-slate-800 rounded-2xl mb-2 border border-slate-700">
-            <Shield className="w-7 h-7 text-brand-sky" />
-          </div>
-          <h1 className="text-xl font-semibold text-white font-display uppercase tracking-wider">StitchMaster</h1>
+          <img src="/favicon.svg" alt="Hello Darzi" className="w-16 h-16 object-contain mx-auto mb-2" />
+          <h1 className="text-xl font-semibold text-white font-display uppercase tracking-wider">Hello Darzi</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3">

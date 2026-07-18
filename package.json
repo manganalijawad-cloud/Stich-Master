@@ -1,5 +1,5 @@
 {
-  "name": "stitchmaster",
+  "name": "hello-darzi",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -19,8 +19,8 @@
     "vercel:deploy:preview": "powershell -NoProfile scripts/deploy-vercel.ps1"
   },
   "build": {
-    "appId": "com.stitchmaster.app",
-    "productName": "StitchMaster",
+    "appId": "com.hellodarzi.app",
+    "productName": "Hello Darzi",
     "directories": {
       "output": "release"
     },
@@ -46,11 +46,11 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "StitchMaster"
+      "shortcutName": "Hello Darzi"
     },
     "publish": {
       "provider": "generic",
-      "url": "https://releases.stitchmaster.app"
+      "url": "https://releases.hellodarzi.app"
     }
   },
   "dependencies": {
