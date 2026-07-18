@@ -17,3 +17,6 @@ coverage/
 # Electron build output
 release/
 out/
+
+# Vercel serverless function pre-built artifact
+/api/index.mjs
