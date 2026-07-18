@@ -1,8 +1,8 @@
 {
-  "buildCommand": "vite build && node scripts/build-api.mjs",
+  "buildCommand": "vite build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index.mjs" },
+    { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/((?!.*\\..*).*)", "destination": "/index.html" }
   ]
 }

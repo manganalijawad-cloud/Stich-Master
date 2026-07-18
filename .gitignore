@@ -18,5 +18,6 @@ coverage/
 release/
 out/
 
-# Vercel serverless function pre-built artifact
+# Vercel serverless function build artifacts
+/api/index.js
 /api/index.mjs

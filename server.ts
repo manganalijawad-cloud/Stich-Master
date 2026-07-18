@@ -3106,7 +3106,10 @@ app.all("/api/*", (req: Request, res: Response) => {
 // VITE DEV SERVER / STATIC ASSETS & SPA ROUTING
 // -------------------------------------------------------------------------
 // Serve production static files and SPA fallback
-if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
+// Skip on Vercel: Vercel handles static serving and SPA fallback via vercel.json rewrites.
+// Running Express static middleware on Vercel can cause 404 loops since __dirname
+// may not resolve correctly in the serverless function context.
+if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
   let distPath = path.join(process.cwd(), "dist");
   if (!fs.existsSync(path.join(distPath, "index.html"))) {
     const fallbacks = [
