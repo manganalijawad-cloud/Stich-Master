@@ -252,7 +252,7 @@ export default function DataImport({ token, garmentTypes, onComplete }: DataImpo
 
     const mappedHeaders = headers.filter(h => mapping[h] && mapping[h] !== '_ignore');
     const total = rows.length;
-    const batchSize = 50;
+    const batchSize = Math.min(200, total);
     const results: {
       imported: number;
       skipped: number;
@@ -260,9 +260,8 @@ export default function DataImport({ token, garmentTypes, onComplete }: DataImpo
       details: Array<{ name: string; status: string; reason?: string }>;
     } = { imported: 0, skipped: 0, errors: [], details: [] };
 
-    for (let start = 0; start < rows.length; start += batchSize) {
-      const batch = rows.slice(start, start + batchSize);
-      const customers = batch.map(row => {
+    const buildBatchCustomers = (batchRows: typeof rows) =>
+      batchRows.map(row => {
         const customer: Record<string, string> = {};
         const measurements: Record<string, string> = {};
         for (const h of mappedHeaders) {
@@ -277,25 +276,46 @@ export default function DataImport({ token, garmentTypes, onComplete }: DataImpo
         return { ...customer, measurements: Object.keys(measurements).length > 0 ? measurements : undefined };
       });
 
-      try {
-        const res = await fetch('/api/import/customers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ customers, create_measurements: mappedMeasFields > 0, garment_type_id: selectedGarmentType || undefined }),
-        });
-        if (!res.ok) {
-          const errData = await res.json();
-          throw new Error(errData.error || 'Import failed');
-        }
-        const data = await res.json();
-        results.imported += data.imported || 0;
-        results.skipped += data.skipped || 0;
-        if (data.errors) results.errors.push(...data.errors);
-        if (data.details) results.details.push(...data.details);
-      } catch (err: unknown) {
-        results.errors.push(`Batch error: ${err instanceof Error ? err.message : String(err)}`);
+    const sendBatch = async (batchRows: typeof rows) => {
+      const customers = buildBatchCustomers(batchRows);
+      const res = await fetch('/api/import/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ customers, create_measurements: mappedMeasFields > 0, garment_type_id: selectedGarmentType || undefined }),
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Import failed');
       }
-      setImportProgress(Math.min((start + batchSize) / total * 100, 100));
+      return res.json() as Promise<{ imported: number; skipped: number; errors: string[]; details: Array<{ name: string; status: string; reason?: string }> }>;
+    };
+
+    const batches: typeof rows[] = [];
+    for (let start = 0; start < rows.length; start += batchSize) {
+      batches.push(rows.slice(start, start + batchSize));
+    }
+
+    let completed = 0;
+    const CONCURRENCY = 4;
+
+    for (let i = 0; i < batches.length; i += CONCURRENCY) {
+      const chunk = batches.slice(i, i + CONCURRENCY);
+      const chunkResults = await Promise.allSettled(
+        chunk.map(b => sendBatch(b))
+      );
+      for (const r of chunkResults) {
+        if (r.status === 'fulfilled') {
+          const data = r.value;
+          results.imported += data.imported || 0;
+          results.skipped += data.skipped || 0;
+          if (data.errors) results.errors.push(...data.errors);
+          if (data.details) results.details.push(...data.details);
+        } else {
+          results.errors.push(`Batch error: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`);
+        }
+      }
+      completed += chunk.length;
+      setImportProgress(Math.round((completed / batches.length) * 100));
     }
 
     setImportResults(results);

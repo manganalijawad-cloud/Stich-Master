@@ -10,10 +10,6 @@ coverage/
 # Generated production configuration
 /config/
 
-# Nested Astro starter projects (removed)
-/squalid-spectrum/
-/teal-telescope/
-
 # Electron build output
 release/
 out/
@@ -21,5 +17,15 @@ out/
 # Vercel serverless function build artifact
 /api/index.cjs
 
-# Netlify serverless function build output
-/netlify/functions-build/
+# Runtime logs
+*.log
+
+# Build artifacts
+dist/
+build/
+
+# AI agent configuration
+.agents/
+.claude/
+.commandcode/
+skills-lock.json

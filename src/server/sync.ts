@@ -52,7 +52,9 @@ export function getSyncStatus(): {
 // ---------------------------------------------------------------------------
 async function checkOnline(): Promise<boolean> {
   try {
-    const response = await fetch("https://vecwyofzniisruyxnzwe.supabase.co", {
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+    if (!supabaseUrl) { _online = false; return false; }
+    const response = await fetch(supabaseUrl, {
       method: "HEAD",
       signal: AbortSignal.timeout(5_000),
     });
@@ -245,8 +247,8 @@ function flattenRow(row: Record<string, any>): Record<string, any> {
 // Full initial sync — import all existing Supabase data
 // ---------------------------------------------------------------------------
 export async function initialSync(token: string): Promise<void> {
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
 
   if (!supabaseUrl || !supabaseAnonKey || !token) {
     _status = "offline";
@@ -372,8 +374,8 @@ export function stopSyncEngine(): void {
 }
 
 export function updateSyncToken(token: string): void {
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
 
   if (supabaseUrl && supabaseAnonKey && token) {
     _supabase = createClient(supabaseUrl, supabaseAnonKey, {

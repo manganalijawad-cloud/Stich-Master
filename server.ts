@@ -227,9 +227,9 @@ function createClient(url: string, key: string, options?: any, isAdminClient: bo
 // -------------------------------------------------------------------------
 // SUPABASE CLIENT INITIALIZATION
 // -------------------------------------------------------------------------
-const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   const missing = [];
@@ -680,12 +680,7 @@ async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextF
 
     next();
   } catch (err: any) {
-    console.error("Auth verification error:", err);
-    if (err && typeof err === "object") {
-      console.error("Auth verification error message:", err.message);
-      console.error("Auth verification error stack:", err.stack);
-      console.error("Auth verification error raw:", JSON.stringify(err, null, 2));
-    }
+    console.error("Auth verification error:", err?.message || err);
     return res.status(500).json({ 
       error: "Internal security validation error.", 
       details: err?.message || String(err) 

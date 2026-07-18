@@ -447,9 +447,8 @@ export function getDashboardStats(createdBy: string, shopId?: string): {
   totalCustomers: number; totalOrders: number; activeOrders: number;
   deliveredOrders: number; pendingAmount: number; revenue: number;
 } {
-  const base = " AND created_by = ?";
   const params: any[] = [createdBy];
-  if (shopId) { base.concat(" AND shop_id = ?"); params.push(shopId); }
+  if (shopId) { params.push(shopId); }
 
   const customerCount = (db.prepare(
     `SELECT COUNT(*) as c FROM customers WHERE created_by = ?${shopId ? " AND shop_id = ?" : ""}`
