@@ -41,11 +41,19 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       });
 
       if (!response.ok) {
-        let errMsg = 'Failed to fetch user profile from server.';
+        let errMsg = `Server error (HTTP ${response.status})`;
         try {
-          const errData = await response.json();
-          if (errData && errData.error) errMsg = errData.error;
-        } catch (e) { /* ignore */ }
+          const text = await response.text();
+          try {
+            const errData = JSON.parse(text);
+            if (errData && errData.error) errMsg = errData.error;
+            else errMsg = `${errMsg}: ${text.slice(0, 200)}`;
+          } catch {
+            errMsg = `${errMsg}: ${text.slice(0, 200)}`;
+          }
+        } catch {
+          errMsg = `Server error (HTTP ${response.status}) — unable to read response.`;
+        }
         throw new Error(errMsg);
       }
 
