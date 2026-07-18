@@ -11,7 +11,10 @@
     "electron:build": "npm run build && node scripts/bundle-config.cjs && electron-builder --win --x64",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist release",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "vercel:env": "pwsh -NoProfile scripts/env-to-vercel.ps1",
+    "vercel:deploy": "pwsh -NoProfile scripts/deploy-vercel.ps1 -Prod",
+    "vercel:deploy:preview": "pwsh -NoProfile scripts/deploy-vercel.ps1"
   },
   "build": {
     "appId": "com.stitchmaster.app",

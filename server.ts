@@ -3105,6 +3105,26 @@ app.all("/api/*", (req: Request, res: Response) => {
 // -------------------------------------------------------------------------
 // VITE DEV SERVER / STATIC ASSETS & SPA ROUTING
 // -------------------------------------------------------------------------
+// Serve production static files and SPA fallback
+if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
+  let distPath = path.join(process.cwd(), "dist");
+  if (!fs.existsSync(path.join(distPath, "index.html"))) {
+    const fallbacks = [
+      path.join(__dirname, "dist"),
+      path.join(__dirname, "..", "dist"),
+    ];
+    for (const p of fallbacks) {
+      if (fs.existsSync(p)) { distPath = p; break; }
+    }
+  }
+  if (fs.existsSync(path.join(distPath, "index.html"))) {
+    app.use(express.static(distPath));
+    app.get("*", (req: Request, res: Response) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+}
+
 async function startServer() {
   await checkDatabaseSchema();
 
@@ -3118,34 +3138,19 @@ async function startServer() {
     }
   }
 
-  if (process.env.NODE_ENV !== "production") {
+  if (!process.env.VERCEL && process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa"
     });
     app.use(vite.middlewares);
-  } else {
-    let distPath = path.join(__dirname);
-    if (!fs.existsSync(path.join(distPath, "index.html"))) {
-      const fallbacks = [
-        path.join(process.cwd(), "dist"),
-        path.join(__dirname, "..", "dist"),
-      ];
-      for (const p of fallbacks) {
-        if (fs.existsSync(p)) { distPath = p; break; }
-      }
-    }
-    app.use(express.static(distPath));
-    app.get("*", (req: Request, res: Response) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
   }
 
   return new Promise<void>((resolve, reject) => {
     const server = app.listen(PORT, "0.0.0.0", () => {
       console.log(`Express Server booted successfully on http://0.0.0.0:${PORT}`);
-      if (!process.env.ELECTRON_RUN) {
+      if (!process.env.ELECTRON_RUN && !process.env.VERCEL) {
         const url = `http://localhost:${PORT}`;
         const cmd = process.platform === "win32" ? `start ${url}` : process.platform === "darwin" ? `open ${url}` : `xdg-open ${url}`;
         setTimeout(() => exec(cmd), 1000);
@@ -3158,7 +3163,7 @@ async function startServer() {
 
 export { app, PORT, startServer };
 
-if (!process.env.ELECTRON_RUN) {
+if (!process.env.ELECTRON_RUN && !process.env.VERCEL) {
   startServer().catch((err) => {
     console.error("Failed to start server:", err);
     process.exit(1);

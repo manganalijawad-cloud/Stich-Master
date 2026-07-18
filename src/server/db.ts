@@ -1,9 +1,15 @@
-import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
 
-export let db: Database.Database;
+let Database: any;
+try {
+  Database = (await import("better-sqlite3")).default;
+} catch {
+  // better-sqlite3 native module not available (e.g., Vercel serverless)
+}
+
+export let db: any;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS shops (
