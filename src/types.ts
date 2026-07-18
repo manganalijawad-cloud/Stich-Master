@@ -65,6 +65,7 @@ export interface Order {
   customer_name?: string; // joined
   customer_phone?: string; // joined
   customer_whatsapp?: string; // joined
+  customer_address?: string; // joined
   status: OrderStatus;
   items: OrderItem[];
   total_amount: number;

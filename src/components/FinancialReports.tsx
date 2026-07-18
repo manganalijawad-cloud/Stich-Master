@@ -571,17 +571,16 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
   }
 
   return (
-    <div className="space-y-6 print:space-y-8 print:bg-white print:p-0">
+    <div className="space-y-3 print:space-y-8 print:bg-white print:p-0">
 
       {/* HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 print:hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 print:hidden">
         <div>
-          <h1 className="text-h1 font-black text-slate-900 tracking-tight font-display uppercase">Sales Overview</h1>
-          <p className="text-body-sm text-slate-500 font-medium">See your shop's earnings, payments received, and order summary at a glance</p>
+          <h1 className="text-lg font-black text-slate-900 tracking-tight font-display uppercase">Sales Overview</h1>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="bg-white border border-slate-200 p-1 rounded-xl flex shadow-2xs">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div className="bg-white border border-slate-200 p-0.5 rounded-lg flex shadow-2xs">
             {[
               { id: 'Today', label: 'Today' },
               { id: 'ThisWeek', label: 'Week' },
@@ -592,7 +591,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
               <button
                 key={tab.id}
                 onClick={() => setDateFilter(tab.id as any)}
-                className={`py-1.5 px-3.5 rounded-lg text-btn-md font-semibold uppercase tracking-wider transition-[background-color,color] cursor-pointer ${
+                className={`py-1 px-2.5 rounded-md text-xs font-semibold uppercase tracking-wider transition-[background-color,color] cursor-pointer ${
                   dateFilter === tab.id
                     ? 'bg-brand-sidebar text-white shadow-sm'
                     : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
@@ -603,24 +602,22 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
             ))}
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <button
               onClick={handleExportCSV}
               disabled={!filteredOrders.length}
-              className={`btn-secondary ${!filteredOrders.length ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`btn-secondary py-1.5 px-2 ${!filteredOrders.length ? 'opacity-50 cursor-not-allowed' : ''}`}
               title="Download CSV"
-              aria-label="Download CSV"
             >
-              <ArrowDownToLine className="icon-sm" />
+              <ArrowDownToLine className="icon-xs" />
             </button>
             <button
               onClick={handlePrint}
               disabled={!filteredOrders.length}
-              className={`btn-primary ${!filteredOrders.length ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`btn-primary py-1.5 px-2 ${!filteredOrders.length ? 'opacity-50 cursor-not-allowed' : ''}`}
               title="Print Report"
-              aria-label="Print report"
             >
-              <Printer className="icon-sm" />
+              <Printer className="icon-xs" />
             </button>
           </div>
         </div>
@@ -628,116 +625,78 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
 
       {/* CUSTOM DATE PICKERS */}
       {dateFilter === 'Custom' && (
-        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-wrap gap-4 items-center animate-fade-in print:hidden">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">From:</span>
-            <input
-              type="date"
-              value={customStartDate}
-              onChange={(e) => setCustomStartDate(e.target.value)}
-              className="input-base"
-            />
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-wrap gap-3 items-center animate-fade-in print:hidden">
+          <div className="flex items-center gap-1.5">
+            <span className="text-3xs font-semibold text-slate-500 uppercase tracking-wider">From:</span>
+            <input type="date" value={customStartDate} onChange={(e) => setCustomStartDate(e.target.value)} className="input-base text-xs" />
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">To:</span>
-            <input
-              type="date"
-              value={customEndDate}
-              onChange={(e) => setCustomEndDate(e.target.value)}
-              className="input-base"
-            />
+          <div className="flex items-center gap-1.5">
+            <span className="text-3xs font-semibold text-slate-500 uppercase tracking-wider">To:</span>
+            <input type="date" value={customEndDate} onChange={(e) => setCustomEndDate(e.target.value)} className="input-base text-xs" />
           </div>
-          <button
-            onClick={fetchFinancials}
-            className="btn-primary"
-          >
-            Apply
-          </button>
+          <button onClick={fetchFinancials} className="btn-primary py-1.5 px-3 text-xs">Apply</button>
         </div>
       )}
 
       {/* === SECTION 1: KEY NUMBERS AT A GLANCE === */}
       <div>
-        <h2 className="text-sm font-black text-slate-700 uppercase tracking-wider mb-3 font-display">Summary</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
 
           {/* Total Sales */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs min-h-32 flex flex-col justify-between relative overflow-hidden">
-            <div className="absolute right-4 top-4 p-2 bg-blue-50 text-blue-600 rounded-xl">
-              <ShoppingBag className="icon-sm" />
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs relative overflow-hidden">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-3xs font-black text-slate-400 uppercase tracking-wider">Total Sales</span>
+              <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg"><ShoppingBag className="icon-xs" /></div>
             </div>
-            <div>
-              <span className="text-xs font-black text-slate-400 uppercase tracking-wider block" title="Total value of all orders placed during this period">Total Sales</span>
-              <p className="text-caption-xs text-slate-400 mt-0.5">Total value of all orders placed</p>
-              <span className="text-display-lg font-black mt-1 font-display text-slate-900 block">{currency}{stats.totalRevenue.toLocaleString()}</span>
-            </div>
-            <div className="mt-2 flex items-center gap-1 text-xs font-semibold">
+            <span className="text-xl font-black font-display text-slate-900 block">{currency}{stats.totalRevenue.toLocaleString()}</span>
+            <div className="mt-1 flex items-center gap-1 text-3xs font-semibold">
               {trends.revenueChange >= 0 ? (
-                <span className="text-emerald-600 flex items-center gap-0.5">
-                  <TrendingUp className="icon-xs" /> +{trends.revenueChange.toFixed(1)}%
-                </span>
+                <span className="text-emerald-600 flex items-center gap-0.5"><TrendingUp className="icon-xs" /> +{trends.revenueChange.toFixed(1)}%</span>
               ) : (
-                <span className="text-rose-600 flex items-center gap-0.5">
-                  <TrendingDown className="icon-xs" /> {trends.revenueChange.toFixed(1)}%
-                </span>
+                <span className="text-rose-600 flex items-center gap-0.5"><TrendingDown className="icon-xs" /> {trends.revenueChange.toFixed(1)}%</span>
               )}
-              <span className="text-slate-400">vs previous period</span>
+              <span className="text-slate-400">vs prev</span>
             </div>
           </div>
 
           {/* Payments Received */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs min-h-32 flex flex-col justify-between relative overflow-hidden">
-            <div className="absolute right-4 top-4 p-2 bg-emerald-50 text-emerald-600 rounded-xl">
-              <DollarSign className="icon-sm" />
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs relative overflow-hidden">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-3xs font-black text-slate-400 uppercase tracking-wider">Payments Received</span>
+              <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg"><DollarSign className="icon-xs" /></div>
             </div>
-            <div>
-              <span className="text-xs font-black text-slate-400 uppercase tracking-wider block" title="Payments already received from customers">Payments Received</span>
-              <p className="text-caption-xs text-slate-400 mt-0.5">Amount already paid by customers</p>
-              <span className="text-display-lg font-black mt-1 font-display text-emerald-600 block">{currency}{stats.totalCollected.toLocaleString()}</span>
-            </div>
-            <div className="mt-2 flex items-center gap-1 text-xs font-semibold">
+            <span className="text-xl font-black font-display text-emerald-600 block">{currency}{stats.totalCollected.toLocaleString()}</span>
+            <div className="mt-1 flex items-center gap-1 text-3xs font-semibold">
               {trends.collectionChange >= 0 ? (
-                <span className="text-emerald-600 flex items-center gap-0.5">
-                  <TrendingUp className="icon-xs" /> +{trends.collectionChange.toFixed(1)}%
-                </span>
+                <span className="text-emerald-600 flex items-center gap-0.5"><TrendingUp className="icon-xs" /> +{trends.collectionChange.toFixed(1)}%</span>
               ) : (
-                <span className="text-rose-600 flex items-center gap-0.5">
-                  <TrendingDown className="icon-xs" /> {trends.collectionChange.toFixed(1)}%
-                </span>
+                <span className="text-rose-600 flex items-center gap-0.5"><TrendingDown className="icon-xs" /> {trends.collectionChange.toFixed(1)}%</span>
               )}
-              <span className="text-slate-400">vs previous period</span>
+              <span className="text-slate-400">vs prev</span>
             </div>
           </div>
 
           {/* Still to Collect */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs min-h-32 flex flex-col justify-between relative overflow-hidden">
-            <div className="absolute right-4 top-4 p-2 bg-amber-50 text-amber-600 rounded-xl">
-              <Clock className="icon-sm" />
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs relative overflow-hidden">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-3xs font-black text-slate-400 uppercase tracking-wider">Still to Collect</span>
+              <div className="p-1.5 bg-amber-50 text-amber-600 rounded-lg"><Clock className="icon-xs" /></div>
             </div>
-            <div>
-              <span className="text-xs font-black text-slate-400 uppercase tracking-wider block" title="Amount customers still need to pay you">Still to Collect</span>
-              <p className="text-caption-xs text-slate-400 mt-0.5">Outstanding payments from customers</p>
-              <span className="text-display-lg font-black mt-1 font-display text-amber-500 block">{currency}{stats.outstandingBalance.toLocaleString()}</span>
-            </div>
-            <div className="mt-2 flex items-center gap-1 text-xs font-semibold">
-              <span className="text-slate-500">{stats.pendingPaymentsCount} orders with pending payment</span>
-            </div>
+            <span className="text-xl font-black font-display text-amber-500 block">{currency}{stats.outstandingBalance.toLocaleString()}</span>
+            <span className="text-3xs text-slate-500 block mt-0.5">{stats.pendingPaymentsCount} orders pending</span>
           </div>
 
           {/* Average per Order */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs min-h-32 flex flex-col justify-between relative overflow-hidden">
-            <div className="absolute right-4 top-4 p-2 bg-purple-50 text-purple-600 rounded-xl">
-              <FileText className="icon-sm" />
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs relative overflow-hidden">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-3xs font-black text-slate-400 uppercase tracking-wider">Avg per Order</span>
+              <div className="p-1.5 bg-purple-50 text-purple-600 rounded-lg"><FileText className="icon-xs" /></div>
             </div>
-            <div>
-              <span className="text-xs font-black text-slate-400 uppercase tracking-wider block" title="Average amount per order">Avg per Order</span>
-              <p className="text-caption-xs text-slate-400 mt-0.5">Average value of each order</p>
-              <span className="text-display-lg font-black mt-1 font-display text-purple-600 block">{currency}{Math.round(stats.averageOrderValue).toLocaleString()}</span>
-            </div>
-            <div className="mt-2 flex items-center gap-1 text-xs font-semibold">
+            <span className="text-xl font-black font-display text-purple-600 block">{currency}{Math.round(stats.averageOrderValue).toLocaleString()}</span>
+            <div className="mt-1 flex items-center gap-1 text-3xs font-semibold">
               <span className="text-purple-600 font-semibold">{stats.totalOrders}</span>
-              <span className="text-slate-400">total orders</span>
-              <span className="text-slate-300 mx-1">•</span>
+              <span className="text-slate-400">orders</span>
+              <span className="text-slate-300 mx-0.5">•</span>
               <span className="text-emerald-600 font-semibold">{stats.deliveredOrdersCount}</span>
               <span className="text-slate-400">delivered</span>
             </div>
@@ -747,23 +706,20 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
 
       {/* === EXPENSES & PROFIT (only if inventory data exists) === */}
       {stats.hasExpenses && (
-        <div className="border-t border-slate-200 pt-4">
-          <h2 className="text-sm font-black text-slate-700 uppercase tracking-wider mb-3 font-display">Costs &amp; Profit</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-rose-50/50 border border-rose-100 p-5 rounded-2xl shadow-2xs">
-              <span className="text-3xs font-black text-rose-500 uppercase tracking-wider block" title="Value of materials and inventory you have purchased">Material Costs</span>
-              <p className="text-caption-xs text-rose-400 mt-0.5">Cost of materials and inventory</p>
-              <span className="text-xl font-extrabold mt-1.5 font-display text-rose-700 block">{currency}{stats.totalExpenses.toLocaleString()}</span>
+        <div>
+          <h2 className="text-xs font-black text-slate-700 uppercase tracking-wider mb-2 font-display">Costs & Profit</h2>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-rose-50/50 border border-rose-100 p-3 rounded-xl">
+              <span className="text-3xs font-black text-rose-500 uppercase tracking-wider block">Material Costs</span>
+              <span className="text-base font-bold mt-0.5 font-display text-rose-700 block">{currency}{stats.totalExpenses.toLocaleString()}</span>
             </div>
-            <div className={`border p-5 rounded-2xl shadow-2xs ${stats.netProfit >= 0 ? 'bg-emerald-50/50 border-emerald-100' : 'bg-rose-50/50 border-rose-100'}`}>
-              <span className={`text-3xs font-black uppercase tracking-wider block ${stats.netProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`} title="Sales minus material costs">Profit</span>
-              <p className={`text-caption-xs mt-0.5 ${stats.netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>What's left after material costs</p>
-              <span className={`text-xl font-extrabold mt-1.5 font-display block ${stats.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{currency}{stats.netProfit.toLocaleString()}</span>
+            <div className={`border p-3 rounded-xl ${stats.netProfit >= 0 ? 'bg-emerald-50/50 border-emerald-100' : 'bg-rose-50/50 border-rose-100'}`}>
+              <span className={`text-3xs font-black uppercase tracking-wider block ${stats.netProfit >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>Profit</span>
+              <span className={`text-base font-bold mt-0.5 font-display block ${stats.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{currency}{stats.netProfit.toLocaleString()}</span>
             </div>
-            <div className={`border p-5 rounded-2xl shadow-2xs ${stats.profitMargin >= 30 ? 'bg-emerald-50/50 border-emerald-100' : 'bg-amber-50/50 border-amber-100'}`}>
-              <span className={`text-3xs font-black uppercase tracking-wider block ${stats.profitMargin >= 30 ? 'text-emerald-500' : 'text-amber-500'}`} title="Profit as a percentage of sales">Profit Margin</span>
-              <p className={`text-caption-xs mt-0.5 ${stats.profitMargin >= 30 ? 'text-emerald-400' : 'text-amber-400'}`}>Profit per rupee of sales</p>
-              <span className={`text-xl font-extrabold mt-1.5 font-display block ${stats.profitMargin >= 30 ? 'text-emerald-700' : 'text-amber-700'}`}>{stats.profitMargin.toFixed(1)}%</span>
+            <div className={`border p-3 rounded-xl ${stats.profitMargin >= 30 ? 'bg-emerald-50/50 border-emerald-100' : 'bg-amber-50/50 border-amber-100'}`}>
+              <span className={`text-3xs font-black uppercase tracking-wider block ${stats.profitMargin >= 30 ? 'text-emerald-500' : 'text-amber-500'}`}>Profit Margin</span>
+              <span className={`text-base font-bold mt-0.5 font-display block ${stats.profitMargin >= 30 ? 'text-emerald-700' : 'text-amber-700'}`}>{stats.profitMargin.toFixed(1)}%</span>
             </div>
           </div>
         </div>
@@ -771,7 +727,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
 
       {/* === EMPTY STATE === */}
       {filteredOrders.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-3">
+        <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center flex flex-col items-center justify-center gap-2">
           <ShoppingBag className="w-12 h-12 text-slate-300" />
           <h3 className="font-semibold text-slate-800">No orders in this period</h3>
           <p className="text-xs text-slate-400 max-w-sm leading-relaxed">There are no orders registered within the selected time window. Try adjusting your date filters or choose a custom range.</p>
@@ -782,10 +738,10 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
           {/* === SECTION 2: SALES & PAYMENTS OVER TIME === */}
           <div>
             <h2 className="text-sm font-black text-slate-700 uppercase tracking-wider mb-3 font-display">Sales &amp; Payments Over Time</h2>
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
-              <p className="text-3xs text-slate-400 font-medium mb-4">Shows how your sales (blue) and payments received (green) change over the selected period. Hover over a point for details.</p>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+              <p className="text-3xs text-slate-400 font-medium mb-3">Shows how your sales (blue) and payments received (green) change over the selected period. Hover over a point for details.</p>
 
-              <div className="relative h-64 w-full flex items-end">
+              <div className="relative h-52 w-full flex items-end">
                 {chartData.length < 2 ? (
                   <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-slate-400">
                     Not enough data in this period to draw a chart.
@@ -894,13 +850,13 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
           {/* === SECTION 3: PAYMENT STATUS === */}
           <div>
             <h2 className="text-sm font-black text-slate-700 uppercase tracking-wider mb-3 font-display">Payment Status</h2>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
               {/* Donut Chart */}
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col items-center justify-center">
-                <p className="text-3xs text-slate-400 font-medium mb-2 text-center">How many orders are fully paid, partly paid, or not yet paid</p>
-                <div className="my-4 flex items-center justify-center relative">
-                  <svg className="w-40 h-40 transform -rotate-90">
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs flex flex-col items-center justify-center">
+                <p className="text-3xs text-slate-400 font-medium mb-1 text-center">How many orders are fully paid, partly paid, or not yet paid</p>
+                <div className="my-2 flex items-center justify-center relative">
+                  <svg className="w-36 h-36 transform -rotate-90">
                     {(() => {
                       const radius = 60;
                       const circumference = 2 * Math.PI * radius;
@@ -957,11 +913,11 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
               </div>
 
               {/* === SECTION 4: ORDERS BY STAGE === */}
-              <div className="lg:col-span-2 bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
-                <p className="text-3xs text-slate-400 font-medium mb-4">Orders grouped by their current stage, showing how much has been collected vs still owed</p>
-                <div className="space-y-3">
+              <div className="lg:col-span-2 bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+                <p className="text-3xs text-slate-400 font-medium mb-3">Orders grouped by their current stage, showing how much has been collected vs still owed</p>
+                <div className="space-y-2">
                   {pipelineFinancials.map(stage => (
-                    <div key={stage.id} className="p-4 bg-slate-50/50 rounded-xl border border-slate-100 flex flex-col gap-2.5">
+                    <div key={stage.id} className="p-3 bg-slate-50/50 rounded-xl border border-slate-100 flex flex-col gap-2">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded-md text-3xs font-black uppercase tracking-wider">{stage.count} orders</span>
@@ -989,8 +945,8 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
           {/* === SECTION 5: CUSTOMER PAYMENTS === */}
           <div>
             <h2 className="text-sm font-black text-slate-700 uppercase tracking-wider mb-3 font-display">Customer Payments</h2>
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
-              <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
                 <p className="text-3xs text-slate-400 font-medium">Customers who have orders in this period, showing what they still owe</p>
                 <div className="relative">
                   <Search className="icon-xs text-slate-400 absolute left-2.5 top-2.5" />
@@ -1063,78 +1019,48 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
       )}
 
       {/* === PRINT & DETAILED TABLE === */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs mt-6 print:border-none print:shadow-none print:p-0">
-        <div className="flex items-center justify-between mb-4 print:hidden">
-          <div>
-            <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider font-display">Order Details</h3>
-            <p className="text-3xs text-slate-400 font-medium">Complete list of all orders in this period</p>
-          </div>
-        </div>
-
-        <div className="hidden print:flex flex-col items-center text-center pb-6 border-b border-slate-200 mb-6">
-          <h1 className="text-2xl font-black uppercase text-slate-900 tracking-tight">Sales Report</h1>
-          <p className="text-sm text-slate-500 font-medium mt-1">{dateRangeBounds.start.toLocaleDateString(undefined, { dateStyle: 'medium' })} to {dateRangeBounds.end.toLocaleDateString(undefined, { dateStyle: 'medium' })}</p>
-          <div className="grid grid-cols-3 gap-12 mt-6 w-full max-w-lg">
-            <div className="border border-slate-200 p-3 rounded-xl">
-              <span className="text-3xs font-black text-slate-400 uppercase tracking-wider block">Total Sales</span>
-              <span className="text-base font-black text-slate-800 mt-1">{currency}{stats.totalRevenue.toLocaleString()}</span>
-            </div>
-            <div className="border border-slate-200 p-3 rounded-xl">
-              <span className="text-3xs font-black text-slate-400 uppercase tracking-wider block">Payments Received</span>
-              <span className="text-base font-black text-emerald-600 mt-1">{currency}{stats.totalCollected.toLocaleString()}</span>
-            </div>
-            <div className="border border-slate-200 p-3 rounded-xl">
-              <span className="text-3xs font-black text-slate-400 uppercase tracking-wider block">Still to Collect</span>
-              <span className="text-base font-black text-amber-500 mt-1">{currency}{stats.outstandingBalance.toLocaleString()}</span>
-            </div>
-          </div>
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs print:border-none print:shadow-none print:p-0">
+        <div className="flex items-center justify-between mb-3 print:hidden">
+          <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider font-display">Order Details</h3>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-table-cell">
+          <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="border-b border-slate-200 text-table-header uppercase tracking-wider font-semibold">
-                <th className="py-3 px-4">Order</th>
-                <th className="py-3 px-4">Customer</th>
-                <th className="py-3 px-4">Date</th>
-                <th className="py-3 px-4">Due Date</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4 text-right">Order Value</th>
-                <th className="py-3 px-4 text-right">Paid</th>
-                <th className="py-3 px-4 text-right">Balance</th>
+              <tr className="border-b border-slate-200 text-3xs uppercase tracking-wider font-bold text-slate-500">
+                <th className="py-2 px-3">Order</th>
+                <th className="py-2 px-3">Customer</th>
+                <th className="py-2 px-3">Date</th>
+                <th className="py-2 px-3">Due</th>
+                <th className="py-2 px-3">Status</th>
+                <th className="py-2 px-3 text-right">Value</th>
+                <th className="py-2 px-3 text-right">Paid</th>
+                <th className="py-2 px-3 text-right">Balance</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredOrders.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-6 text-center text-slate-400 font-medium uppercase tracking-wider">No records available.</td>
-                </tr>
+                <tr><td colSpan={8} className="py-4 text-center text-slate-400 font-medium uppercase tracking-wider text-xs">No records available.</td></tr>
               ) : (
                 filteredOrders.map(o => {
                   const balance = (Number(o.total_amount) || 0) - (Number(o.paid_amount) || 0);
                   const isPaid = balance <= 0;
                   return (
                     <tr key={o.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-3.5 px-4 font-black text-slate-950 uppercase">{o.order_number}</td>
-                      <td className="py-3.5 px-4 font-semibold text-slate-700">{o.customer_name}</td>
-                      <td className="py-3.5 px-4 font-medium text-slate-500">{new Date(o.created_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}</td>
-                      <td className="py-3.5 px-4 font-medium text-slate-500">{new Date(o.due_date).toLocaleDateString(undefined, { dateStyle: 'medium' })}</td>
-                      <td className="py-3.5 px-4">
-                        <span className={`px-2 py-0.5 rounded-full text-3xs font-black uppercase tracking-wider inline-block ${
-                          o.status === 'Delivered'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                            : o.status === 'Ready' || o.status === 'Ready to Deliver'
-                            ? 'bg-blue-50 text-blue-700 border border-blue-100'
-                            : 'bg-amber-50 text-amber-700 border border-amber-100'
-                        }`}>
-                          {o.status}
-                        </span>
+                      <td className="py-2 px-3 font-bold text-slate-900 uppercase">{o.order_number}</td>
+                      <td className="py-2 px-3 font-semibold text-slate-700">{o.customer_name}</td>
+                      <td className="py-2 px-3 text-slate-500">{new Date(o.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</td>
+                      <td className="py-2 px-3 text-slate-500">{new Date(o.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</td>
+                      <td className="py-2 px-3">
+                        <span className={`px-1.5 py-0.5 rounded-full text-3xs font-bold uppercase inline-block ${
+                          o.status === 'Delivered' ? 'bg-emerald-50 text-emerald-700'
+                          : o.status === 'Ready' || o.status === 'Ready to Deliver' ? 'bg-blue-50 text-blue-700'
+                          : 'bg-amber-50 text-amber-700'
+                        }`}>{o.status}</span>
                       </td>
-                      <td className="py-3.5 px-4 text-right font-semibold text-slate-800">{currency}{(Number(o.total_amount) || 0).toLocaleString()}</td>
-                      <td className="py-3.5 px-4 text-right font-semibold text-slate-800">{currency}{(Number(o.paid_amount) || 0).toLocaleString()}</td>
-                      <td className={`py-3.5 px-4 text-right font-extrabold ${isPaid ? 'text-emerald-600' : 'text-amber-500'}`}>
-                        {currency}{balance.toLocaleString()}
-                      </td>
+                      <td className="py-2 px-3 text-right font-semibold text-slate-800">{currency}{(Number(o.total_amount) || 0).toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right font-semibold text-slate-800">{currency}{(Number(o.paid_amount) || 0).toLocaleString()}</td>
+                      <td className={`py-2 px-3 text-right font-bold ${isPaid ? 'text-emerald-600' : 'text-amber-500'}`}>{currency}{balance.toLocaleString()}</td>
                     </tr>
                   );
                 })

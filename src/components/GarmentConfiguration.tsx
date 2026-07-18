@@ -943,8 +943,7 @@ Do you absolutely want to proceed with deletion?`;
 
 
   return (
-    <div className="space-y-6">
-      {/* Title & Description */}
+    <div className="space-y-4">
       <div>
         <h3 className="text-lg font-semibold text-slate-900 uppercase tracking-wider font-display flex items-center gap-2">
           <Sliders className="icon-sm text-brand-sky" />
@@ -971,7 +970,7 @@ Do you absolutely want to proceed with deletion?`;
       )}
 
       {/* Main Grid: Sidebar (4/12 cols) & Detail Config Frame (8/12 cols) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
         
         {/* SECTION 1: GARMENT TYPES SIDEBAR */}
         <div className="lg:col-span-4 space-y-4">
@@ -1020,7 +1019,7 @@ Do you absolutely want to proceed with deletion?`;
               <span className="text-3xs font-semibold text-slate-400 uppercase tracking-widest">{garmentTypes.length} registered</span>
             </div>
 
-            <div className="divide-y divide-slate-150 max-h-[55vh] overflow-y-auto bg-white">
+            <div className="divide-y divide-slate-150 max-h-[60vh] overflow-y-auto bg-white">
               {loading && garmentTypes.length === 0 ? (
                 <div className="p-8 text-center text-slate-400 text-xs font-semibold uppercase tracking-wider">
                   Retrieving catalog data...
@@ -1237,11 +1236,11 @@ Do you absolutely want to proceed with deletion?`;
               </div>
 
               {/* Tab Content Panel */}
-              <div className="p-6">
+              <div className="p-4">
                 
                 {/* SUBSECTION A: MEASUREMENT FORM BUILDER */}
                 {activeConfigSection === 'MeasurementForm' && (
-                  <div className="space-y-6">
+                  <div className="space-y-4">
                     <div>
                       <h4 className="text-body font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 font-display">
                         Form Layout Builder: {selectedType.name}
@@ -1445,7 +1444,7 @@ Do you absolutely want to proceed with deletion?`;
 
                 {/* SUBSECTION B: STYLING LIBRARY FOR SELECTED GARMENT */}
                 {activeConfigSection === 'StylingLibrary' && (
-                  <div className="space-y-6">
+                  <div className="space-y-4">
                     <div>
                       <h4 className="text-body font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 font-display">
                         Styling Library options: {selectedType.name}
@@ -1456,10 +1455,10 @@ Do you absolutely want to proceed with deletion?`;
                     </div>
 
                     {/* Layout Split: Categories sidebar & options detail */}
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start border border-slate-150 rounded-2xl overflow-hidden p-4 bg-slate-50/50">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start border border-slate-150 rounded-2xl overflow-hidden p-3 bg-slate-50/50">
                       
                       {/* Left: Styling categories inside the selected garment */}
-                      <div className="md:col-span-5 space-y-4">
+                      <div className="md:col-span-5 space-y-3">
                         <div className="space-y-2">
                           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">1. Style Categories</span>
                           
@@ -1483,7 +1482,7 @@ Do you absolutely want to proceed with deletion?`;
                           </form>
 
                           {/* List of styling categories */}
-                          <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden bg-white max-h-[40vh] overflow-y-auto">
+                          <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden bg-white max-h-[45vh] overflow-y-auto">
                             {stylingCategories.length === 0 ? (
                               <p className="p-4 text-center text-slate-400 text-3xs font-extrabold uppercase tracking-wider">No categories built.</p>
                             ) : (
@@ -1625,7 +1624,7 @@ Do you absolutely want to proceed with deletion?`;
                             </form>
 
                             {/* Option list and sorting */}
-                            <div className="space-y-1.5 max-h-[35vh] overflow-y-auto">
+                            <div className="space-y-1.5 max-h-[40vh] overflow-y-auto">
                               {builderOptions.length === 0 ? (
                                 <p className="p-6 border border-dashed border-slate-150 rounded-lg text-center text-slate-400 text-3xs font-semibold uppercase tracking-wider">
                                   No options built. Insert options using the field above.
@@ -1771,7 +1770,7 @@ Do you absolutely want to proceed with deletion?`;
               </div>
             </div>
           ) : (
-            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400 flex flex-col items-center justify-center gap-3 min-h-[400px]">
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-slate-400 flex flex-col items-center justify-center gap-2 min-h-[280px]">
               <HelpCircle className="w-12 h-12 text-slate-300" />
               <div className="space-y-1">
                 <p className="text-sm font-semibold uppercase tracking-wider text-slate-600">No active garment selected</p>

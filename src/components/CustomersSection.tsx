@@ -67,7 +67,7 @@ export default function CustomersSection({
   const [newWhatsapp, setNewWhatsapp] = useState('');
   const [newAddress, setNewAddress] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newNotes, setNewNotes] = useState('');
+
   
   // Selected garment type for NEW customer
   const [selectedGarmentTypeId, setSelectedGarmentTypeId] = useState<string>('');
@@ -371,7 +371,6 @@ export default function CustomersSection({
           whatsapp: newWhatsapp.trim(),
           address: newAddress.trim(),
           email: newEmail.trim(),
-          notes: newNotes.trim(),
           measurements: payloadMeasurements,
         }),
       });
@@ -391,7 +390,6 @@ export default function CustomersSection({
         setNewWhatsapp('');
         setNewAddress('');
         setNewEmail('');
-        setNewNotes('');
         setInitialMeasurements({});
         onBookOrder(data.customer);
         return;
@@ -404,12 +402,10 @@ export default function CustomersSection({
       setNewWhatsapp('');
       setNewAddress('');
       setNewEmail('');
-      setNewNotes('');
       setInitialMeasurements({});
       
       // Auto-select newly created customer
       setSelectedCustomer(data);
-      onBookOrder(data);
       setIsCreating(false);
 
       // Refresh customers list
@@ -541,18 +537,17 @@ export default function CustomersSection({
 
   if (showAllPage) {
     return (
-      <div className="card animate-fade-in">
+      <div className="card animate-fade-in space-y-3">
         {/* Full Customers Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
           <div>
             <button
               onClick={() => setShowAllPage(false)}
-              className="flex items-center gap-1.5 text-btn-md text-sky-600 hover:text-sky-800 transition-colors uppercase tracking-wider mb-2 cursor-pointer bg-transparent border-none p-0"
+              className="flex items-center gap-1 text-xs text-sky-600 hover:text-sky-800 transition-colors uppercase tracking-wider mb-1 cursor-pointer bg-transparent border-none p-0"
             >
               ← Back to Dashboard / Profiles
             </button>
-            <h1 className="text-h1 text-brand-sidebar">Customer Database</h1>
-            <p className="text-caption text-slate-400 mt-0.5">Search, filter, and select from the complete customer directory</p>
+            <h1 className="text-xl font-bold text-brand-sidebar font-display">Customer Database</h1>
           </div>
           
           <button
@@ -560,7 +555,6 @@ export default function CustomersSection({
               setShowAllPage(false);
               setIsCreating(true);
               setSelectedCustomer(null);
-              // Pre-populate with first enabled garment type
               const enabled = garmentTypes.filter(g => g.enabled);
               if (enabled.length > 0) {
                 setSelectedGarmentTypeId(enabled[0].id);
@@ -649,11 +643,11 @@ export default function CustomersSection({
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
       
       {/* LEFT COLUMN: Customer Search & List */}
-      <div className="lg:col-span-5 card space-y-4">
-        <div className="space-y-6">
+      <div className="lg:col-span-5 card space-y-3">
+        <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-h2 font-semibold text-slate-900 tracking-tight font-display">Customers</h2>
             {!isCreating && (
@@ -700,71 +694,28 @@ export default function CustomersSection({
           )}
 
           {isCreating ? (
-            /* CREATE CUSTOMER FORM */
-            <form onSubmit={handleCreateCustomer} className="space-y-4">
-              <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                <span className="font-semibold text-base text-slate-800 font-display">New Customer</span>
-                <button
-                  type="button"
-                  onClick={() => setIsCreating(false)}
-                  className="text-slate-500 hover:text-slate-800 text-xs font-semibold uppercase tracking-wider cursor-pointer bg-transparent border-none"
-                >
-                  Cancel
-                </button>
+            <form onSubmit={handleCreateCustomer} className="space-y-2">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                <span className="font-semibold text-sm text-slate-800 font-display">New Customer</span>
+                <button type="button" onClick={() => setIsCreating(false)} className="text-xs text-slate-500 hover:text-slate-800 font-semibold uppercase tracking-wider cursor-pointer bg-transparent border-none">Cancel</button>
               </div>
+              {createError && <div className="alert-error text-xs py-2">{createError}</div>}
 
-              {createError && (
-                <div className="alert-error">
-                  {createError}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-3xs font-bold uppercase tracking-wider text-slate-600 mb-0.5">NAME*</label>
+                  <input type="text" required autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Ali Khan" className="input-base" />
                 </div>
-              )}
-
-              <div className="space-y-1">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">NAME*</label>
-                <input
-                  type="text"
-                  required
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="e.g. Ali Khan"
-                  className="input-base"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
-                  MOBILE NUMBER{isNameDuplicate && <span className="text-red-500">* (Required - Name already exists)</span>}
-                </label>
-                <input
-                  type="tel"
-                  required={isNameDuplicate}
-                  value={newPhone}
-                  onChange={(e) => setNewPhone(e.target.value)}
-                  placeholder="e.g. 0300-1234567"
-                  className={`w-full px-4 py-2.5 border-2 rounded-lg text-slate-800 text-base font-medium focus-visible:outline-none focus:ring-4 focus:ring-sky-100 transition-[border-color] ${isNameDuplicate ? 'border-amber-300 focus:border-amber-500' : 'border-slate-200 focus:border-brand-sky'}`}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">ADDRESS</label>
-                <input
-                  type="text"
-                  value={newAddress}
-                  onChange={(e) => setNewAddress(e.target.value)}
-                  placeholder="e.g. House 45, Tariq Road, Karachi"
-                  className="input-base"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">NOTE</label>
-                <textarea
-                  value={newNotes}
-                  onChange={(e) => setNewNotes(e.target.value)}
-                  placeholder="Preferred fits, specific styling instructions..."
-                  rows={2}
-                  className="input-base"
-                />
+                <div>
+                  <label className="block text-3xs font-bold uppercase tracking-wider text-slate-600 mb-0.5">
+                    MOBILE{isNameDuplicate && <span className="text-red-500">*</span>}
+                  </label>
+                  <input type="tel" required={isNameDuplicate} value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="0300-1234567" className={`input-base ${isNameDuplicate ? 'border-amber-300' : ''}`} />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-3xs font-bold uppercase tracking-wider text-slate-600 mb-0.5">ADDRESS</label>
+                  <input type="text" value={newAddress} onChange={(e) => setNewAddress(e.target.value)} placeholder="House 45, Tariq Road, Karachi" className="input-base" />
+                </div>
               </div>
             </form>
           ) : (
@@ -836,7 +787,7 @@ export default function CustomersSection({
       </div>
 
       {/* RIGHT COLUMN: Customer Details & Measurements */}
-      <div className="lg:col-span-7 card space-y-4">
+      <div className="lg:col-span-7 card space-y-3">
         {duplicateAlert && (
           <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs font-semibold flex items-start justify-between gap-2.5 animate-fade-in">
             <span>{duplicateAlert}</span>
@@ -851,103 +802,87 @@ export default function CustomersSection({
         )}
 
         {selectedCustomer ? (
-          <div className="space-y-6 animate-fade-in print:hidden">
+          <div className="space-y-3 animate-fade-in print:hidden">
             {/* Header */}
-            <div className="border-b border-slate-100 pb-3 space-y-2">
-              <div className="space-y-0.5">
-                <span className="text-caption-xs font-semibold text-slate-400 uppercase block">Active Customer Profile</span>
-                <h1 className="text-h2 font-semibold text-slate-900 tracking-tight uppercase">{selectedCustomer.name}</h1>
+            <div className="border-b border-slate-100 pb-2 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-caption-xs font-semibold text-slate-400 uppercase">Active Customer Profile</span>
+                <h1 className="text-base font-bold text-slate-900 tracking-tight uppercase">{selectedCustomer.name}</h1>
               </div>
 
-              {/* Attributes display */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                <div className="space-y-3">
-                  <div>
-                    <span className="text-caption-xs font-semibold text-slate-400 uppercase block">Phone Number</span>
-                    {selectedCustomer.phone && !selectedCustomer.phone.startsWith('NO-PHONE-') ? (
-                      <span className="text-sm font-semibold text-slate-700 flex items-center gap-1.5 mt-0.5">
-                        <Phone className="icon-sm text-slate-400 shrink-0" />
-                        {selectedCustomer.phone}
-                      </span>
-                    ) : (
-                      <span className="text-caption text-slate-400 italic block mt-0.5">No phone number provided</span>
-                    )}
-                  </div>
-
-                  <div>
-                    <span className="text-caption-xs font-semibold text-slate-400 uppercase block">Address</span>
-                    {selectedCustomer.address ? (
-                      <span className="text-sm font-semibold text-slate-700 flex items-center gap-1.5 mt-0.5">
-                        <MapPin className="icon-sm text-slate-400 shrink-0" />
-                        {selectedCustomer.address}
-                      </span>
-                    ) : (
-                      <span className="text-caption text-slate-400 italic block mt-0.5">No address provided</span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div>
-                    <span className="text-caption-xs font-semibold text-slate-400 uppercase block">Last Updated</span>
-                    <span className="text-sm font-extrabold text-slate-700 block mt-0.5">
-                      {getLastUpdated().toLocaleString(undefined, {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
+              {/* Attributes display - compact 2-column */}
+              <div className="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                <div>
+                  <span className="text-3xs font-semibold text-slate-400 uppercase block">Phone Number</span>
+                  {selectedCustomer.phone && !selectedCustomer.phone.startsWith('NO-PHONE-') ? (
+                    <span className="text-xs font-semibold text-slate-700 flex items-center gap-1 mt-0.5">
+                      <Phone className="icon-xs text-slate-400 shrink-0" />
+                      {selectedCustomer.phone}
                     </span>
-                  </div>
+                  ) : (
+                    <span className="text-caption-xs text-slate-400 italic block mt-0.5">No phone</span>
+                  )}
+                </div>
+                <div>
+                  <span className="text-3xs font-semibold text-slate-400 uppercase block">Last Updated</span>
+                  <span className="text-xs font-bold text-slate-700 block mt-0.5">
+                    {getLastUpdated().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  </span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-3xs font-semibold text-slate-400 uppercase block">Address</span>
+                  {selectedCustomer.address ? (
+                    <span className="text-xs font-semibold text-slate-700 flex items-center gap-1 mt-0.5">
+                      <MapPin className="icon-xs text-slate-400 shrink-0" />
+                      {selectedCustomer.address}
+                    </span>
+                  ) : (
+                    <span className="text-caption-xs text-slate-400 italic block mt-0.5">No address</span>
+                  )}
                 </div>
               </div>
 
-              {/* Extra details (optional parameters if exist) */}
+              {/* Extra details inline */}
               {(selectedCustomer.email || selectedCustomer.notes) && (
-                <div className="pt-2 space-y-1.5 text-caption text-slate-600 font-medium border-t border-slate-100">
+                <div className="text-caption-xs text-slate-600 font-medium">
                   {selectedCustomer.email && (
-                    <p className="flex items-center gap-1.5">
-                      <Mail className="icon-sm text-slate-400" />
-                      Email: <span className="text-slate-800 font-semibold">{selectedCustomer.email}</span>
+                    <p className="flex items-center gap-1">
+                      <Mail className="icon-xs text-slate-400" />
+                      <span className="font-semibold text-slate-800">{selectedCustomer.email}</span>
                     </p>
                   )}
                   {selectedCustomer.notes && (
-                    <div className="flex items-start gap-2 bg-slate-50 p-3 rounded-xl border border-slate-150/50 mt-2 text-slate-600 text-sm">
-                      <FileText className="icon-md mt-0.5 shrink-0 text-slate-400" />
-                      <p className="leading-relaxed">{selectedCustomer.notes}</p>
+                    <div className="flex items-start gap-1.5 mt-1 text-xs">
+                      <FileText className="icon-xs mt-0.5 shrink-0 text-slate-400" />
+                      <p>{selectedCustomer.notes}</p>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Actions panel */}
-              <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100">
-                <button
-                  onClick={() => onBookOrder(selectedCustomer)}
-                  className="btn-primary"
-                >
+              {/* Actions panel - compact */}
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+                <button onClick={() => onBookOrder(selectedCustomer)} className="btn-primary py-2">
                   <ShoppingCart className="icon-sm text-brand-sky" />
                   Create New Order
                 </button>
-
                 <button
                   onClick={() => setShowHistory(!showHistory)}
-                  className={`px-4 py-3 text-brand-sidebar rounded-xl text-btn-md uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-colors border ${
+                  className={`py-2 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer rounded-lg border transition-colors ${
                     showHistory
                       ? 'bg-sky-50 border-brand-sky text-sky-700'
                       : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                   }`}
                 >
                   <FileText className="icon-sm text-sky-500" />
-                  Order History ({orderHistory.length})
+                  Orders ({orderHistory.length})
                 </button>
               </div>
             </div>
 
             {/* ORDER HISTORY TOGGLE AREA */}
             {showHistory && (
-              <div className="border-t border-slate-150 pt-5 space-y-3.5 animate-fade-in">
+              <div className="border-t border-slate-150 pt-3 space-y-3 animate-fade-in">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider font-display">Order History ({orderHistory.length})</h3>
                   <button
@@ -1010,10 +945,10 @@ export default function CustomersSection({
             )}
 
             {/* MEASUREMENT PROFILES COMPONENT SECTION */}
-            <div className="space-y-6 pt-4 border-t border-slate-100">
+            <div className="space-y-4 pt-3 border-t border-slate-100">
               
               {/* Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                 <div>
                   <h3 className="text-h3 font-semibold text-slate-900 uppercase tracking-wider font-display flex items-center gap-1.5">
                     <Layers className="icon-md text-brand-sky" />
@@ -1064,7 +999,7 @@ export default function CustomersSection({
 
               {/* Inline form: Add Another Garment Profile */}
               {isAddingProfile ? (
-                <form onSubmit={handleAddProfile} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 shadow-3xs animate-fade-in">
+                <form onSubmit={handleAddProfile} className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 shadow-3xs animate-fade-in">
                   <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                     <span className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                       <Sparkles className="icon-xs text-amber-500" />
@@ -1184,9 +1119,7 @@ export default function CustomersSection({
 
               {/* Opened Profile View Area */}
               {!isAddingProfile && activeProfile && (
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 animate-fade-in">
-                  
-                  {/* Title and specific action toolbar */}
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 animate-fade-in">
                   <div className="flex items-center justify-between border-b border-slate-200 pb-2 flex-wrap gap-2">
                     <div />
 
@@ -1360,7 +1293,7 @@ export default function CustomersSection({
 
               {/* No profiles placeholder */}
               {!isAddingProfile && profiles.length === 0 && (
-                <div className="flex flex-col items-center justify-center p-12 text-center border-2 border-dashed border-slate-200 bg-slate-50/50 rounded-2xl">
+                <div className="flex flex-col items-center justify-center p-8 text-center border-2 border-dashed border-slate-200 bg-slate-50/50 rounded-2xl">
                   <Layers className="w-10 h-10 text-slate-300 animate-pulse mb-3" />
                   <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider">No Measurement Profiles</h4>
                   <p className="text-slate-400 text-3xs font-semibold uppercase tracking-widest max-w-xs mt-1 leading-relaxed">

@@ -19,11 +19,31 @@ CREATE TABLE IF NOT EXISTS public.shops (
 ALTER TABLE public.shops ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Restrict shops to authenticated user's own records only" ON public.shops;
-CREATE POLICY "Restrict shops to authenticated user's own records only"
-    ON public.shops FOR ALL
+DROP POLICY IF EXISTS "Allow authenticated users to insert shops" ON public.shops;
+DROP POLICY IF EXISTS "Allow users to view own shops" ON public.shops;
+
+-- Separate policies: allow any authenticated user to INSERT a shop (needed during signup),
+-- but restrict SELECT/UPDATE/DELETE to shops the user created.
+CREATE POLICY "Allow authenticated users to insert shops"
+    ON public.shops FOR INSERT
+    TO authenticated
+    WITH CHECK (true);
+
+CREATE POLICY "Allow users to view own shops"
+    ON public.shops FOR SELECT
+    TO authenticated
+    USING (created_by = auth.uid());
+
+CREATE POLICY "Allow users to update own shops"
+    ON public.shops FOR UPDATE
     TO authenticated
     USING (created_by = auth.uid())
     WITH CHECK (created_by = auth.uid());
+
+CREATE POLICY "Allow users to delete own shops"
+    ON public.shops FOR DELETE
+    TO authenticated
+    USING (created_by = auth.uid());
 
 
 -- 2. PROFILES TABLE (User/Worker Accounts)

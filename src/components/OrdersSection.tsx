@@ -188,10 +188,9 @@ export default function OrdersSection({
   const [newCustName, setNewCustName] = useState('');
   const [newCustPhone, setNewCustPhone] = useState('');
   const [isNameDuplicate, setIsNameDuplicate] = useState(false);
-  const [newCustWhatsapp, setNewCustWhatsapp] = useState('');
   const [newCustAddress, setNewCustAddress] = useState('');
-  const [newCustEmail, setNewCustEmail] = useState('');
-  const [newCustNotes, setNewCustNotes] = useState('');
+  const [newCustGarmentTypeId, setNewCustGarmentTypeId] = useState('');
+  const [newCustMeasurements, setNewCustMeasurements] = useState<Record<string, string | number>>({});
 
   // settings data
   const [garmentTypes, setGarmentTypes] = useState<GarmentType[]>([]);
@@ -701,8 +700,32 @@ Note: This is an automated message. Please do not reply.`;
       return;
     }
 
+    const selectedGarment = newCustGarmentTypeId
+      ? garmentTypes.find(g => g.id === newCustGarmentTypeId)
+      : null;
+    if (!selectedGarment) {
+      setCreateError('Please select a garment type and enter measurements. A customer cannot be saved without measurements.');
+      return;
+    }
+    const missingRequired = selectedGarment.measurement_fields
+      .filter(f => f.required)
+      .find(f => !newCustMeasurements[f.name] || String(newCustMeasurements[f.name]).trim() === '');
+    if (missingRequired) {
+      setCreateError(`Missing required measurement: "${missingRequired.name}". Please fill in all required measurements to save the customer.`);
+      return;
+    }
+
     setCreateError(null);
     try {
+      const firstProfile: MeasurementProfile = {
+        id: Math.random().toString(36).substring(2, 11),
+        garment_type_id: selectedGarment.id,
+        garment_name: selectedGarment.name,
+        values: newCustMeasurements,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
       const res = await fetch('/api/customers', {
         method: 'POST',
         headers: {
@@ -712,26 +735,22 @@ Note: This is an automated message. Please do not reply.`;
         body: JSON.stringify({
           name: newCustName,
           phone: newCustPhone,
-          whatsapp: newCustWhatsapp,
           address: newCustAddress,
-          email: newCustEmail,
-          notes: newCustNotes,
-          measurements: { profiles: [] }
+          measurements: { profiles: [firstProfile] }
         })
       });
       const data = await res.json();
       if (res.ok) {
         const createdCustomer = data.customer || data;
         setCustomer(createdCustomer);
-        setCustomerProfiles([]);
-        
+        setCustomerProfiles([firstProfile]);
+
         // Reset customer form
         setNewCustName('');
         setNewCustPhone('');
-        setNewCustWhatsapp('');
         setNewCustAddress('');
-        setNewCustEmail('');
-        setNewCustNotes('');
+        setNewCustGarmentTypeId('');
+        setNewCustMeasurements({});
         setShowCreateCustomer(false);
 
         setBookingStep('garments');
@@ -1202,13 +1221,13 @@ Note: This is an automated message. Please do not reply.`;
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
       
       {/* LEFT COLUMN: Queue / Filters */}
       {!isCreating && (
-        <div className="lg:col-span-5 card p-3 space-y-3">
+        <div className="lg:col-span-5 card space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-black text-slate-900 tracking-tight font-display uppercase">
+            <h2 className="text-base font-black text-slate-900 tracking-tight font-display uppercase">
               {viewMode === 'Active' ? 'Active Queue' : 'Archived Vault'}
             </h2>
             {!isCreating && (
@@ -1284,31 +1303,31 @@ Note: This is an automated message. Please do not reply.`;
           )}
 
           {/* Search & Scanner */}
-          <div className="space-y-2">
-            <div className="flex gap-2">
+          <div className="space-y-1.5">
+            <div className="flex gap-1.5">
               <div className="relative flex-1">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search order #, customer name..."
-                  className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 font-medium focus-visible:outline-none focus:border-brand-sky focus:ring-2 focus:ring-sky-100 transition-[border-color]"
+                  className="w-full pl-7 pr-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 font-medium focus-visible:outline-none focus:border-brand-sky focus:ring-2 focus:ring-sky-100 transition-[border-color]"
                 />
               </div>
               <button
                 type="button"
                 onClick={() => setIsScannerOpen(true)}
-                className="px-3 py-1.5 bg-brand-bg hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer text-xs font-semibold uppercase tracking-wide transition-[background-color]"
+                className="px-2.5 py-1.5 bg-brand-bg hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg flex items-center justify-center gap-1 cursor-pointer text-3xs font-semibold uppercase tracking-wide transition-[background-color]"
                 title="Scan QR Code from Device Camera"
               >
-                <QrCode className="w-3.5 h-3.5 text-brand-sky" />
-                <span>Scan QR</span>
+                <QrCode className="w-3 h-3 text-brand-sky" />
+                <span className="hidden sm:inline">Scan QR</span>
               </button>
             </div>
 
             {/* Active List */}
-            <div className="space-y-1.5 max-h-[55vh] overflow-y-auto pr-0.5">
+            <div className="space-y-1 max-h-[60vh] overflow-y-auto pr-0.5">
               {loading && <p className="text-center text-slate-400 text-xs font-semibold uppercase tracking-wider py-3">Refreshing Queue...</p>}
               {!loading && orders.length === 0 && (
                 <p className="text-center text-slate-400 py-6 text-xs font-semibold uppercase tracking-wider">No active orders.</p>
@@ -1319,34 +1338,32 @@ Note: This is an automated message. Please do not reply.`;
                   <button
                     key={o.id}
                     onClick={() => selectOrderWithDetails(o)}
-                    className={`w-full p-3 rounded-lg text-left border transition-[background-color,border-color,box-shadow] flex items-center justify-between cursor-pointer ${
+                    className={`w-full p-2 rounded-lg text-left border transition-[background-color,border-color,box-shadow] flex items-center justify-between cursor-pointer ${
                       isSelected
                         ? 'bg-sky-50/70 border-sky-400 shadow-xs'
                         : 'bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300'
                     }`}
                   >
-                    <div className="space-y-1.5 min-w-0 flex-1 mr-3">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-semibold text-slate-400 font-mono tracking-wide">{o.order_number}</span>
+                    <div className="space-y-0.5 min-w-0 flex-1 mr-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-3xs font-semibold text-slate-400 font-mono tracking-wide">{o.order_number}</span>
                         <span className={`px-1.5 py-0.5 rounded text-3xs font-semibold uppercase leading-tight ${getStatusBadgeStyle(o.status)}`}>
                           {stagesList.find(s => s.id === o.status)?.name || o.status}
                         </span>
                       </div>
-                      <p className="text-sm font-semibold text-slate-900">{o.customer_name}</p>
-                      <p className="text-3xs text-slate-400 font-semibold uppercase tracking-wider">Delivery: {new Date(o.due_date).toLocaleDateString(undefined, { dateStyle: 'medium' })}</p>
+                      <p className="text-xs font-semibold text-slate-900">{o.customer_name}</p>
+                      <p className="text-3xs text-slate-400 font-semibold uppercase tracking-wider">Due: {new Date(o.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p>
                     </div>
-                    <div className="text-right space-y-1 shrink-0">
-                      <span className="text-base font-black text-slate-900 block font-display leading-tight">
+                    <div className="text-right space-y-0.5 shrink-0">
+                      <span className="text-sm font-black text-slate-900 block font-display leading-tight">
                         {currency}{o.total_amount}
                       </span>
                       {o.total_amount - o.paid_amount > 0 ? (
-                        <span className="inline-block text-3xs bg-red-50 text-red-700 font-semibold px-2 py-1 rounded border border-red-100">
-                          Remaining: {currency}{o.total_amount - o.paid_amount}
+                        <span className="inline-block text-3xs bg-red-50 text-red-700 font-semibold px-1.5 py-0.5 rounded border border-red-100">
+                          Due {currency}{o.total_amount - o.paid_amount}
                         </span>
                       ) : (
-                        <span className="inline-block text-3xs bg-emerald-50 text-emerald-700 font-semibold px-2 py-1 rounded border border-emerald-100">
-                          Paid
-                        </span>
+                        <span className="inline-block text-3xs bg-emerald-50 text-emerald-700 font-semibold px-1.5 py-0.5 rounded border border-emerald-100">Paid</span>
                       )}
                     </div>
                   </button>
@@ -1367,7 +1384,7 @@ Note: This is an automated message. Please do not reply.`;
       )}
 
       {/* RIGHT COLUMN: Action Forms or Details */}
-      <div className={`${isCreating ? 'lg:col-span-12' : 'lg:col-span-7'} card p-4 space-y-4`}>
+      <div className={`${isCreating ? 'lg:col-span-12' : 'lg:col-span-7'} card space-y-3`}>
         
         {isCreating ? (
           <div className="space-y-4">
@@ -1442,7 +1459,7 @@ Note: This is an automated message. Please do not reply.`;
                     </div>
 
                     {customerSearch.trim() && (
-                      <div className="bg-white border border-slate-200 rounded-xl max-h-[40vh] overflow-y-auto divide-y divide-slate-100 shadow-sm">
+                      <div className="bg-white border border-slate-200 rounded-xl max-h-[45vh] overflow-y-auto divide-y divide-slate-100 shadow-sm">
                         {searching ? (
                           <div className="p-4 text-center text-slate-400 text-sm uppercase font-semibold">Searching...</div>
                         ) : searchResults.length === 0 ? (
@@ -1490,7 +1507,11 @@ Note: This is an automated message. Please do not reply.`;
                       <span className="font-extrabold text-sm text-slate-700 uppercase tracking-wider">New Customer</span>
                       <button
                         type="button"
-                        onClick={() => setShowCreateCustomer(false)}
+                        onClick={() => {
+                          setShowCreateCustomer(false);
+                          setNewCustGarmentTypeId('');
+                          setNewCustMeasurements({});
+                        }}
                         className="text-xs text-slate-500 hover:text-slate-800 font-semibold uppercase cursor-pointer"
                       >
                         Cancel
@@ -1501,6 +1522,7 @@ Note: This is an automated message. Please do not reply.`;
                       <input
                         type="text"
                         required
+                        autoFocus
                         value={newCustName}
                         onChange={(e) => setNewCustName(e.target.value)}
                         className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus-visible:outline-none focus:border-brand-sky focus:ring-1 focus:ring-[#38BDF8]/20 placeholder:text-slate-400"
@@ -1516,23 +1538,6 @@ Note: This is an automated message. Please do not reply.`;
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <input
-                        type="text"
-                        value={newCustWhatsapp}
-                        onChange={(e) => setNewCustWhatsapp(e.target.value)}
-                        className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus-visible:outline-none focus:border-brand-sky focus:ring-1 focus:ring-[#38BDF8]/20 placeholder:text-slate-400"
-                        placeholder="WhatsApp number"
-                      />
-                      <input
-                        type="email"
-                        value={newCustEmail}
-                        onChange={(e) => setNewCustEmail(e.target.value)}
-                        className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus-visible:outline-none focus:border-brand-sky focus:ring-1 focus:ring-[#38BDF8]/20 placeholder:text-slate-400"
-                        placeholder="Email"
-                      />
-                    </div>
-
                     <input
                       type="text"
                       value={newCustAddress}
@@ -1541,13 +1546,50 @@ Note: This is an automated message. Please do not reply.`;
                       placeholder="Address"
                     />
 
-                    <textarea
-                      value={newCustNotes}
-                      onChange={(e) => setNewCustNotes(e.target.value)}
-                      rows={1}
-                      className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus-visible:outline-none focus:border-brand-sky focus:ring-1 focus:ring-[#38BDF8]/20 placeholder:text-slate-400 resize-none"
-                      placeholder="Tailoring notes / directives"
-                    />
+                    <div className="pt-1.5 border-t border-slate-200">
+                      <p className="text-3xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Garment Type &amp; Measurements *</p>
+                      <select
+                        value={newCustGarmentTypeId}
+                        onChange={(e) => {
+                          setNewCustGarmentTypeId(e.target.value);
+                          setNewCustMeasurements({});
+                        }}
+                        className="input-base text-sm font-semibold mb-2"
+                      >
+                        <option value="">-- Select Garment Type --</option>
+                        {garmentTypes.filter(g => g.enabled).map((g) => (
+                          <option key={g.id} value={g.id}>{g.name}</option>
+                        ))}
+                      </select>
+
+                      {newCustGarmentTypeId && (() => {
+                        const selG = garmentTypes.find(g => g.id === newCustGarmentTypeId);
+                        if (!selG) return null;
+                        const mFields = selG.measurement_fields || [];
+                        if (mFields.length === 0) return (
+                          <p className="text-xs text-amber-600 font-semibold">No measurement fields defined for this garment type.</p>
+                        );
+                        return (
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-2 p-3 bg-white border border-slate-200 rounded-lg">
+                            {mFields.map((field) => (
+                              <div key={field.name} className="flex flex-col min-w-0">
+                                <label className="text-3xs font-bold text-slate-500 uppercase tracking-wide">
+                                  {field.name} {field.required ? '*' : ''}
+                                </label>
+                                <input
+                                  type="text"
+                                  required={field.required}
+                                  placeholder={field.required ? 'Required' : '--'}
+                                  value={newCustMeasurements[field.name] ?? ''}
+                                  onChange={(e) => setNewCustMeasurements(prev => ({ ...prev, [field.name]: e.target.value }))}
+                                  className="mt-0.5 px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white text-slate-800 text-xs font-semibold focus-visible:outline-none focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
 
                     <button
                       type="submit"
@@ -1591,7 +1633,7 @@ Note: This is an automated message. Please do not reply.`;
                 </div>
 
                 {/* Garment cards grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 max-h-[50vh] overflow-y-auto pr-0.5">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 max-h-[55vh] overflow-y-auto pr-0.5">
                   {bookingItems.map((item, index) => (
                     <div key={item.id} className="card card-hover">
                       {/* Header: badge + type + price + delete */}
@@ -1752,7 +1794,7 @@ Note: This is an automated message. Please do not reply.`;
                 </div>
 
                 {/* Garment cards */}
-                <div className="space-y-2 max-h-[35vh] overflow-y-auto pr-0.5">
+                <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-0.5">
                   {bookingItems.map((item, idx) => (
                     <div key={item.id} className="p-3 card">
                       <div className="flex items-center justify-between mb-1.5">
@@ -1859,11 +1901,11 @@ Note: This is an automated message. Please do not reply.`;
           </div>
         ) : selectedOrder ? (
           /* ORDER DETAILS & VIEW */
-          <div className="space-y-6">
+          <div className="space-y-4">
             
             {isEditing ? (
               /* OWNER EDITING PORTAL */
-              <form onSubmit={handleEditOrder} className="space-y-5 animate-fade-in">
+              <form onSubmit={handleEditOrder} className="space-y-3 animate-fade-in">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-3">
                   <h3 className="font-extrabold text-base text-slate-900 font-display uppercase tracking-wider">Modifying Booked Order: {selectedOrder.order_number}</h3>
                   <button
@@ -1894,7 +1936,7 @@ Note: This is an automated message. Please do not reply.`;
                     </button>
                   </div>
 
-                  <div className="space-y-2 max-h-[35vh] overflow-y-auto pr-1">
+                  <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
                     {editedItems.map((item, index) => (
                       <div key={index} className="grid grid-cols-12 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200/60 items-start">
                         <div className="col-span-3 space-y-1">
@@ -2010,7 +2052,7 @@ Note: This is an automated message. Please do not reply.`;
               </form>
             ) : (
               /* DETAILED VIEW MODE */
-              <div className="space-y-6 animate-fade-in">
+              <div className="space-y-4 animate-fade-in">
                 
                 {/* Header info */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-4 gap-3">
@@ -2266,7 +2308,7 @@ Note: This is an automated message. Please do not reply.`;
                   </div>
 
                   {/* Pricing grid styled with StitchMaster Pro colors (#0F172A slate card) */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-brand-sidebar text-white p-5 rounded-xl border border-slate-800">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-brand-sidebar text-white p-4 rounded-xl border border-slate-800">
                     <div>
                       <span className="text-xs text-slate-400 font-semibold block uppercase tracking-wider">Total</span>
                       <span className="text-xl font-black block mt-0.5">{currency}{selectedOrder.total_amount}</span>
@@ -2325,7 +2367,7 @@ Note: This is an automated message. Please do not reply.`;
 
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="flex flex-col items-center justify-center py-12 text-center">
             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 border border-slate-200">
               <ShoppingCart className="w-8 h-8 text-slate-400" />
             </div>
@@ -2341,112 +2383,121 @@ Note: This is an automated message. Please do not reply.`;
       {selectedOrder && (
         <div id="print-slips-container" className="hidden print:block font-sans text-black">
 
-          {/* CUSTOMER RECEIPT */}
-          <div className={`w-full max-w-[80mm] mx-auto p-4 bg-white ${printOptions.receipt ? '' : 'hidden'}`}>
-            {/* Header */}
-            <div className="text-center space-y-1 pb-3 border-b-2 border-gray-800 mb-3">
-              {shopLogo && (
-                <img src={shopLogo} alt="Logo" className="h-14 w-auto mx-auto mb-1 object-contain" />
-              )}
-              <h1 className="text-lg font-black uppercase tracking-tight">{shopName}</h1>
-              <div className="text-[10px] text-gray-600 font-medium leading-tight">
-                <p>{shopPhone}</p>
-                <p>{shopAddress}</p>
+          {/* ─── CUSTOMER INVOICE (single-page A4/thermal) ─── */}
+          <div className={`w-full max-w-[190mm] mx-auto bg-white ${printOptions.receipt ? '' : 'hidden'}`}>
+            <div className="px-5 py-3" style={{ fontFamily: "'Inter','Segoe UI',system-ui,sans-serif" }}>
+              {/* ═══ SHOP HEADER ═══ */}
+              <div className="flex items-start justify-between pb-2 border-b-2 border-gray-900 mb-2">
+                <div className="flex items-center gap-2.5">
+                  {shopLogo && (
+                    <img src={shopLogo} alt="Logo" className="h-10 w-auto object-contain" />
+                  )}
+                  <div>
+                    <h1 className="text-lg font-black uppercase tracking-tight text-gray-900 leading-tight">{shopName}</h1>
+                    <div className="text-[7.5pt] text-gray-500 font-medium leading-snug">
+                      <span>{shopPhone}</span>
+                      {shopAddress && <span className="ml-1.5">{shopAddress}</span>}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[9pt] font-black uppercase tracking-[0.15em] text-gray-500 border border-gray-200 px-3 py-1">Invoice</div>
+                  <div className="text-[7pt] text-gray-400 mt-0.5 font-medium">#{selectedOrder.order_number}</div>
+                </div>
               </div>
-            </div>
 
-            {/* Order Information */}
-            <div className="text-[10px] space-y-0.5 mb-3 pb-2 border-b border-gray-200">
-              <div className="flex justify-between">
-                <span className="text-gray-500 font-semibold uppercase">Order Number:</span>
-                <span className="font-semibold">{selectedOrder.order_number}</span>
+              {/* ═══ CUSTOMER INFO (prominent — never blank) ═══ */}
+              <div className="mb-2 pb-2 border-b border-gray-200">
+                <div className="flex items-baseline justify-between">
+                  <p className="text-[12pt] font-bold text-gray-900 leading-tight">
+                    {selectedOrder.customer_name || 'Walk-in Customer'}
+                    {selectedOrder.customer_phone && !selectedOrder.customer_phone.startsWith('NO-PHONE-') && (
+                      <span className="text-[9pt] font-normal text-gray-500 ml-2">{selectedOrder.customer_phone}</span>
+                    )}
+                  </p>
+                  <div className="text-[7.5pt] text-gray-400 shrink-0">
+                    <span className="font-semibold">Booked:</span> {new Date(selectedOrder.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                  </div>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500 font-semibold uppercase">Booking Date:</span>
-                <span className="font-semibold">{new Date(selectedOrder.created_at).toLocaleDateString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500 font-semibold uppercase">Delivery Date:</span>
-                <span className="font-semibold">{new Date(selectedOrder.due_date).toLocaleDateString()}</span>
-              </div>
-            </div>
 
-            {/* Customer Information */}
-            <div className="text-[10px] space-y-0.5 mb-3 pb-2 border-b border-gray-200">
-              <div className="flex justify-between">
-                <span className="text-gray-500 font-semibold uppercase">Customer Name:</span>
-                <span className="font-semibold">{selectedOrder.customer_name}</span>
+              {/* ═══ DELIVERY DATE (most prominent date) ═══ */}
+              <div className="text-center mb-2">
+                <span className="text-[7pt] font-bold uppercase tracking-[0.1em] text-gray-400">Delivery Date</span>
+                <p className="text-[16pt] font-black text-gray-900 leading-tight mt-0.5">
+                  {new Date(selectedOrder.due_date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                </p>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500 font-semibold uppercase">Mobile Number:</span>
-                <span className="font-semibold">{selectedOrder.customer_phone?.startsWith('NO-PHONE-') ? '' : selectedOrder.customer_phone}</span>
-              </div>
-            </div>
 
-            {/* Order Details Table */}
-            <div className="mb-3 pb-2 border-b border-gray-200">
-              <table className="w-full text-[10px]">
-                <thead>
-                  <tr className="border-b border-gray-300 text-gray-500">
-                    <th className="text-left pb-1 font-semibold uppercase">Item</th>
-                    <th className="text-center pb-1 font-semibold uppercase">Qty</th>
-                    <th className="text-right pb-1 font-semibold uppercase">Rate</th>
-                    <th className="text-right pb-1 font-semibold uppercase">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedOrder.items.map((item, idx) => {
-                    const qty = item.quantity || 1;
-                    return (
-                      <tr key={idx}>
-                        <td className="py-1 font-semibold">
-                          {item.type}
-                          {item.color && <span className="text-gray-500 ml-1">({item.color})</span>}
-                        </td>
-                        <td className="py-1 text-center font-semibold">{qty}</td>
-                        <td className="py-1 text-right font-semibold">{currency}{item.price}</td>
-                        <td className="py-1 text-right font-semibold">{currency}{item.price * qty}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+              {/* ═══ ITEMS TABLE ═══ */}
+              <div className="mb-2">
+                <table className="w-full text-[8pt] border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-400 text-gray-500">
+                      <th className="text-left py-1 font-bold uppercase tracking-wider text-[6.5pt] w-auto">Item</th>
+                      <th className="text-center py-1 font-bold uppercase tracking-wider text-[6.5pt] w-[35px]">Qty</th>
+                      <th className="text-right py-1 font-bold uppercase tracking-wider text-[6.5pt] w-[65px]">Rate</th>
+                      <th className="text-right py-1 font-bold uppercase tracking-wider text-[6.5pt] w-[80px]">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedOrder.items.map((item, idx) => {
+                      const qty = item.quantity || 1;
+                      return (
+                        <tr key={idx} className="border-b border-gray-100">
+                          <td className="py-1 pr-2">
+                            <span className="font-semibold text-gray-900">{item.type}</span>
+                            {item.color && <span className="text-gray-400 ml-1 text-[6.5pt]">— {item.color}</span>}
+                          </td>
+                          <td className="py-1 text-center font-semibold text-gray-800">{qty}</td>
+                          <td className="py-1 text-right font-semibold text-gray-800">{currency}{Number(item.price).toLocaleString()}</td>
+                          <td className="py-1 text-right font-bold text-gray-900">{currency}{(Number(item.price) * qty).toLocaleString()}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
 
-            {/* Payment Summary */}
-            <div className="text-[10px] space-y-1 mb-3 pb-2 border-b border-gray-200 text-right">
-              <div className="flex justify-between font-semibold">
-                <span className="text-gray-500 uppercase">Total Amount:</span>
-                <span>{currency}{selectedOrder.total_amount}</span>
+              {/* ═══ PAYMENT SUMMARY ═══ */}
+              <div className="flex justify-end mb-2">
+                <div className="w-[220px] space-y-0.5 text-[9pt]">
+                  <div className="flex justify-between">
+                    <span className="font-semibold text-gray-600">Total</span>
+                    <span className="font-bold text-gray-900">{currency}{Number(selectedOrder.total_amount).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-semibold text-gray-600">Paid</span>
+                    <span className="font-bold text-emerald-700">{currency}{Number(selectedOrder.paid_amount).toLocaleString()}</span>
+                  </div>
+                  {(Number(selectedOrder.total_amount) - Number(selectedOrder.paid_amount)) > 0 && (
+                    <div className="flex justify-between pt-1 border-t-2 border-gray-800 text-[11pt]">
+                      <span className="font-black text-gray-800">Balance Due</span>
+                      <span className="font-black text-red-700">{currency}{Math.max(0, Number(selectedOrder.total_amount) - Number(selectedOrder.paid_amount)).toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex justify-between font-semibold text-emerald-700">
-                <span className="uppercase">Total Paid:</span>
-                <span>{currency}{selectedOrder.paid_amount}</span>
-              </div>
-              <div className="flex justify-between text-sm font-black text-red-700 pt-1 border-t border-gray-300">
-                <span className="uppercase">Remaining:</span>
-                <span>{currency}{Math.max(0, selectedOrder.total_amount - selectedOrder.paid_amount)}</span>
-              </div>
-            </div>
 
-            {/* QR Code - ONLY the QR code image, no text */}
-            {qrCodeUrl && (
-              <div className="flex justify-center mb-3">
-                <img src={qrCodeUrl} alt="" className="w-28 h-28 border border-gray-300 p-0.5 bg-white" referrerPolicy="no-referrer" />
+              {/* ═══ QR CODE & FOOTER ═══ */}
+              <div className="flex items-end justify-between pt-2 border-t border-gray-200">
+                {qrCodeUrl && (
+                  <div className="shrink-0">
+                    <img src={qrCodeUrl} alt="" className="w-16 h-16 border border-gray-300 p-0.5 bg-white" referrerPolicy="no-referrer" />
+                  </div>
+                )}
+                {!qrCodeUrl && <div />}
+                <div className="text-right">
+                  {termsConditions && (
+                    <div className="text-[6.5pt] text-gray-500 leading-relaxed whitespace-pre-line max-w-[260px]">
+                      {termsConditions}
+                    </div>
+                  )}
+                  <div className="text-[6.5pt] text-gray-400 font-medium mt-0.5">
+                    {receiptFooterText || 'Stitch Master'}
+                  </div>
+                </div>
               </div>
-            )}
-
-            {/* Terms & Conditions */}
-            {termsConditions && (
-              <div className="text-[9px] text-gray-600 mb-3 pb-2 border-b border-gray-200 leading-relaxed whitespace-pre-line">
-                <div className="font-semibold uppercase text-gray-500 mb-0.5">Terms & Conditions:</div>
-                {termsConditions}
-              </div>
-            )}
-
-            {/* Footer */}
-            <div className="text-center text-[9px] text-gray-400">
-              {receiptFooterText || 'Receipt is generated by Stitch Master - 03163455358'}
             </div>
           </div>
 
@@ -2752,7 +2803,7 @@ Note: This is an automated message. Please do not reply.`;
                     </p>
                   </div>
                   
-                  <div className="space-y-2.5 max-h-[45vh] overflow-y-auto pr-1">
+                  <div className="space-y-2.5 max-h-[50vh] overflow-y-auto pr-1">
                     {orders.filter(o => o.status !== 'Delivered' && o.status !== 'Archived').map((o) => (
                       <div key={o.id} className="border border-slate-100 rounded-2xl p-3 bg-slate-50/50 space-y-2">
                         <div className="flex justify-between items-center pb-1.5 border-b border-slate-200/50">
@@ -2818,7 +2869,7 @@ Note: This is an automated message. Please do not reply.`;
       {/* SCANNED GARMENT COMPACT ACTION MODAL */}
       {scannedGarmentItem && (
         <div className="modal-overlay">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 space-y-6 relative overflow-hidden flex flex-col justify-between" style={{ minHeight: '420px' }}>
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-slate-100 space-y-4 relative overflow-hidden flex flex-col justify-between" style={{ minHeight: '380px' }}>
             
             {/* Header / Indicator */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">

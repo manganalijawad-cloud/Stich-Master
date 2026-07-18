@@ -323,10 +323,10 @@ Note: This is an automated message. Please do not reply.`;
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
 
-      {/* ─── Premium Tab Navigation ─── */}
-      <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl border border-slate-200 w-fit max-w-full overflow-x-auto">
+      {/* ─── Compact Tab Navigation ─── */}
+      <div className="flex gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200 w-fit max-w-full overflow-x-auto">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isSelected = activeTab === tab.id;
@@ -334,7 +334,7 @@ Note: This is an automated message. Please do not reply.`;
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
                 isSelected
                   ? 'bg-white text-brand-sidebar shadow-sm border border-slate-200'
                   : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
@@ -357,51 +357,41 @@ Note: This is an automated message. Please do not reply.`;
           <form onSubmit={handleUpdateSettings} className="divide-y divide-slate-100 animate-fade-in">
 
             {/* Section header */}
-            <div className="px-6 py-5 flex items-center justify-between">
+            <div className="px-4 py-3 flex items-center justify-between">
               <div>
-                <h2 className="text-h2 text-brand-sidebar">Shop Identity & Parameters</h2>
-                <p className="text-caption mt-0.5">Configure how your tailor shop appears and operates in the system</p>
+                <h2 className="text-base font-bold text-brand-sidebar font-display">Shop Identity & Parameters</h2>
               </div>
-              <button type="submit" className="btn-primary shrink-0">
+              <button type="submit" className="btn-primary py-1.5 px-3 text-xs shrink-0">
                 <Save className="icon-xs text-brand-sky" />
                 Save Settings
               </button>
             </div>
 
             {settingsSuccess && (
-              <div className="mx-6 mb-4 alert-success">Shop settings updated successfully.</div>
+              <div className="mx-4 mb-3 alert-success py-2 text-xs">Shop settings updated successfully.</div>
             )}
             {settingsError && (
-              <div className="mx-6 mb-4 alert-error">{settingsError}</div>
+              <div className="mx-4 mb-3 alert-error py-2 text-xs">{settingsError}</div>
             )}
 
             {/* ── Identity & Localization ── */}
-            <section className="px-6 py-5 space-y-5">
-              <div className="flex items-center gap-2.5 mb-1">
-                <div className="p-2 bg-brand-bg rounded-lg border border-slate-200">
-                  <Shield className="icon-sm text-brand-sky" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-brand-sidebar uppercase tracking-wider">Identity & Localization</h3>
-                  <p className="text-caption-xs">Basic shop profile, currency, and regional preferences</p>
-                </div>
+            <section className="px-4 py-3 space-y-3">
+              <div className="flex items-center gap-2">
+                <Shield className="icon-xs text-brand-sky shrink-0" />
+                <h3 className="text-xs font-bold text-brand-sidebar uppercase tracking-wider">Identity & Localization</h3>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-2xl">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Shop Name</label>
-                  <input type="text" required value={editedShopName} onChange={(e) => setEditedShopName(e.target.value)} className="input-base" />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 max-w-3xl">
+                <div>
+                  <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Shop Name</label>
+                  <input type="text" required value={editedShopName} onChange={(e) => setEditedShopName(e.target.value)} className="input-base text-xs" />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Phone Number</label>
-                  <input type="text" value={editedPhone} onChange={(e) => setEditedPhone(e.target.value)} className="input-base" />
+                <div>
+                  <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Phone</label>
+                  <input type="text" value={editedPhone} onChange={(e) => setEditedPhone(e.target.value)} className="input-base text-xs" />
                 </div>
-                <div className="space-y-1 md:col-span-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Address</label>
-                  <textarea value={editedAddress} onChange={(e) => setEditedAddress(e.target.value)} rows={2} className="textarea-base" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Currency</label>
+                <div>
+                  <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Currency</label>
                   <select value={editedCurrency} onChange={(e) => setEditedCurrency(e.target.value)} className="select-base text-xs">
                     <option value="$">USD ($)</option>
                     <option value="PKR">PKR (Rs)</option>
@@ -411,16 +401,20 @@ Note: This is an automated message. Please do not reply.`;
                     <option value="€">EUR (€)</option>
                   </select>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Measurement Unit</label>
+                <div className="md:col-span-2">
+                  <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Address</label>
+                  <textarea value={editedAddress} onChange={(e) => setEditedAddress(e.target.value)} rows={1} className="textarea-base text-xs" />
+                </div>
+                <div>
+                  <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Measurement Unit</label>
                   <select value={editedMeasurementUnit} onChange={(e) => setEditedMeasurementUnit(e.target.value as any)} className="select-base text-xs">
                     <option value="Inches">Inches</option>
-                    <option value="Centimeters">Centimeters (cm)</option>
-                    <option value="Feet">Feet (ft)</option>
+                    <option value="Centimeters">Centimeters</option>
+                    <option value="Feet">Feet</option>
                   </select>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Auto-Archive Delivered Orders</label>
+                <div>
+                  <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Auto-Archive</label>
                   <select value={editedAutoArchiveDays} onChange={(e) => setEditedAutoArchiveDays(Number(e.target.value))} className="select-base text-xs">
                     <option value={0}>Never</option>
                     <option value={7}>7 Days</option>
@@ -434,117 +428,90 @@ Note: This is an automated message. Please do not reply.`;
             </section>
 
             {/* ── Printing & Documents ── */}
-            <section className="px-6 py-5 space-y-5">
-              <div className="flex items-center gap-2.5 mb-1">
-                <div className="p-2 bg-brand-bg rounded-lg border border-slate-200">
-                  <Printer className="icon-sm text-brand-sky" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-brand-sidebar uppercase tracking-wider">Printing & Documents</h3>
-                  <p className="text-caption-xs">Receipt settings, logo, footer text, and default print behavior</p>
-                </div>
+            <section className="px-4 py-3 space-y-3">
+              <div className="flex items-center gap-2">
+                <Printer className="icon-xs text-brand-sky shrink-0" />
+                <h3 className="text-xs font-bold text-brand-sidebar uppercase tracking-wider">Printing & Documents</h3>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-2xl">
-                <div className="space-y-1 col-span-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Shop Logo</label>
-                  <div className="flex items-center gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 max-w-3xl">
+                <div className="md:col-span-3">
+                  <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Shop Logo</label>
+                  <div className="flex items-center gap-2">
                     {editedShopLogo ? (
-                      <div className="relative w-16 h-16 rounded-xl border-2 border-slate-200 overflow-hidden bg-white shrink-0">
+                      <div className="relative w-12 h-12 rounded-lg border-2 border-slate-200 overflow-hidden bg-white shrink-0">
                         <img src={editedShopLogo} alt="Shop Logo" className="w-full h-full object-contain" />
-                        <button
-                          type="button"
-                          onClick={() => setEditedShopLogo('')}
-                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center cursor-pointer hover:bg-red-600 text-3xs font-bold"
-                          aria-label="Remove logo"
-                        >X</button>
+                        <button type="button" onClick={() => setEditedShopLogo('')} className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center cursor-pointer hover:bg-red-600 text-3xs font-bold">X</button>
                       </div>
                     ) : (
-                      <div className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 flex items-center justify-center shrink-0">
-                        <span className="text-xs text-slate-400 font-semibold">Logo</span>
+                      <div className="w-12 h-12 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 flex items-center justify-center shrink-0">
+                        <span className="text-3xs text-slate-400 font-semibold">Logo</span>
                       </div>
                     )}
-                    <label className="btn-secondary cursor-pointer">
-                      {editedShopLogo ? 'Change' : 'Upload'}
+                    <label className="btn-secondary cursor-pointer text-xs py-1.5 px-2.5">{editedShopLogo ? 'Change' : 'Upload'}
                       <input type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" onChange={e => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
+                        const file = e.target.files?.[0]; if (!file) return;
                         if (file.size > 2 * 1024 * 1024) { alert('Logo must be under 2MB.'); return; }
-                        const reader = new FileReader();
-                        reader.onload = ev => setEditedShopLogo(ev.target?.result as string);
-                        reader.readAsDataURL(file);
+                        const reader = new FileReader(); reader.onload = ev => setEditedShopLogo(ev.target?.result as string); reader.readAsDataURL(file);
                       }} className="hidden" />
                     </label>
                   </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Receipt Footer Text</label>
-                  <input type="text" value={editedReceiptFooter} onChange={(e) => setEditedReceiptFooter(e.target.value)} className="input-base" placeholder="Receipt is generated by Stitch Master - 03163455358" />
+                <div>
+                  <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Receipt Footer</label>
+                  <input type="text" value={editedReceiptFooter} onChange={(e) => setEditedReceiptFooter(e.target.value)} className="input-base text-xs" />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Terms & Conditions</label>
-                  <textarea value={editedTermsConditions} onChange={(e) => setEditedTermsConditions(e.target.value)} rows={3} className="textarea-base" placeholder="e.g. All orders are subject to our terms and conditions..." />
+                <div className="md:col-span-2">
+                  <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Terms & Conditions</label>
+                  <textarea value={editedTermsConditions} onChange={(e) => setEditedTermsConditions(e.target.value)} rows={2} className="textarea-base text-xs" />
                 </div>
-                <div className="col-span-2 space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Default Print Preferences</label>
-                  <div className="flex flex-wrap gap-6">
-                    <label className="flex items-center gap-2.5 text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer select-none">
-                      <input type="checkbox" checked={defaultPrintReceipt} onChange={(e) => setDefaultPrintReceipt(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400 cursor-pointer" />
-                      Customer Receipt
-                    </label>
-                    <label className="flex items-center gap-2.5 text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer select-none">
-                      <input type="checkbox" checked={defaultPrintMeasure} onChange={(e) => setDefaultPrintMeasure(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400 cursor-pointer" />
-                      Measurement Slip(s)
-                    </label>
-                  </div>
+                <div className="md:col-span-3 flex gap-4">
+                  <label className="flex items-center gap-1.5 text-3xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer select-none">
+                    <input type="checkbox" checked={defaultPrintReceipt} onChange={(e) => setDefaultPrintReceipt(e.target.checked)} className="w-3.5 h-3.5 rounded border-slate-300 text-emerald-500 cursor-pointer" />
+                    Customer Receipt
+                  </label>
+                  <label className="flex items-center gap-1.5 text-3xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer select-none">
+                    <input type="checkbox" checked={defaultPrintMeasure} onChange={(e) => setDefaultPrintMeasure(e.target.checked)} className="w-3.5 h-3.5 rounded border-slate-300 text-emerald-500 cursor-pointer" />
+                    Measurement Slip(s)
+                  </label>
                 </div>
               </div>
             </section>
 
             {/* ── WhatsApp Notifications ── */}
-            <section className="px-6 py-5 space-y-5">
-              <div className="flex items-center gap-2.5 mb-1">
-                <div className="p-2 bg-brand-bg rounded-lg border border-slate-200">
-                  <Smartphone className="icon-sm text-brand-sky" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-brand-sidebar uppercase tracking-wider">WhatsApp Notifications</h3>
-                  <p className="text-caption-xs">Automated customer notifications when orders are ready</p>
-                </div>
+            <section className="px-4 py-3 space-y-3">
+              <div className="flex items-center gap-2">
+                <Smartphone className="icon-xs text-brand-sky shrink-0" />
+                <h3 className="text-xs font-bold text-brand-sidebar uppercase tracking-wider">WhatsApp Notifications</h3>
               </div>
 
-              <label className="flex items-center gap-3 cursor-pointer select-none max-w-xl">
-                <input type="checkbox" checked={whatsappNotifyOnReady} onChange={(e) => setWhatsappNotifyOnReady(e.target.checked)} className="w-5 h-5 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400 cursor-pointer" />
+              <label className="flex items-center gap-2 cursor-pointer select-none max-w-xl">
+                <input type="checkbox" checked={whatsappNotifyOnReady} onChange={(e) => setWhatsappNotifyOnReady(e.target.checked)} className="w-4 h-4 rounded border-slate-300 text-emerald-500 cursor-pointer" />
                 <div>
-                  <span className="text-sm font-semibold text-slate-700">Auto-notify on Ready to Deliver</span>
-                  <p className="text-xs text-slate-500 mt-0.5">Show a prompt to send WhatsApp when an order moves to Ready to Deliver</p>
+                  <span className="text-xs font-semibold text-slate-700">Auto-notify on Ready to Deliver</span>
+                  <p className="text-3xs text-slate-500">Prompt WhatsApp when order is ready</p>
                 </div>
               </label>
 
-              <div className="max-w-xl space-y-2">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Message Template</label>
-                <p className="text-xs text-slate-400 leading-relaxed">Supported placeholders: {'{ShopName}'}, {'{CustomerName}'}, {'{OrderSummary}'}, {'{RemainingBalance}'}</p>
-                <textarea value={editedWhatsappTemplate} onChange={(e) => setEditedWhatsappTemplate(e.target.value)} rows={10} className="textarea-base font-mono" placeholder={DEFAULT_WHATSAPP_TEMPLATE} />
+              <div className="max-w-xl space-y-1.5">
+                <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block">Message Template</label>
+                <p className="text-3xs text-slate-400">Placeholders: {'{ShopName}'}, {'{CustomerName}'}, {'{OrderSummary}'}, {'{RemainingBalance}'}</p>
+                <textarea value={editedWhatsappTemplate} onChange={(e) => setEditedWhatsappTemplate(e.target.value)} rows={6} className="textarea-base font-mono text-xs" placeholder={DEFAULT_WHATSAPP_TEMPLATE} />
               </div>
             </section>
 
             {/* ── Pipeline Stages ── */}
-            <section className="px-6 py-5 space-y-5">
-              <div className="flex items-center gap-2.5 mb-1">
-                <div className="p-2 bg-brand-bg rounded-lg border border-slate-200">
-                  <ListTodo className="icon-sm text-brand-sky" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-brand-sidebar uppercase tracking-wider">Pipeline Stages</h3>
-                  <p className="text-caption-xs">Customize the order workflow stages for your tailoring process</p>
-                </div>
+            <section className="px-4 py-3 space-y-3">
+              <div className="flex items-center gap-2">
+                <ListTodo className="icon-xs text-brand-sky shrink-0" />
+                <h3 className="text-xs font-bold text-brand-sidebar uppercase tracking-wider">Pipeline Stages</h3>
               </div>
 
               <div className="flex gap-2 max-w-lg">
-                <input type="text" value={newStageName} onChange={(e) => setNewStageName(e.target.value)} placeholder="Add e.g., Stitching, Cutting, Fitting" className="input-base flex-1" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddStage(); } }} />
-                <button type="button" onClick={handleAddStage} className="btn-primary shrink-0">
+                <input type="text" value={newStageName} onChange={(e) => setNewStageName(e.target.value)} placeholder="Add e.g., Stitching, Cutting" className="input-base text-xs flex-1" onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddStage(); } }} />
+                <button type="button" onClick={handleAddStage} className="btn-primary py-1.5 px-3 text-xs shrink-0">
                   <Plus className="icon-xs text-brand-sky" />
-                  Add Stage
+                  Add
                 </button>
               </div>
 
@@ -581,8 +548,8 @@ Note: This is an automated message. Please do not reply.`;
             </section>
 
             {/* Sticky save bar */}
-            <div className="px-6 py-4 bg-brand-bg border-t border-slate-200 flex justify-end rounded-b-2xl">
-              <button type="submit" className="btn-primary">
+            <div className="px-4 py-3 bg-brand-bg border-t border-slate-200 flex justify-end rounded-b-2xl">
+              <button type="submit" className="btn-primary py-1.5 px-3 text-xs">
                 <Save className="icon-xs text-brand-sky" />
                 Save All Settings
               </button>
@@ -594,7 +561,7 @@ Note: This is an automated message. Please do not reply.`;
         {/* TAB: GARMENT CONFIG                                          */}
         {/* ============================================================ */}
         {activeTab === 'GarmentConfig' && (
-          <div className="p-6 animate-fade-in">
+          <div className="p-3 animate-fade-in">
             <GarmentConfiguration token={token} />
           </div>
         )}
@@ -603,7 +570,7 @@ Note: This is an automated message. Please do not reply.`;
         {/* TAB: DATA IMPORT                                             */}
         {/* ============================================================ */}
         {activeTab === 'Import' && (
-          <div className="p-6 animate-fade-in">
+          <div className="p-3 animate-fade-in">
             <DataImport token={token} garmentTypes={garmentTypes} onComplete={() => setActiveTab('Settings')} />
           </div>
         )}
@@ -612,46 +579,21 @@ Note: This is an automated message. Please do not reply.`;
         {/* TAB: BACKUP & ARCHIVE                                        */}
         {/* ============================================================ */}
         {activeTab === 'Backup' && (
-          <div className="p-6 space-y-6 animate-fade-in">
+          <div className="p-4 space-y-3 animate-fade-in">
 
             {/* Backup card */}
-            <div className="card-flat space-y-4">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-brand-bg rounded-xl border border-slate-200">
-                    <ArrowDown className="icon-md text-brand-sky" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-brand-sidebar uppercase tracking-wider">System Backup</h3>
-                    <p className="text-caption-xs mt-0.5">Export full database as a JSON file for safekeeping</p>
-                  </div>
-                </div>
-                <button onClick={triggerBackupDownload} disabled={backupLoading} className="btn-primary">
-                  <ArrowDown className="icon-xs text-brand-sky" />
-                  {backupLoading ? 'Compiling Backup...' : 'Download Backup'}
-                </button>
-              </div>
-            </div>
-
-            {/* Restore card */}
-            <div className="card-flat space-y-4">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-brand-bg rounded-xl border border-slate-200">
-                    <ArrowUp className="icon-md text-emerald-500" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-brand-sidebar uppercase tracking-wider">Restore Backup</h3>
-                    <p className="text-caption-xs mt-0.5">Upload a previously exported .json backup to restore data</p>
-                  </div>
+            <div className="card-flat space-y-3">
+              <div className="flex items-center gap-2">
+                <ArrowUp className="icon-sm text-emerald-500 shrink-0" />
+                <div>
+                  <h3 className="text-xs font-bold text-brand-sidebar uppercase tracking-wider">Restore Backup</h3>
+                  <p className="text-3xs text-slate-500">Upload a .json backup file</p>
                 </div>
               </div>
-
-              {restoreSuccess && <div className="alert-success animate-fade-in">{restoreSuccess}</div>}
-              {restoreError && <div className="alert-error animate-fade-in">{restoreError}</div>}
-
+              {restoreSuccess && <div className="alert-success animate-fade-in text-xs py-1.5">{restoreSuccess}</div>}
+              {restoreError && <div className="alert-error animate-fade-in text-xs py-1.5">{restoreError}</div>}
               <input type="file" accept=".json" onChange={handleRestoreUpload}
-                className="block text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:uppercase file:tracking-wider file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer" />
+                className="block text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-3xs file:font-semibold file:uppercase file:tracking-wider file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer" />
             </div>
 
             {/* Archive card */}

@@ -64,49 +64,49 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   return (
     <div className="min-h-screen bg-brand-sidebar flex flex-col justify-center items-center px-4 font-sans">
       <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center p-3 bg-slate-800 rounded-2xl mb-4 border border-slate-700">
-            <Shield className="w-8 h-8 text-brand-sky" />
+        <div className="text-center mb-4">
+          <div className="inline-flex items-center justify-center p-2 bg-slate-800 rounded-2xl mb-2 border border-slate-700">
+            <Shield className="w-7 h-7 text-brand-sky" />
           </div>
-          <h1 className="text-2xl font-semibold text-white font-display uppercase tracking-wider">StitchMaster</h1>
+          <h1 className="text-xl font-semibold text-white font-display uppercase tracking-wider">StitchMaster</h1>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-3">
           {error && (
-            <div className="alert-error bg-red-950/40 border-red-900/30 text-red-400">
+            <div className="alert-error bg-red-950/40 border-red-900/30 text-red-400 text-xs py-2">
               {error}
             </div>
           )}
 
           <div className="relative">
-            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 icon-xs text-slate-500" />
+            <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 icon-xs text-slate-500" />
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Email"
               autoComplete="email"
-              className="input-base pl-11 bg-slate-800/50 border-slate-700 text-white placeholder-slate-500 focus:border-brand-sky focus:ring-brand-sky/20"
+              className="input-base pl-10 bg-slate-800/50 border-slate-700 text-white placeholder-slate-500 focus:border-brand-sky focus:ring-brand-sky/20 text-sm"
               disabled={loading}
             />
           </div>
 
           <div className="relative">
-            <Key className="absolute left-4 top-1/2 -translate-y-1/2 icon-xs text-slate-500" />
+            <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 icon-xs text-slate-500" />
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
               autoComplete="current-password"
-              className="input-base pl-11 bg-slate-800/50 border-slate-700 text-white placeholder-slate-500 focus:border-brand-sky focus:ring-brand-sky/20"
+              className="input-base pl-10 bg-slate-800/50 border-slate-700 text-white placeholder-slate-500 focus:border-brand-sky focus:ring-brand-sky/20 text-sm"
               disabled={loading}
             />
           </div>
 
           <button
             type="submit"
-            className="w-full py-3 bg-brand-sky hover:bg-sky-300 text-brand-sidebar text-sm font-semibold rounded-lg transition-[background-color] cursor-pointer disabled:opacity-50 uppercase tracking-wider"
+            className="w-full py-2.5 bg-brand-sky hover:bg-sky-300 text-brand-sidebar text-sm font-semibold rounded-lg transition-[background-color] cursor-pointer disabled:opacity-50 uppercase tracking-wider"
             disabled={loading}
           >
             {loading ? 'Signing in...' : 'Sign In'}

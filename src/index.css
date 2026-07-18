@@ -178,11 +178,11 @@ svg.lucide,
 
 /* ─── Spacing ─── */
 @utility card-spacing {
-  padding: 1.5rem;
+  padding: 1rem;
 }
 
 @utility modal-spacing {
-  padding: 1.75rem;
+  padding: 1.25rem;
 }
 
 @utility table-cell-padding {
@@ -202,7 +202,7 @@ svg.lucide,
   align-items: center;
   justify-content: center;
   gap: 0.375rem;
-  padding: 0.5rem 1rem;
+  padding: 0.375rem 0.75rem;
   font-size: var(--text-sm);
   font-weight: 600;
   text-transform: uppercase;
@@ -297,7 +297,7 @@ svg.lucide,
   border: 1px solid #e2e8f0;
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
-  padding: 1.25rem;
+  padding: 1rem;
 }
 
 @utility card-hover {
@@ -309,14 +309,14 @@ svg.lucide,
   background-color: white;
   border: 1px solid #e2e8f0;
   border-radius: var(--radius-card);
-  padding: 1.25rem;
+  padding: 1rem;
 }
 
 @utility card-soft {
   background-color: var(--color-brand-bg);
   border: 1px solid #e2e8f0;
   border-radius: var(--radius-card);
-  padding: 1.25rem;
+  padding: 1rem;
 }
 
 /* ─── Modal system ─── */
@@ -339,7 +339,7 @@ svg.lucide,
   border: 1px solid #e2e8f0;
   border-radius: var(--radius-modal);
   box-shadow: var(--shadow-modal);
-  padding: 1.5rem;
+  padding: 1.25rem;
   animation: scale-up 0.2s ease-out;
 }
 
@@ -455,7 +455,7 @@ svg.lucide,
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 3rem 1rem;
+  padding: 1.5rem 1rem;
   text-align: center;
   color: #94a3b8;
 }
@@ -571,7 +571,7 @@ svg.lucide,
 
 @utility footer-base {
   margin-top: auto;
-  padding: 0.75rem 1.5rem;
+  padding: 0.5rem 1rem;
   border-top: 1px solid #E2E8F0;
   background-color: #FFFFFF;
   text-align: center;
@@ -608,16 +608,15 @@ svg.lucide,
   }
 
   @page {
-    margin: 5mm;
+    margin: 6mm;
     size: auto;
   }
 
   .meas-page {
     page-break-after: always;
     break-after: page;
-    height: 297mm;
     box-sizing: border-box;
-    padding: 10mm 12mm;
+    padding: 8mm 10mm;
     display: flex;
     flex-direction: column;
   }

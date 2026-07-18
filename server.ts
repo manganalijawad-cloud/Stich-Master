@@ -21,7 +21,10 @@ function useLocalDb(): boolean {
 // the module was pruned).  In production, electron/main.cjs injects the
 // required environment variables before the server module is loaded.
 if (process.env.NODE_ENV !== "production") {
-  try { require("dotenv").config(); } catch {}
+  try {
+    const dotenv = await import("dotenv");
+    dotenv.config();
+  } catch {}
 }
 
 const app = express();
@@ -564,10 +567,10 @@ async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextF
       // Every newly created account must log in as Owner of their own shop by default
       let shopId = "default-shop";
       if (IS_MULTI_TENANT_AVAILABLE) {
-        // Create brand new shop for the new owner
-        const { data: newShop, error: shopErr } = await supabaseAdmin
+        const userClient = getSupabaseClient(token);
+        const { data: newShop, error: shopErr } = await userClient
           .from("shops")
-          .insert([{ name: "My Tailor Shop" }])
+          .insert([{ name: "My Tailor Shop", created_by: user.id }])
           .select()
           .single();
         if (shopErr) throw shopErr;
@@ -614,9 +617,10 @@ async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextF
 
     // If profile exists but shop_id is missing, let's auto-create a shop for them
     if (IS_MULTI_TENANT_AVAILABLE && !profile.shop_id) {
-      const { data: newShop, error: shopErr } = await supabaseAdmin
+      const userClient = getSupabaseClient(token);
+      const { data: newShop, error: shopErr } = await userClient
         .from("shops")
-        .insert([{ name: "My Tailor Shop" }])
+        .insert([{ name: "My Tailor Shop", created_by: user.id }])
         .select()
         .single();
       if (!shopErr && newShop) {
@@ -786,9 +790,10 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
       // Every newly created account must log in as Owner of their own shop by default
       let shopId = "default-shop";
       if (IS_MULTI_TENANT_AVAILABLE) {
-        const { data: newShop, error: shopErr } = await supabaseAdmin
+        const userClient = getSupabaseClient(data.session.access_token);
+        const { data: newShop, error: shopErr } = await userClient
           .from("shops")
-          .insert([{ name: "My Tailor Shop" }])
+          .insert([{ name: "My Tailor Shop", created_by: data.user.id }])
           .select()
           .single();
         if (shopErr) throw shopErr;
@@ -819,9 +824,10 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
 
     // Auto-create a shop if somehow profile exists but is missing shop_id
     if (IS_MULTI_TENANT_AVAILABLE && !profile.shop_id) {
-      const { data: newShop, error: shopErr } = await supabaseAdmin
+      const userClient = getSupabaseClient(data.session.access_token);
+      const { data: newShop, error: shopErr } = await userClient
         .from("shops")
-        .insert([{ name: "My Tailor Shop" }])
+        .insert([{ name: "My Tailor Shop", created_by: data.user.id }])
         .select()
         .single();
       if (!shopErr && newShop) {
@@ -1225,7 +1231,11 @@ app.get("/api/customers/:id/orders", requireAuth, async (req: AuthenticatedReque
         return res.status(404).json({ error: "Customer not found or access denied." });
       }
       const data = db.getOrders(req.user!.id, { customerId });
-      return res.json(data || []);
+      const enriched = (data || []).map((o: any) => {
+        const c = db.getCustomerById(o.customer_id, req.user!.id);
+        return { ...o, customer_name: c?.name || "Unknown Customer", customer_phone: c?.phone || "N/A", customer_whatsapp: c?.whatsapp || null, customer_address: c?.address || null };
+      });
+      return res.json(enriched);
     }
     const userSupabase = getSupabaseClient(req.token);
 
@@ -1255,13 +1265,26 @@ app.get("/api/customers/:id/orders", requireAuth, async (req: AuthenticatedReque
         created_at,
         updated_at,
         created_by,
-        updated_by
+        updated_by,
+        customers (
+          name,
+          phone,
+          whatsapp,
+          address
+        )
       `)
       .eq("customer_id", customerId)
       .eq("created_by", req.user!.id)
       .order("created_at", { ascending: false });
     if (error) throw error;
-    return res.json(data || []);
+    const enriched = (data || []).map((o: any) => ({
+      ...o,
+      customer_name: o.customers?.name || "Unknown Customer",
+      customer_phone: o.customers?.phone || "N/A",
+      customer_whatsapp: o.customers?.whatsapp || null,
+      customer_address: o.customers?.address || null
+    }));
+    return res.json(enriched);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -1301,7 +1324,8 @@ app.get("/api/orders", requireAuth, async (req: AuthenticatedRequest, res: Respo
           ...o,
           customer_name: c?.name || "Unknown Customer",
           customer_phone: c?.phone || "N/A",
-          customer_whatsapp: c?.whatsapp || null
+          customer_whatsapp: c?.whatsapp || null,
+          customer_address: c?.address || null
         };
       });
       const sliced = enriched.slice(offset, offset + limit);
@@ -1375,7 +1399,8 @@ app.get("/api/orders", requireAuth, async (req: AuthenticatedRequest, res: Respo
       ...o,
       customer_name: o.customers?.name || "Unknown Customer",
       customer_phone: o.customers?.phone || "N/A",
-      customer_whatsapp: o.customers?.whatsapp || null
+      customer_whatsapp: o.customers?.whatsapp || null,
+      customer_address: o.customers?.address || null
     }));
 
     if (search) {
@@ -1404,7 +1429,8 @@ app.get("/api/orders/:id", requireAuth, async (req: AuthenticatedRequest, res: R
         ...data,
         customer_name: c?.name || "Unknown Customer",
         customer_phone: c?.phone || "N/A",
-        customer_whatsapp: c?.whatsapp || null
+        customer_whatsapp: c?.whatsapp || null,
+        customer_address: c?.address || null
       };
       return res.json(mapped);
     }
@@ -1416,7 +1442,8 @@ app.get("/api/orders/:id", requireAuth, async (req: AuthenticatedRequest, res: R
         customers (
           name,
           phone,
-          whatsapp
+          whatsapp,
+          address
         )
       `)
       .eq("id", orderId)
@@ -1428,7 +1455,8 @@ app.get("/api/orders/:id", requireAuth, async (req: AuthenticatedRequest, res: R
       ...data,
       customer_name: data.customers?.name || "Unknown Customer",
       customer_phone: data.customers?.phone || "N/A",
-      customer_whatsapp: data.customers?.whatsapp || null
+      customer_whatsapp: data.customers?.whatsapp || null,
+      customer_address: data.customers?.address || null
     };
     return res.json(mapped);
   } catch (err: any) {
@@ -1469,7 +1497,14 @@ app.post("/api/orders", requireAuth, async (req: AuthenticatedRequest, res: Resp
       });
       db.logAction("CREATE_ORDER", req.user!.id, req.user!.email, req.user!.shop_id, { order_id: order.id, order_number: orderNumber });
       sync.syncAfterMutation("orders", order.id, "insert", order, req.token);
-      return res.status(201).json(order);
+      const c = db.getCustomerById(order.customer_id, req.user!.id);
+      return res.status(201).json({
+        ...order,
+        customer_name: c?.name || "Unknown Customer",
+        customer_phone: c?.phone || "N/A",
+        customer_whatsapp: c?.whatsapp || null,
+        customer_address: c?.address || null
+      });
     }
 
     const userSupabase = getSupabaseClient(req.token);
@@ -1556,8 +1591,20 @@ app.post("/api/orders", requireAuth, async (req: AuthenticatedRequest, res: Resp
 
     if (orderErr) throw orderErr;
 
+    const { data: cust } = await userSupabase
+      .from("customers")
+      .select("name, phone, whatsapp, address")
+      .eq("id", customer_id)
+      .maybeSingle();
+
     await logAction(req.user!, "CREATE_ORDER", { order_id: order.id, order_number: orderNumber }, req.token);
-    return res.status(201).json(order);
+    return res.status(201).json({
+      ...order,
+      customer_name: cust?.name || "Unknown Customer",
+      customer_phone: cust?.phone || "N/A",
+      customer_whatsapp: cust?.whatsapp || null,
+      customer_address: cust?.address || null
+    });
   } catch (err: any) {
     return handleSupabaseError(err, res);
   }
@@ -1581,7 +1628,14 @@ app.put("/api/orders/:id/status", requireAuth, async (req: AuthenticatedRequest,
       if (!order) return res.status(404).json({ error: "Order not found or access denied." });
       db.logAction("UPDATE_ORDER_STATUS", req.user!.id, req.user!.email, req.user!.shop_id, { order_id: orderId, status });
       sync.syncAfterMutation("orders", orderId, "update", order, req.token);
-      return res.json(order);
+      const c = db.getCustomerById(order.customer_id, req.user!.id);
+      return res.json({
+        ...order,
+        customer_name: c?.name || "Unknown Customer",
+        customer_phone: c?.phone || "N/A",
+        customer_whatsapp: c?.whatsapp || null,
+        customer_address: c?.address || null
+      });
     }
     const userSupabase = getSupabaseClient(req.token);
     const updateData: any = {
@@ -1606,8 +1660,20 @@ app.put("/api/orders/:id/status", requireAuth, async (req: AuthenticatedRequest,
 
     if (orderErr) throw orderErr;
 
+    const { data: cust } = await userSupabase
+      .from("customers")
+      .select("name, phone, whatsapp, address")
+      .eq("id", order.customer_id)
+      .maybeSingle();
+
     await logAction(req.user!, "UPDATE_ORDER_STATUS", { order_id: orderId, order_number: order?.order_number, status }, req.token);
-    return res.json(order);
+    return res.json({
+      ...order,
+      customer_name: cust?.name || "Unknown Customer",
+      customer_phone: cust?.phone || "N/A",
+      customer_whatsapp: cust?.whatsapp || null,
+      customer_address: cust?.address || null
+    });
   } catch (err: any) {
     return handleSupabaseError(err, res);
   }
@@ -1631,7 +1697,14 @@ app.put("/api/orders/:id", requireAuth, requireRole(["Owner"]), async (req: Auth
       if (!order) return res.status(404).json({ error: "Order not found or access denied." });
       db.logAction("EDIT_ORDER", req.user!.id, req.user!.email, req.user!.shop_id, { order_id: orderId });
       sync.syncAfterMutation("orders", orderId, "update", order, req.token);
-      return res.json(order);
+      const c = db.getCustomerById(order.customer_id, req.user!.id);
+      return res.json({
+        ...order,
+        customer_name: c?.name || "Unknown Customer",
+        customer_phone: c?.phone || "N/A",
+        customer_whatsapp: c?.whatsapp || null,
+        customer_address: c?.address || null
+      });
     }
     const userSupabase = getSupabaseClient(req.token);
     const { data: order, error: orderErr } = await userSupabase
@@ -1653,8 +1726,20 @@ app.put("/api/orders/:id", requireAuth, requireRole(["Owner"]), async (req: Auth
 
     if (orderErr) throw orderErr;
 
+    const { data: cust } = await userSupabase
+      .from("customers")
+      .select("name, phone, whatsapp, address")
+      .eq("id", order.customer_id)
+      .maybeSingle();
+
     await logAction(req.user!, "EDIT_ORDER", { order_id: orderId, order_number: order?.order_number }, req.token);
-    return res.json(order);
+    return res.json({
+      ...order,
+      customer_name: cust?.name || "Unknown Customer",
+      customer_phone: cust?.phone || "N/A",
+      customer_whatsapp: cust?.whatsapp || null,
+      customer_address: cust?.address || null
+    });
   } catch (err: any) {
     return handleSupabaseError(err, res);
   }

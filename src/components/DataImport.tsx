@@ -317,8 +317,8 @@ export default function DataImport({ token, garmentTypes, onComplete }: DataImpo
   });
 
   return (
-    <div className="space-y-5 animate-fade-in">
-      <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+    <div className="space-y-4 animate-fade-in">
+      <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
         <Database className="icon-sm text-emerald-500" />
         <h3 className="text-lg font-semibold text-slate-900 uppercase tracking-wider font-display">Data Import</h3>
         <span className="ml-auto text-xs text-slate-400 font-semibold uppercase tracking-wider">
@@ -338,7 +338,7 @@ export default function DataImport({ token, garmentTypes, onComplete }: DataImpo
           onDragOver={e => e.preventDefault()}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          className="border-2 border-dashed border-slate-300 rounded-xl p-10 text-center cursor-pointer hover:border-emerald-400 hover:bg-emerald-50/30 transition-colors"
+          className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center cursor-pointer hover:border-emerald-400 hover:bg-emerald-50/30 transition-colors"
         >
           <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleInputChange} className="hidden" />
           <Upload className="w-9 h-9 text-slate-300 mx-auto mb-3" />
@@ -490,7 +490,7 @@ export default function DataImport({ token, garmentTypes, onComplete }: DataImpo
       )}
 
       {step === 'importing' && (
-        <div className="space-y-6 text-center py-8">
+        <div className="space-y-4 text-center py-6">
           <Loader2 className="w-10 h-10 text-emerald-500 animate-spin mx-auto" />
           <p className="text-sm font-semibold text-slate-600 uppercase tracking-wider">Importing customers...</p>
           <div className="w-full max-w-md mx-auto bg-slate-200 rounded-full h-2.5 overflow-hidden">

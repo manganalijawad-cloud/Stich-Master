@@ -398,12 +398,12 @@ export default function App() {
       {/* ──────────────────────────────────────────────────────────── */}
       <aside
         className={`hidden md:flex flex-col bg-brand-sidebar text-white shrink-0 border-r border-slate-800 print:hidden sticky top-0 h-screen overflow-y-auto transition-[width,padding] duration-300 ease-in-out ${
-          isSidebarCollapsed ? 'w-16 py-4 items-center' : 'w-60 p-4'
+          isSidebarCollapsed ? 'w-14 py-3 items-center' : 'w-56 p-3'
         }`}
       >
 
         {/* ── Logo / Brand Area ── */}
-        <div className={`${isSidebarCollapsed ? 'mb-6' : 'mb-6'} w-full flex justify-center`}>
+        <div className={`${isSidebarCollapsed ? 'mb-3' : 'mb-3'} w-full flex justify-center`}>
           <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3'} w-full`}>
             <div className="p-2 bg-slate-800/80 rounded-xl flex items-center justify-center border border-slate-700/60 shrink-0 overflow-hidden">
               {shopLogo ? (
@@ -461,7 +461,7 @@ export default function App() {
         </nav>
 
         {/* ── Account / Session Section ── */}
-        <div className="w-full pt-4 mt-auto border-t border-slate-800/60 space-y-2">
+        <div className="w-full pt-2 mt-auto border-t border-slate-800/60 space-y-2">
           {activeMode === 'Manager' ? (
             <button
               onClick={switchToOwner}
@@ -594,10 +594,10 @@ export default function App() {
       {/* ──────────────────────────────────────────────────────────── */}
       {/* MAIN WORKSPACE                                              */}
       {/* ──────────────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
 
         {/* ── Desktop Top Header ── */}
-        <header className="hidden md:flex items-center justify-between bg-white h-14 px-6 border-b border-slate-200 shrink-0 print:hidden">
+        <header className="hidden md:flex items-center justify-between bg-white h-12 px-4 border-b border-slate-200 shrink-0 print:hidden">
           <div className="flex items-center gap-4">
             <button
               onClick={toggleSidebar}
@@ -633,7 +633,7 @@ export default function App() {
         </header>
 
         {/* ── Page Content ── */}
-        <main className="flex-1 p-3 md:p-5">
+        <main className="flex-1 p-1.5 md:p-2 overflow-auto">
           <div className="animate-fade-in">
             {activeTab === 'Customers' && (
               <CustomersSection
@@ -741,7 +741,7 @@ export default function App() {
           </div>
         )}
 
-        <footer className="footer-base flex flex-col sm:flex-row sm:justify-between items-center gap-2">
+        <footer className="footer-base flex flex-col sm:flex-row sm:justify-between items-center gap-1">
           <p className="font-medium">&copy; {new Date().getFullYear()} {shopName || 'Unnamed Tailor Shop'} StitchMaster. All rights reserved.</p>
           <div className="flex gap-4 text-slate-400">
             <span className="font-semibold uppercase tracking-wider text-3xs">Tailored Suite Pro</span>
