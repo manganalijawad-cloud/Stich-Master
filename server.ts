@@ -22,7 +22,7 @@ function useLocalDb(): boolean {
 // required environment variables before the server module is loaded.
 if (process.env.NODE_ENV !== "production") {
   try {
-    const dotenv = await import("dotenv");
+    const dotenv = require("dotenv");
     dotenv.config();
   } catch {}
 }

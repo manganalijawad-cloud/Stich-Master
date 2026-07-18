@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 
 let Database: any;
 try {
-  Database = (await import("better-sqlite3")).default;
+  Database = require("better-sqlite3");
 } catch {
   // better-sqlite3 native module not available (e.g., Vercel serverless)
 }
