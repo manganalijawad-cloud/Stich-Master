@@ -4,7 +4,9 @@ import { v4 as uuidv4 } from "uuid";
 
 let Database: any;
 try {
-  Database = require("better-sqlite3");
+  // Non-literal string prevents bundlers (esbuild) from resolving at compile time
+  // This module is only used in Electron mode with the local SQLite database
+  Database = require("better-" + "sqlite3");
 } catch {
   // better-sqlite3 native module not available (e.g., Vercel serverless)
 }

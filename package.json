@@ -7,8 +7,10 @@
   "scripts": {
     "dev": "tsx server.ts",
     "electron:dev": "concurrently -k \"tsx server.ts\" \"wait-on http://localhost:3000 && electron .\"",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "electron:build": "npm run build && node scripts/bundle-config.cjs && electron-builder --win --x64",
+    "build": "vite build",
+    "build:server": "esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build:all": "npm run build && npm run build:server",
+    "electron:build": "npm run build:all && node scripts/bundle-config.cjs && electron-builder --win --x64",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist release",
     "lint": "tsc --noEmit",
@@ -54,6 +56,7 @@
   "dependencies": {
     "@google/genai": "^2.4.0",
     "@supabase/supabase-js": "^2.110.1",
+    "better-sqlite3": "^12.11.1",
     "electron-log": "^5.4.4",
     "electron-updater": "^6.8.9",
     "express": "^4.21.2",
@@ -65,9 +68,6 @@
     "react-dom": "^19.0.1",
     "uuid": "^14.0.1",
     "xlsx": "^0.18.5"
-  },
-  "optionalDependencies": {
-    "better-sqlite3": "^12.11.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.14",
