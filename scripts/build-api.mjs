@@ -3,8 +3,8 @@ import * as esbuild from 'esbuild';
 await esbuild.build({
   entryPoints: ['scripts/api-entry.ts'],
   bundle: true,
-  outfile: 'api/index.mjs',
-  format: 'esm',
+  outfile: 'api/index.cjs',
+  format: 'cjs',
   platform: 'node',
   target: 'node18',
   packages: 'external',
@@ -12,4 +12,4 @@ await esbuild.build({
   sourcemap: false,
 });
 
-console.log('Built api/index.mjs successfully');
+console.log('Built api/index.cjs successfully');
