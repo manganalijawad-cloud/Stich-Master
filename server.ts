@@ -8,6 +8,7 @@ import path from "path";
 import fs from "fs";
 import { exec } from "node:child_process";
 
+import dotenv from "dotenv";
 import { createClient as supabaseCreateClient, SupabaseClient } from "@supabase/supabase-js";
 
 import * as db from "./src/server/db";
@@ -17,12 +18,11 @@ function useLocalDb(): boolean {
   return process.env.ELECTRON_RUN === "true";
 }
 
-// In development, load .env via dotenv (devDependency; try/catch in case
-// the module was pruned).  In production, electron/main.cjs injects the
-// required environment variables before the server module is loaded.
+// In development, load .env via dotenv.
+// In production, electron/main.cjs injects the required environment
+// variables before the server module is loaded.
 if (process.env.NODE_ENV !== "production") {
   try {
-    const dotenv = require("dotenv");
     dotenv.config();
   } catch {}
 }
