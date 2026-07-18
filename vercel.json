@@ -1,12 +1,6 @@
 {
   "buildCommand": "vite build && node scripts/build-api.mjs",
   "outputDirectory": "dist",
-  "functions": {
-    "api/index.mjs": {
-      "memory": 1024,
-      "maxDuration": 30
-    }
-  },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index.mjs" },
     { "source": "/((?!.*\\..*).*)", "destination": "/index.html" }
