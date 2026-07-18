@@ -20,3 +20,6 @@ out/
 
 # Vercel serverless function build artifact
 /api/index.cjs
+
+# Netlify serverless function build output
+/netlify/functions-build/

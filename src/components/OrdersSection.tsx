@@ -94,6 +94,12 @@ export default function OrdersSection({
   const [showWhatsAppConfirm, setShowWhatsAppConfirm] = useState(false);
   const [pendingWhatsAppOrder, setPendingWhatsAppOrder] = useState<Order | null>(null);
 
+  // Payment collection dialog when advancing to Delivered
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [pendingDeliverOrder, setPendingDeliverOrder] = useState<Order | null>(null);
+  const [collectAmount, setCollectAmount] = useState<number>(0);
+  const [oldDues, setOldDues] = useState<number>(0);
+
   // Dynamically generate QR code whenever selectedOrder changes
   useEffect(() => {
     if (selectedOrder) {
@@ -160,7 +166,7 @@ export default function OrdersSection({
   // Create Order Form State
   const [isCreating, setIsCreating] = useState(false);
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [paidAmount, setPaidAmount] = useState(0);
+  const [paidAmount, setPaidAmount] = useState<string | number>('');
   const [createError, setCreateError] = useState<string | null>(null);
   const [createSuccess, setCreateSuccess] = useState(false);
 
@@ -671,7 +677,7 @@ Note: This is an automated message. Please do not reply.`;
     setManuallyEditedPriceIds(new Set());
     setCustomerProfiles([]);
     setBookingStep('customer');
-    setPaidAmount(0);
+    setPaidAmount('');
     setCreateError(null);
     setCreateSuccess(false);
     setIsCreating(true);
@@ -943,7 +949,7 @@ Note: This is an automated message. Please do not reply.`;
             styling_snapshot: item.styling_snapshot
           })),
           total_amount: totalAmountVal,
-          paid_amount: paidAmount,
+          paid_amount: paidAmount === '' ? 0 : Number(paidAmount),
           due_date: overallDueDate,
         }),
       });
@@ -975,7 +981,71 @@ Note: This is an automated message. Please do not reply.`;
     if (currentIndex === -1 || currentIndex === activeWorkflowStageIds.length - 1) return;
 
     const nextStatus = activeWorkflowStageIds[currentIndex + 1];
+
+    if (nextStatus === 'Delivered') {
+      const remaining = (order.total_amount || 0) - (order.paid_amount || 0);
+
+      let otherDues = 0;
+      try {
+        const otherRes = await fetch(`/api/customers/${order.customer_id}/orders`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (otherRes.ok) {
+          const otherOrders = await otherRes.json();
+          otherDues = (otherOrders || [])
+            .filter((o: Order) => o.id !== order.id)
+            .reduce((sum: number, o: Order) => sum + Math.max(0, (o.total_amount || 0) - (o.paid_amount || 0)), 0);
+        }
+      } catch {}
+
+      if (remaining > 0 || otherDues > 0) {
+        setPendingDeliverOrder(order);
+        setCollectAmount(remaining > 0 ? remaining : 0);
+        setOldDues(otherDues);
+        setShowPaymentDialog(true);
+        return;
+      }
+    }
+
     await updateOrderStatus(order, nextStatus);
+  };
+
+  const handleDeliverCollectPayment = async () => {
+    if (!pendingDeliverOrder) return;
+    setShowPaymentDialog(false);
+    const updatedPaid = (pendingDeliverOrder.paid_amount || 0) + collectAmount;
+    try {
+      const res = await fetch(`/api/orders/${pendingDeliverOrder.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          items: pendingDeliverOrder.items,
+          total_amount: pendingDeliverOrder.total_amount,
+          paid_amount: updatedPaid,
+          due_date: pendingDeliverOrder.due_date,
+          measurement_snapshot: pendingDeliverOrder.measurement_snapshot,
+        }),
+      });
+      if (res.ok) {
+        const updatedOrder = await res.json();
+        const merged = { ...pendingDeliverOrder, ...updatedOrder, paid_amount: updatedPaid };
+        setOrders(prev => prev.map(o => o.id === merged.id ? merged : o));
+        setSelectedOrder(prev => prev?.id === merged.id ? merged : prev);
+      }
+    } catch (err) {
+      console.error('Failed to update paid amount:', err);
+    }
+    await updateOrderStatus(pendingDeliverOrder, 'Delivered');
+    setPendingDeliverOrder(null);
+    setCollectAmount(0);
+  };
+
+  const handleDeliverSkipPayment = async () => {
+    if (!pendingDeliverOrder) return;
+    setShowPaymentDialog(false);
+    await updateOrderStatus(pendingDeliverOrder, 'Delivered');
+    setPendingDeliverOrder(null);
+    setCollectAmount(0);
   };
 
   // Edit Order Submission (Owner Only)
@@ -1619,21 +1689,11 @@ Note: This is an automated message. Please do not reply.`;
                       <Plus className="icon-xs" /> Add
                     </button>
                   </div>
-                  <div className="flex items-center gap-2.5">
-                    <Calendar className="icon-xs text-amber-500 shrink-0" />
-                    <span className="text-[13px] font-semibold text-slate-600 uppercase">Delivery:</span>
-                    <input
-                      type="date"
-                      required
-                      value={sharedDeliveryDate}
-                      onChange={(e) => updateSharedDeliveryDate(e.target.value)}
-                      className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg font-semibold text-slate-800 text-sm focus-visible:outline-none focus:border-brand-sky"
-                    />
-                  </div>
+
                 </div>
 
                 {/* Garment cards grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 max-h-[55vh] overflow-y-auto pr-0.5">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
                   {bookingItems.map((item, index) => (
                     <div key={item.id} className="card card-hover">
                       {/* Header: badge + type + price + delete */}
@@ -1790,7 +1850,16 @@ Note: This is an automated message. Please do not reply.`;
                   <span className="font-semibold text-sm text-slate-500 uppercase tracking-wider">
                     Garments ({bookingItems.length})
                   </span>
-                  <span className="text-sm font-semibold text-slate-400">{sharedDeliveryDate && new Date(sharedDeliveryDate).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] font-semibold text-slate-500 uppercase">Delivery:</span>
+                    <input
+                      type="date"
+                      required
+                      value={sharedDeliveryDate}
+                      onChange={(e) => updateSharedDeliveryDate(e.target.value)}
+                      className="px-2 py-1 bg-white border border-slate-200 rounded-lg font-semibold text-slate-700 text-xs focus-visible:outline-none focus:border-brand-sky"
+                    />
+                  </div>
                 </div>
 
                 {/* Garment cards */}
@@ -1854,28 +1923,6 @@ Note: This is an automated message. Please do not reply.`;
                       placeholder="0"
                     />
                   </div>
-                </div>
-
-                {/* Print Options */}
-                <div className="flex flex-wrap gap-4 pt-1 pb-2 px-1">
-                  <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={printOptions.receipt}
-                      onChange={e => setPrintOptions(prev => ({ ...prev, receipt: e.target.checked }))}
-                      className="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400 cursor-pointer"
-                    />
-                    Generate Customer Receipt
-                  </label>
-                  <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={printOptions.measure}
-                      onChange={e => setPrintOptions(prev => ({ ...prev, measure: e.target.checked }))}
-                      className="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-400 cursor-pointer"
-                    />
-                    Generate Measurement Slip(s)
-                  </label>
                 </div>
 
                 {/* Actions */}
@@ -2996,6 +3043,77 @@ Note: This is an automated message. Please do not reply.`;
               </div>
             )}
 
+          </div>
+        </div>
+      )}
+
+      {/* PAYMENT COLLECTION DIALOG BEFORE DELIVERED */}
+      {showPaymentDialog && pendingDeliverOrder && (
+        <div className="modal-overlay">
+          <div className="modal-content text-center">
+            <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto">
+              <svg className="w-7 h-7 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-lg font-black text-slate-900 uppercase tracking-wider">Payment Due</h3>
+              <p className="text-xs text-slate-500 mt-1 font-semibold leading-relaxed">
+                Order <strong className="text-slate-800">{pendingDeliverOrder.order_number}</strong> for <strong className="text-slate-800">{pendingDeliverOrder.customer_name}</strong> has an outstanding balance.
+              </p>
+            </div>
+
+            <div className="bg-slate-50 rounded-xl p-3 space-y-2">
+              <div className="flex justify-between text-xs font-semibold">
+                <span className="text-slate-500">This Order Total</span>
+                <span className="text-slate-800">{currency}{pendingDeliverOrder.total_amount}</span>
+              </div>
+              <div className="flex justify-between text-xs font-semibold">
+                <span className="text-slate-500">Already Paid</span>
+                <span className="text-emerald-600">{currency}{pendingDeliverOrder.paid_amount}</span>
+              </div>
+              <div className="flex justify-between text-xs font-semibold">
+                <span className="text-slate-500">This Order Remaining</span>
+                <span className="text-red-500 font-bold">{currency}{Math.round((pendingDeliverOrder.total_amount || 0) - (pendingDeliverOrder.paid_amount || 0))}</span>
+              </div>
+              {oldDues > 0 && (
+                <div className="flex justify-between text-xs font-semibold border-t border-amber-200 pt-2">
+                  <span className="text-amber-700">Old Dues (Other Orders)</span>
+                  <span className="text-amber-700 font-bold">{currency}{oldDues}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-xs font-bold border-t border-slate-200 pt-2">
+                <span className="text-slate-700">Total Outstanding</span>
+                <span className="text-red-600 font-black">{currency}{Math.round((pendingDeliverOrder.total_amount || 0) - (pendingDeliverOrder.paid_amount || 0) + oldDues)}</span>
+              </div>
+            </div>
+
+            <div className="text-left space-y-1">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Collect Payment ({currency})</label>
+              <input
+                type="number"
+                min="0"
+                max={Math.round((pendingDeliverOrder.total_amount || 0) - (pendingDeliverOrder.paid_amount || 0))}
+                value={collectAmount}
+                onChange={(e) => setCollectAmount(Math.min(Number(e.target.value), Math.round((pendingDeliverOrder.total_amount || 0) - (pendingDeliverOrder.paid_amount || 0))))}
+                className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl font-semibold text-slate-800 text-sm focus-visible:outline-none focus:border-brand-sky"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <button
+                onClick={handleDeliverCollectPayment}
+                className="btn-success w-full"
+              >
+                Collect {currency}{collectAmount} & Deliver
+              </button>
+              <button
+                onClick={handleDeliverSkipPayment}
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-xl text-xs uppercase tracking-wider cursor-pointer transition-[background-color]"
+              >
+                Deliver Without Collecting
+              </button>
+            </div>
           </div>
         </div>
       )}

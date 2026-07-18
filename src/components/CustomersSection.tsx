@@ -805,10 +805,7 @@ export default function CustomersSection({
           <div className="space-y-3 animate-fade-in print:hidden">
             {/* Header */}
             <div className="border-b border-slate-100 pb-2 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-caption-xs font-semibold text-slate-400 uppercase">Active Customer Profile</span>
-                <h1 className="text-base font-bold text-slate-900 tracking-tight uppercase">{selectedCustomer.name}</h1>
-              </div>
+              <h1 className="text-base font-bold text-slate-900 tracking-tight uppercase">{selectedCustomer.name}</h1>
 
               {/* Attributes display - compact 2-column */}
               <div className="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-100">

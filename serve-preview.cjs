@@ -1,4 +1,8 @@
 const express = require('express');
+const path = require('path');
 const app = express();
-app.use(require('express').static('dist'));
+app.use(express.static('dist'));
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
 app.listen(3000, () => console.log('Preview at http://localhost:3000'));
