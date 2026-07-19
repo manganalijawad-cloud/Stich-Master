@@ -3093,9 +3093,13 @@ Note: This is an automated message. Please do not reply.`;
               <input
                 type="number"
                 min="0"
-                max={Math.round((pendingDeliverOrder.total_amount || 0) - (pendingDeliverOrder.paid_amount || 0))}
-                value={collectAmount}
-                onChange={(e) => setCollectAmount(Math.min(Number(e.target.value), Math.round((pendingDeliverOrder.total_amount || 0) - (pendingDeliverOrder.paid_amount || 0))))}
+                value={collectAmount || ''}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') { setCollectAmount(0); return; }
+                  const num = Number(raw);
+                  if (!isNaN(num)) setCollectAmount(num);
+                }}
                 className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl font-semibold text-slate-800 text-sm focus-visible:outline-none focus:border-brand-sky"
               />
             </div>
