@@ -2941,7 +2941,6 @@ Note: This is an automated message. Please do not reply.`;
                   <Check className="w-8 h-8" />
                 </div>
                 <h4 className="font-extrabold text-slate-900 text-base uppercase tracking-wider text-center">Status Updated!</h4>
-                <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider text-center">Activity log saved with timestamp</p>
               </div>
             ) : (
               <div className="space-y-4 flex-1 py-1">

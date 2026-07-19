@@ -4,13 +4,13 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Shield, Users, ShoppingBag, Settings, LogOut, Menu, X, DollarSign, Lock, Unlock, History } from 'lucide-react';
+import { Shield, Users, ShoppingBag, Settings, LogOut, Menu, X, DollarSign, Lock, Unlock } from 'lucide-react';
 import LoginScreen from './components/LoginScreen';
 import CustomersSection from './components/CustomersSection';
 import OrdersSection from './components/OrdersSection';
 import OwnerDashboard from './components/OwnerDashboard';
 import FinancialReports from './components/FinancialReports';
-import ActivityLogSection from './components/ActivityLogSection';
+
 import SyncIndicator from './components/SyncIndicator';
 import { Customer, UserProfile, UserRole, PipelineStage } from './types';
 import { supabase, ensureSupabase } from './lib/supabase';
@@ -92,7 +92,7 @@ export default function App() {
         headers: { Authorization: `Bearer ${token}` },
       }).catch(err => console.warn('exit-owner-mode failed:', err));
     }
-    if (activeTab === 'Owner' || activeTab === 'Financials' || activeTab === 'ActivityLog') {
+    if (activeTab === 'Owner' || activeTab === 'Financials') {
       setActiveTab('Customers');
     }
   };
@@ -126,7 +126,7 @@ export default function App() {
     }
   };
 
-  const [activeTab, setActiveTab] = useState<'Customers' | 'Orders' | 'Financials' | 'Owner' | 'ActivityLog'>('Customers');
+  const [activeTab, setActiveTab] = useState<'Customers' | 'Orders' | 'Financials' | 'Owner'>('Customers');
   const [activeCustomerIdForNewOrder, setActiveCustomerIdForNewOrder] = useState<string | undefined>(undefined);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
@@ -378,11 +378,6 @@ export default function App() {
         icon: DollarSign,
       },
       {
-        id: 'ActivityLog' as const,
-        label: 'Activity Log',
-        icon: History,
-      },
-      {
         id: 'Owner' as const,
         label: 'Admin Panel',
         icon: Settings,
@@ -396,8 +391,6 @@ export default function App() {
     ? 'POS Order Queue'
     : activeTab === 'Financials'
     ? 'Financial Analytics'
-    : activeTab === 'ActivityLog'
-    ? 'Activity Log'
     : 'Admin Panel';
 
   return (
@@ -701,14 +694,6 @@ export default function App() {
               />
             )}
 
-            {activeTab === 'ActivityLog' && (
-              <ActivityLogSection
-                token={token}
-                userRole={activeRole}
-                currentUserId={user?.id || ''}
-                currentUserName={user?.name || ''}
-              />
-            )}
           </div>
         </main>
 
