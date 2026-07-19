@@ -251,7 +251,7 @@ async function createWindow() {
     title: 'Hello Darzi',
     backgroundColor: '#F8FAFC',
     show: false,
-    icon: (function() { const p = path.join(__dirname, '..', 'dist', 'favicon.ico'); try { if (fs.existsSync(p)) return p; } catch {} return path.join(__dirname, '..', 'public', 'favicon.ico'); })(),
+    icon: (function() { const p = path.join(__dirname, '..', 'dist', 'icon.ico'); try { if (fs.existsSync(p)) return p; } catch {} return path.join(__dirname, '..', 'public', 'icon.ico'); })(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,

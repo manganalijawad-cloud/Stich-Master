@@ -1,7 +1,7 @@
 {
   "name": "hello-darzi",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "main": "electron/main.cjs",
   "repository": {
@@ -33,8 +33,12 @@
       "electron/**/*",
       "config/**/*"
     ],
+    "asarUnpack": [
+      "dist/**",
+      "config/**"
+    ],
     "win": {
-      "icon": "public/web-app-manifest-512x512.png",
+      "icon": "public/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -85,6 +89,7 @@
     "electron": "^43.1.1",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.25.0",
+    "sharp": "^0.35.3",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
