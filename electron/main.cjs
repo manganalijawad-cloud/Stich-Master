@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 const isDev = !app.isPackaged;
-const PORT = 3000;
+let serverPort = 3000;
 
 // ---------------------------------------------------------------------------
 // SINGLE-INSTANCE LOCK
@@ -272,7 +272,7 @@ async function createWindow() {
     console.error('Failed to load page:', errorCode, errorDescription);
   });
 
-  const url = `http://localhost:${PORT}`;
+  const url = `http://localhost:${serverPort}`;
   await mainWindow.loadURL(url);
 }
 
@@ -296,8 +296,8 @@ async function startExpressServer() {
 
   try {
     const serverPath = path.join(__dirname, '..', 'dist', 'server.cjs');
-    const { startServer } = require(serverPath);
-    await startServer();
+    const serverModule = require(serverPath);
+    serverPort = await serverModule.startServer(serverModule.PORT);
   } catch (err) {
     console.error('Failed to start server:', err);
     dialog.showErrorBox(

@@ -6,7 +6,7 @@
   "main": "electron/main.cjs",
   "repository": {
     "type": "git",
-    "url": "https://github.com/YOUR_GITHUB_USERNAME/hello-darzi"
+    "url": "https://github.com/manganalijawad-cloud/Stich-Master.git"
   },
   "scripts": {
     "dev": "tsx server.ts",
@@ -33,11 +33,8 @@
       "electron/**/*",
       "config/**/*"
     ],
-    "extraMetadata": {
-      "main": "electron/main.cjs"
-    },
     "win": {
-      "icon": "public/favicon.ico",
+      "icon": "public/web-app-manifest-512x512.png",
       "target": [
         {
           "target": "nsis",
@@ -54,13 +51,12 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Hello Darzi",
-      "runAfterFinish": true,
-      "autoLaunch": true
+      "runAfterFinish": true
     },
     "publish": {
       "provider": "github",
-      "owner": "YOUR_GITHUB_USERNAME",
-      "repo": "hello-darzi",
+      "owner": "manganalijawad-cloud",
+      "repo": "Stich-Master",
       "releaseType": "release"
     }
   },

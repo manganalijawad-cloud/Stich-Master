@@ -3528,19 +3528,53 @@ if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
   }
 }
 
-async function startServer() {
-  await checkDatabaseSchema();
+async function startServer(preferredPort?: number): Promise<number> {
+  let initialized = false;
 
-  // Initialize local SQLite database for offline-first mode
-  if (useLocalDb()) {
-    try {
-      db.initDatabase();
-      console.log("SQLite database initialized successfully");
-    } catch (err: any) {
-      console.error("Failed to initialize SQLite database:", err.message);
+  async function initOnce(): Promise<void> {
+    if (initialized) return;
+    initialized = true;
+
+    await checkDatabaseSchema();
+    if (useLocalDb()) {
+      try {
+        db.initDatabase();
+        console.log("SQLite database initialized successfully");
+      } catch (err: any) {
+        console.error("Failed to initialize SQLite database:", err.message);
+      }
     }
   }
 
+  async function serveAtPort(port: number): Promise<number> {
+    await initOnce();
+
+    return new Promise<number>((resolve, reject) => {
+      const server = app.listen(port, "0.0.0.0", () => {
+        const actualPort = (server.address() as any).port;
+        console.log(`Express Server booted successfully on http://0.0.0.0:${actualPort}`);
+        if (!process.env.ELECTRON_RUN && !process.env.VERCEL && !process.env.NETLIFY) {
+          const url = `http://localhost:${actualPort}`;
+          const cmd = process.platform === "win32" ? `start ${url}` : process.platform === "darwin" ? `open ${url}` : `xdg-open ${url}`;
+          setTimeout(() => exec(cmd), 1000);
+        }
+        resolve(actualPort);
+      });
+      server.on("error", (err: any) => {
+        if (err.code === "EADDRINUSE") {
+          const nextPort = port + 1;
+          console.warn(`Port ${port} is in use, trying port ${nextPort}...`);
+          server.close(() => {
+            serveAtPort(nextPort).then(resolve).catch(reject);
+          });
+        } else {
+          reject(err);
+        }
+      });
+    });
+  }
+
+  // Set up static/Vite middleware once before binding
   if (!process.env.VERCEL && !process.env.NETLIFY && process.env.NODE_ENV !== "production") {
     try {
       const viteModule = await import("vite");
@@ -3550,7 +3584,6 @@ async function startServer() {
       });
       app.use(vite.middlewares);
     } catch {
-      // Vite dev server unavailable — fall back to serving dist/ with SPA fallback
       let distPath = path.join(process.cwd(), "dist");
       if (!fs.existsSync(path.join(distPath, "index.html"))) {
         const fallbacks = [
@@ -3570,18 +3603,7 @@ async function startServer() {
     }
   }
 
-  return new Promise<void>((resolve, reject) => {
-    const server = app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Express Server booted successfully on http://0.0.0.0:${PORT}`);
-      if (!process.env.ELECTRON_RUN && !process.env.VERCEL && !process.env.NETLIFY) {
-        const url = `http://localhost:${PORT}`;
-        const cmd = process.platform === "win32" ? `start ${url}` : process.platform === "darwin" ? `open ${url}` : `xdg-open ${url}`;
-        setTimeout(() => exec(cmd), 1000);
-      }
-      resolve();
-    });
-    server.on("error", reject);
-  });
+  return serveAtPort(preferredPort || PORT);
 }
 
 export { app, PORT, startServer };
