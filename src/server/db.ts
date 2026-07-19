@@ -93,7 +93,16 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   shop_id TEXT REFERENCES shops(id),
   user_id TEXT,
   user_email TEXT,
+  user_name TEXT DEFAULT '',
+  user_role TEXT DEFAULT '',
   action TEXT NOT NULL,
+  module TEXT DEFAULT '',
+  record_id TEXT DEFAULT '',
+  previous_value TEXT DEFAULT '',
+  new_value TEXT DEFAULT '',
+  device TEXT DEFAULT '',
+  ip_address TEXT DEFAULT '',
+  notes TEXT DEFAULT '',
   details TEXT DEFAULT '{}',
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -185,6 +194,8 @@ export function initDatabase(dbPath?: string): void {
   db.pragma("busy_timeout = 5000");
 
   db.exec(SCHEMA);
+
+  migrateAuditLogsSchema();
 
   seedSyncMetadata();
 }
@@ -704,16 +715,134 @@ export function reorderStylingCategories(ids: string[], createdBy: string): void
 // ---------------------------------------------------------------------------
 // AUDIT LOG HELPERS
 // ---------------------------------------------------------------------------
-export function logAction(action: string, userId: string, userEmail: string, shopId: string | undefined, details: Record<string, any>): void {
+function migrateAuditLogsSchema(): void {
+  const newColumns: [string, string][] = [
+    ["user_name", "TEXT DEFAULT ''"],
+    ["user_role", "TEXT DEFAULT ''"],
+    ["module", "TEXT DEFAULT ''"],
+    ["record_id", "TEXT DEFAULT ''"],
+    ["previous_value", "TEXT DEFAULT ''"],
+    ["new_value", "TEXT DEFAULT ''"],
+    ["device", "TEXT DEFAULT ''"],
+    ["ip_address", "TEXT DEFAULT ''"],
+    ["notes", "TEXT DEFAULT ''"],
+  ];
+  for (const [col, def] of newColumns) {
+    try {
+      db.exec(`ALTER TABLE audit_logs ADD COLUMN ${col} ${def}`);
+    } catch {
+    }
+  }
+}
+
+export function logAction(
+  action: string,
+  userId: string,
+  userEmail: string,
+  shopId: string | undefined,
+  details: Record<string, any>,
+  extra?: {
+    userName?: string;
+    userRole?: string;
+    module?: string;
+    recordId?: string;
+    previousValue?: any;
+    newValue?: any;
+    device?: string;
+    ipAddress?: string;
+    notes?: string;
+  }
+): void {
   const id = uuidv4();
   const now = nowISO();
-  db.prepare("INSERT INTO audit_logs (id, shop_id, user_id, user_email, action, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(
-    id, shopId || null, userId, userEmail, action, JSON.stringify(details), now
+  const enriched = {
+    ...details,
+    _meta: {
+      userName: extra?.userName || details.user_name || '',
+      userRole: extra?.userRole || details.user_role || '',
+      module: extra?.module || details.module || '',
+      recordId: extra?.recordId || details.record_id || '',
+      previousValue: extra?.previousValue || details.previous_value || null,
+      newValue: extra?.newValue || details.new_value || null,
+      device: extra?.device || details.device || '',
+      ipAddress: extra?.ipAddress || details.ip_address || '',
+      notes: extra?.notes || details.notes || '',
+    }
+  };
+  db.prepare(`
+    INSERT INTO audit_logs (id, shop_id, user_id, user_email, user_name, user_role, action, module, record_id, previous_value, new_value, device, ip_address, notes, details, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    shopId || null,
+    userId,
+    userEmail,
+    extra?.userName || details.user_name || '',
+    extra?.userRole || details.user_role || '',
+    action,
+    extra?.module || details.module || '',
+    extra?.recordId || details.record_id || '',
+    extra?.previousValue ? JSON.stringify(extra.previousValue) : (details.previous_value ? JSON.stringify(details.previous_value) : null),
+    extra?.newValue ? JSON.stringify(extra.newValue) : (details.new_value ? JSON.stringify(details.new_value) : null),
+    extra?.device || details.device || '',
+    extra?.ipAddress || details.ip_address || '',
+    extra?.notes || details.notes || '',
+    JSON.stringify(enriched),
+    now
   );
 }
 
-export function getAuditLogs(userId: string, limit = 50): any[] {
-  return db.prepare("SELECT * FROM audit_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?").all(userId, limit);
+export function getAuditLogs(options: {
+  userId?: string;
+  search?: string;
+  fromDate?: string;
+  toDate?: string;
+  actionFilter?: string;
+  moduleFilter?: string;
+  sort?: 'newest' | 'oldest';
+  page?: number;
+  limit?: number;
+}): { data: any[]; total: number } {
+  const { userId, search, fromDate, toDate, actionFilter, moduleFilter, sort = 'newest', page = 1, limit = 50 } = options;
+  const conditions: string[] = [];
+  const params: any[] = [];
+
+  if (userId) {
+    conditions.push("user_id = ?");
+    params.push(userId);
+  }
+  if (search) {
+    conditions.push("(action LIKE ? OR user_email LIKE ? OR user_name LIKE ? OR module LIKE ? OR notes LIKE ? OR record_id LIKE ?)");
+    const q = `%${search}%`;
+    params.push(q, q, q, q, q, q);
+  }
+  if (fromDate) {
+    conditions.push("created_at >= ?");
+    params.push(fromDate);
+  }
+  if (toDate) {
+    conditions.push("created_at <= ?");
+    params.push(toDate);
+  }
+  if (actionFilter) {
+    conditions.push("action = ?");
+    params.push(actionFilter);
+  }
+  if (moduleFilter) {
+    conditions.push("module = ?");
+    params.push(moduleFilter);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const orderDir = sort === 'oldest' ? 'ASC' : 'DESC';
+  const offset = (page - 1) * limit;
+
+  const countRow = db.prepare(`SELECT COUNT(*) as c FROM audit_logs ${where}`).get(...params) as { c: number };
+  const total = countRow.c;
+
+  const data = db.prepare(`SELECT * FROM audit_logs ${where} ORDER BY created_at ${orderDir} LIMIT ? OFFSET ?`).all(...params, limit, offset);
+
+  return { data, total };
 }
 
 // ---------------------------------------------------------------------------

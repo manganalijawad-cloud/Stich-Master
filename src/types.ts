@@ -79,6 +79,18 @@ export interface Order {
   updated_by: string;
 }
 
+export interface AuditMeta {
+  user_name?: string;
+  user_role?: string;
+  module?: string;
+  record_id?: string;
+  previous_value?: any;
+  new_value?: any;
+  device?: string;
+  ip_address?: string;
+  notes?: string;
+}
+
 export interface AuditLog {
   id: string;
   shop_id?: string;
@@ -87,6 +99,15 @@ export interface AuditLog {
   action: string;
   details: Record<string, any>;
   created_at: string;
+  user_name?: string;
+  user_role?: string;
+  module?: string;
+  record_id?: string;
+  previous_value?: any;
+  new_value?: any;
+  device?: string;
+  ip_address?: string;
+  notes?: string;
 }
 
 export interface PipelineStage {

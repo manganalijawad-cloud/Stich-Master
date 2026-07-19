@@ -193,18 +193,36 @@ CREATE POLICY "Restrict orders to authenticated user's own records only"
     WITH CHECK (created_by = auth.uid());
 
 
--- 6. AUDIT LOGS TABLE
+-- 6. AUDIT LOGS TABLE (Extended schema with full audit trail columns)
 CREATE TABLE IF NOT EXISTS public.audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     shop_id UUID REFERENCES public.shops(id) ON DELETE CASCADE,
     user_id UUID REFERENCES auth.users(id) DEFAULT auth.uid(),
     user_email TEXT,
+    user_name TEXT DEFAULT '',
+    user_role TEXT DEFAULT '',
     action TEXT NOT NULL,
+    module TEXT DEFAULT '',
+    record_id TEXT DEFAULT '',
+    previous_value JSONB DEFAULT NULL,
+    new_value JSONB DEFAULT NULL,
+    device TEXT DEFAULT '',
+    ip_address TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
     details JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS shop_id UUID REFERENCES public.shops(id) ON DELETE CASCADE;
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS user_name TEXT DEFAULT '';
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS user_role TEXT DEFAULT '';
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS module TEXT DEFAULT '';
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS record_id TEXT DEFAULT '';
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS previous_value JSONB DEFAULT NULL;
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS new_value JSONB DEFAULT NULL;
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS device TEXT DEFAULT '';
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS ip_address TEXT DEFAULT '';
+ALTER TABLE public.audit_logs ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT '';
 
 -- Enable RLS on Audit Logs
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
@@ -221,6 +239,11 @@ CREATE POLICY "Restrict audit_logs to authenticated user's own records only"
     TO authenticated
     USING (user_id = auth.uid())
     WITH CHECK (user_id = auth.uid());
+
+-- Index for faster audit log queries
+CREATE INDEX IF NOT EXISTS audit_logs_action_idx ON public.audit_logs (action);
+CREATE INDEX IF NOT EXISTS audit_logs_module_idx ON public.audit_logs (module);
+CREATE INDEX IF NOT EXISTS audit_logs_created_at_idx ON public.audit_logs (created_at DESC);
 
 
 -- 7. SHOP SETTINGS TABLE (Compound Key per Shop)

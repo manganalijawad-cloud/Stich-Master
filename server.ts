@@ -746,16 +746,127 @@ function handleSupabaseError(err: any, res: Response) {
 // -------------------------------------------------------------------------
 // LOGGER UTILITY
 // -------------------------------------------------------------------------
-async function logAction(user: { id: string; email: string; shop_id?: string }, action: string, details: Record<string, any>, token?: string) {
+const ACTION_MODULE_MAP: Record<string, string> = {
+  USER_LOGIN: "Auth",
+  ROLE_SWITCH_VERIFICATION_SUCCESS: "Auth",
+  CREATE_CUSTOMER: "Customers",
+  GET_EXISTING_CUSTOMER_DUPLICATE: "Customers",
+  CREATE_ORDER: "Orders",
+  EDIT_ORDER: "Orders",
+  DELETE_ORDER: "Orders",
+  UPDATE_ORDER_STATUS: "Orders",
+  DELIVERY_COMPLETED: "Orders",
+  ARCHIVE_ORDERS: "Orders",
+  PAYMENT_RECEIVED: "Payments",
+  REFUND: "Payments",
+  UPDATE_MEASUREMENTS: "Measurements",
+  CREATE_MEASUREMENTS: "Measurements",
+  CREATE_WORKER: "Staff",
+  DELETE_WORKER: "Staff",
+  UPDATE_SETTINGS: "Settings",
+  CREATE_GARMENT_TYPE: "Garment Types",
+  UPDATE_GARMENT_TYPE: "Garment Types",
+  DELETE_GARMENT_TYPE: "Garment Types",
+  REORDER_GARMENT_TYPES: "Garment Types",
+  CREATE_STYLING_CATEGORY: "Styling",
+  UPDATE_STYLING_CATEGORY: "Styling",
+  DELETE_STYLING_CATEGORY: "Styling",
+  REORDER_STYLING_CATEGORIES: "Styling",
+  SYSTEM_BACKUP: "System",
+  SYSTEM_RESTORE: "System",
+};
+
+function getModuleFromAction(action: string): string {
+  return ACTION_MODULE_MAP[action] || "General";
+}
+
+function deriveUserNameFromDetails(details: Record<string, any>): string {
+  return details.user_name || details.manager_name || details.name || details.email || '';
+}
+
+function deriveRecordIdFromDetails(action: string, details: Record<string, any>): string {
+  return details.record_id || details.order_id || details.customer_id || details.id || details.workerId || '';
+}
+
+async function logAction(
+  user: { id: string; email: string; shop_id?: string; name?: string; role?: string },
+  action: string,
+  details: Record<string, any>,
+  token?: string,
+  extra?: {
+    module?: string;
+    recordId?: string;
+    previousValue?: any;
+    newValue?: any;
+    device?: string;
+    ipAddress?: string;
+    notes?: string;
+  }
+) {
   try {
+    const moduleName = extra?.module || details.module || getModuleFromAction(action);
+    const recordId = extra?.recordId || details.record_id || deriveRecordIdFromDetails(action, details);
+    const enrichedDetails = {
+      ...details,
+      _meta: {
+        userName: user.name || '',
+        userRole: user.role || '',
+        module: moduleName,
+        recordId: recordId,
+        previousValue: extra?.previousValue ?? details.previous_value ?? null,
+        newValue: extra?.newValue ?? details.new_value ?? null,
+        device: extra?.device || details.device || '',
+        ipAddress: extra?.ipAddress || details.ip_address || '',
+        notes: extra?.notes || details.notes || '',
+      }
+    };
+
     if (useLocalDb()) {
-      db.logAction(action, user.id, user.email, user.shop_id, details);
+      db.logAction(
+        action, user.id, user.email, user.shop_id, details,
+        {
+          userName: user.name || deriveUserNameFromDetails(details),
+          userRole: user.role || 'Owner',
+          module: moduleName,
+          recordId,
+          previousValue: extra?.previousValue ?? details.previous_value ?? undefined,
+          newValue: extra?.newValue ?? details.new_value ?? undefined,
+          device: extra?.device || details.device || '',
+          ipAddress: extra?.ipAddress || details.ip_address || '',
+          notes: extra?.notes || details.notes || '',
+        }
+      );
     } else {
       const userSupabase = getSupabaseClient(token);
-      await userSupabase.from("audit_logs").insert([{
-        user_id: user.id, user_email: user.email, shop_id: user.shop_id,
-        action, details, created_at: new Date().toISOString()
-      }]);
+      try {
+        await userSupabase.from("audit_logs").insert([{
+          user_id: user.id,
+          user_email: user.email,
+          user_name: user.name || deriveUserNameFromDetails(details) || '',
+          user_role: user.role || 'Owner',
+          shop_id: user.shop_id,
+          action,
+          module: moduleName,
+          record_id: recordId,
+          previous_value: extra?.previousValue ? JSON.stringify(extra.previousValue) : (details.previous_value ? JSON.stringify(details.previous_value) : null),
+          new_value: extra?.newValue ? JSON.stringify(extra.newValue) : (details.new_value ? JSON.stringify(details.new_value) : null),
+          device: extra?.device || details.device || '',
+          ip_address: extra?.ipAddress || details.ip_address || '',
+          notes: extra?.notes || details.notes || '',
+          details: enrichedDetails,
+          created_at: new Date().toISOString()
+        }]);
+      } catch (supaErr) {
+        // Fallback: schema may not have new columns yet
+        await userSupabase.from("audit_logs").insert([{
+          user_id: user.id,
+          user_email: user.email,
+          shop_id: user.shop_id,
+          action,
+          details: enrichedDetails,
+          created_at: new Date().toISOString()
+        }]);
+      }
     }
   } catch (err) {
     console.error("Failed to write audit log:", err);
@@ -854,7 +965,13 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
       }
     }
 
-    await logAction({ id: profile.id, email: profile.email, shop_id: profile.shop_id || "default-shop" }, "USER_LOGIN", { ip: req.ip }, data.session.access_token);
+    await logAction(
+      { id: profile.id, email: profile.email, shop_id: profile.shop_id || "default-shop", name: profile.name, role: profile.role },
+      "USER_LOGIN",
+      { ip: req.ip, user_name: profile.name, user_role: profile.role, device: req.headers['user-agent'] || '' },
+      data.session.access_token,
+      { module: "Auth", notes: "User logged in", device: req.headers['user-agent'] || '', ipAddress: req.ip }
+    );
 
     return res.json({
       user: {
@@ -1640,12 +1757,33 @@ app.put("/api/orders/:id/status", requireAuth, async (req: AuthenticatedRequest,
 
   try {
     if (useLocalDb()) {
+      const oldOrder = db.getOrderById(orderId, req.user!.id);
       const updateData: any = { status, updated_by: req.user!.id };
       if (status === "Delivered") { updateData.delivered_at = now; }
       else if (status !== "Archived") { updateData.delivered_at = null; }
       const order = db.updateOrder(orderId, req.user!.id, updateData);
       if (!order) return res.status(404).json({ error: "Order not found or access denied." });
-      db.logAction("UPDATE_ORDER_STATUS", req.user!.id, req.user!.email, req.user!.shop_id, { order_id: orderId, status });
+
+      db.logAction("UPDATE_ORDER_STATUS", req.user!.id, req.user!.email, req.user!.shop_id,
+        { order_id: orderId, order_number: order.order_number, status },
+        {
+          userName: req.user!.name, userRole: req.user!.role,
+          module: "Orders", recordId: orderId,
+          previousValue: { status: oldOrder?.status },
+          newValue: { status },
+        }
+      );
+      if (status === "Delivered") {
+        db.logAction("DELIVERY_COMPLETED", req.user!.id, req.user!.email, req.user!.shop_id,
+          { order_id: orderId, order_number: order.order_number },
+          {
+            userName: req.user!.name, userRole: req.user!.role,
+            module: "Orders", recordId: orderId,
+            notes: "Order delivered",
+          }
+        );
+      }
+
       sync.syncAfterMutation("orders", orderId, "update", order, req.token);
       const c = db.getCustomerById(order.customer_id, req.user!.id);
       return res.json({
@@ -1657,6 +1795,13 @@ app.put("/api/orders/:id/status", requireAuth, async (req: AuthenticatedRequest,
       });
     }
     const userSupabase = getSupabaseClient(req.token);
+    const { data: oldOrder } = await userSupabase
+      .from("orders")
+      .select("status")
+      .eq("id", orderId)
+      .eq("created_by", req.user!.id)
+      .single();
+
     const updateData: any = {
       status,
       updated_by: req.user!.id,
@@ -1685,7 +1830,19 @@ app.put("/api/orders/:id/status", requireAuth, async (req: AuthenticatedRequest,
       .eq("id", order.customer_id)
       .maybeSingle();
 
-    await logAction(req.user!, "UPDATE_ORDER_STATUS", { order_id: orderId, order_number: order?.order_number, status }, req.token);
+    await logAction(req.user!, "UPDATE_ORDER_STATUS", { order_id: orderId, order_number: order?.order_number, status }, req.token, {
+      module: "Orders", recordId: orderId,
+      previousValue: { status: oldOrder?.status },
+      newValue: { status },
+    });
+
+    if (status === "Delivered") {
+      await logAction(req.user!, "DELIVERY_COMPLETED", { order_id: orderId, order_number: order?.order_number }, req.token, {
+        module: "Orders", recordId: orderId,
+        notes: "Order delivered",
+      });
+    }
+
     return res.json({
       ...order,
       customer_name: cust?.name || "Unknown Customer",
@@ -1705,6 +1862,7 @@ app.put("/api/orders/:id", requireAuth, requireRole(["Owner"]), async (req: Auth
 
   try {
     if (useLocalDb()) {
+      const oldOrder = db.getOrderById(orderId, req.user!.id);
       const updateData: any = { updated_by: req.user!.id };
       if (items !== undefined) updateData.items = items;
       if (total_amount !== undefined) updateData.total_amount = total_amount;
@@ -1714,7 +1872,67 @@ app.put("/api/orders/:id", requireAuth, requireRole(["Owner"]), async (req: Auth
       if (measurement_snapshot !== undefined) updateData.measurement_snapshot = measurement_snapshot;
       const order = db.updateOrder(orderId, req.user!.id, updateData);
       if (!order) return res.status(404).json({ error: "Order not found or access denied." });
-      db.logAction("EDIT_ORDER", req.user!.id, req.user!.email, req.user!.shop_id, { order_id: orderId });
+
+      const oldPaid = oldOrder?.paid_amount || 0;
+      const newPaid = order.paid_amount || 0;
+      const paymentDiff = newPaid - oldPaid;
+
+      db.logAction("EDIT_ORDER", req.user!.id, req.user!.email, req.user!.shop_id,
+        { order_id: orderId, order_number: order.order_number },
+        {
+          userName: req.user!.name, userRole: req.user!.role,
+          module: "Orders", recordId: orderId,
+          previousValue: { paid_amount: oldPaid, total_amount: oldOrder?.total_amount },
+          newValue: { paid_amount: newPaid, total_amount: order.total_amount },
+        }
+      );
+
+      if (paymentDiff > 0) {
+        db.logAction("PAYMENT_RECEIVED", req.user!.id, req.user!.email, req.user!.shop_id,
+          { order_id: orderId, order_number: order.order_number, amount: paymentDiff },
+          {
+            userName: req.user!.name, userRole: req.user!.role,
+            module: "Payments", recordId: orderId,
+            previousValue: { paid_amount: oldPaid },
+            newValue: { paid_amount: newPaid },
+            notes: `Payment of ${paymentDiff} collected`,
+          }
+        );
+      } else if (paymentDiff < 0) {
+        db.logAction("REFUND", req.user!.id, req.user!.email, req.user!.shop_id,
+          { order_id: orderId, order_number: order.order_number, amount: Math.abs(paymentDiff) },
+          {
+            userName: req.user!.name, userRole: req.user!.role,
+            module: "Payments", recordId: orderId,
+            previousValue: { paid_amount: oldPaid },
+            newValue: { paid_amount: newPaid },
+            notes: `Refund of ${Math.abs(paymentDiff)} processed`,
+          }
+        );
+      }
+
+      if (status && oldOrder && oldOrder.status !== status) {
+        db.logAction("UPDATE_ORDER_STATUS", req.user!.id, req.user!.email, req.user!.shop_id,
+          { order_id: orderId, order_number: order.order_number, status },
+          {
+            userName: req.user!.name, userRole: req.user!.role,
+            module: "Orders", recordId: orderId,
+            previousValue: { status: oldOrder.status },
+            newValue: { status },
+          }
+        );
+        if (status === "Delivered") {
+          db.logAction("DELIVERY_COMPLETED", req.user!.id, req.user!.email, req.user!.shop_id,
+            { order_id: orderId, order_number: order.order_number },
+            {
+              userName: req.user!.name, userRole: req.user!.role,
+              module: "Orders", recordId: orderId,
+              notes: "Order marked as delivered",
+            }
+          );
+        }
+      }
+
       sync.syncAfterMutation("orders", orderId, "update", order, req.token);
       const c = db.getCustomerById(order.customer_id, req.user!.id);
       return res.json({
@@ -1726,6 +1944,13 @@ app.put("/api/orders/:id", requireAuth, requireRole(["Owner"]), async (req: Auth
       });
     }
     const userSupabase = getSupabaseClient(req.token);
+    const { data: oldOrder } = await userSupabase
+      .from("orders")
+      .select("paid_amount, total_amount, status")
+      .eq("id", orderId)
+      .eq("created_by", req.user!.id)
+      .single();
+
     const { data: order, error: orderErr } = await userSupabase
       .from("orders")
       .update({
@@ -1745,13 +1970,52 @@ app.put("/api/orders/:id", requireAuth, requireRole(["Owner"]), async (req: Auth
 
     if (orderErr) throw orderErr;
 
+    const oldPaid = oldOrder?.paid_amount || 0;
+    const newPaid = order.paid_amount || 0;
+    const paymentDiff = newPaid - oldPaid;
+
+    await logAction(req.user!, "EDIT_ORDER", { order_id: orderId, order_number: order?.order_number }, req.token, {
+      module: "Orders", recordId: orderId,
+      previousValue: { paid_amount: oldPaid, total_amount: oldOrder?.total_amount },
+      newValue: { paid_amount: newPaid, total_amount: order.total_amount },
+    });
+
+    if (paymentDiff > 0) {
+      await logAction(req.user!, "PAYMENT_RECEIVED", { order_id: orderId, order_number: order?.order_number, amount: paymentDiff }, req.token, {
+        module: "Payments", recordId: orderId,
+        previousValue: { paid_amount: oldPaid },
+        newValue: { paid_amount: newPaid },
+        notes: `Payment of ${paymentDiff} collected`,
+      });
+    } else if (paymentDiff < 0) {
+      await logAction(req.user!, "REFUND", { order_id: orderId, order_number: order?.order_number, amount: Math.abs(paymentDiff) }, req.token, {
+        module: "Payments", recordId: orderId,
+        previousValue: { paid_amount: oldPaid },
+        newValue: { paid_amount: newPaid },
+        notes: `Refund of ${Math.abs(paymentDiff)} processed`,
+      });
+    }
+
+    if (status && oldOrder && oldOrder.status !== status) {
+      await logAction(req.user!, "UPDATE_ORDER_STATUS", { order_id: orderId, order_number: order?.order_number, status }, req.token, {
+        module: "Orders", recordId: orderId,
+        previousValue: { status: oldOrder.status },
+        newValue: { status },
+      });
+      if (status === "Delivered") {
+        await logAction(req.user!, "DELIVERY_COMPLETED", { order_id: orderId, order_number: order?.order_number }, req.token, {
+          module: "Orders", recordId: orderId,
+          notes: "Order marked as delivered",
+        });
+      }
+    }
+
     const { data: cust } = await userSupabase
       .from("customers")
       .select("name, phone, whatsapp, address")
       .eq("id", order.customer_id)
       .maybeSingle();
 
-    await logAction(req.user!, "EDIT_ORDER", { order_id: orderId, order_number: order?.order_number }, req.token);
     return res.json({
       ...order,
       customer_name: cust?.name || "Unknown Customer",
@@ -2927,21 +3191,119 @@ app.get("/api/reports/financials", requireAuth, requireRole(["Owner"]), async (r
   }
 });
 
-app.get("/api/audit-logs", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+app.get("/api/audit-logs-debug", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     if (useLocalDb()) {
-      const data = db.getAuditLogs(req.user!.id, 100);
-      return res.json(data);
+      const all = db.getAuditLogs({ limit: 5 });
+      return res.json({ count: all.total, sample: all.data, mode: 'sqlite' });
     }
     const userSupabase = getSupabaseClient(req.token);
-    const { data, error } = await userSupabase
-      .from("audit_logs")
-      .select("*")
-      .eq("user_id", req.user!.id)
-      .order("created_at", { ascending: false })
-      .limit(100);
+    const { data, error, count } = await userSupabase.from("audit_logs").select("*", { count: "exact" }).limit(5);
+    if (error) return res.json({ error: error.message, mode: 'supabase' });
+    return res.json({ count, sample: data, mode: 'supabase' });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/audit-logs", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const {
+      search, from, to, userId, action, module,
+      sort = 'newest', page = '1', limit = '50'
+    } = req.query as Record<string, string>;
+
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit) || 50));
+
+    if (useLocalDb()) {
+      const result = db.getAuditLogs({
+        userId: userId || undefined,
+        search: search || undefined,
+        fromDate: from || undefined,
+        toDate: to || undefined,
+        actionFilter: action || undefined,
+        moduleFilter: module || undefined,
+        sort: sort === 'oldest' ? 'oldest' : 'newest',
+        page: pageNum,
+        limit: limitNum,
+      });
+
+      const parsed = result.data.map((r: any) => {
+        let details = {};
+        let meta: Record<string, any> = {};
+        try { details = typeof r.details === 'string' ? JSON.parse(r.details) : (r.details || {}); } catch { details = {}; }
+        meta = (details as Record<string, any>)._meta || {};
+
+        const moduleVal = r.module || meta.module || getModuleFromAction(r.action) || 'General';
+        const userRole = r.user_role || meta.userRole || '';
+        const userName = r.user_name || meta.userName || r.user_email || 'Unknown';
+
+        return {
+          id: r.id, shop_id: r.shop_id, user_id: r.user_id,
+          user_email: r.user_email, user_name: userName, user_role: userRole,
+          action: r.action, module: moduleVal, record_id: r.record_id || meta.recordId || '',
+          previous_value: r.previous_value || meta.previousValue || null,
+          new_value: r.new_value || meta.newValue || null,
+          device: r.device || meta.device || '',
+          ip_address: r.ip_address || meta.ipAddress || '',
+          notes: r.notes || meta.notes || '',
+          details, created_at: r.created_at,
+        };
+      });
+
+      return res.json({ data: parsed, total: result.total, page: pageNum, limit: limitNum });
+    }
+
+    const userSupabase = getSupabaseClient(req.token);
+    let query = userSupabase.from("audit_logs").select("*", { count: "exact" });
+
+    query = query.eq("user_id", req.user!.id);
+
+    if (action) query = query.eq("action", action);
+    if (module) query = query.eq("module", module);
+    if (userId && userId !== req.user!.id) {
+      query = query.eq("user_id", userId);
+    }
+    if (from) query = query.gte("created_at", from);
+    if (to) query = query.lte("created_at", to);
+
+    if (search) {
+      const q = `%${search}%`;
+      query = query.or(
+        `action.ilike.${q},user_email.ilike.${q},user_name.ilike.${q},module.ilike.${q},notes.ilike.${q},record_id.ilike.${q}`
+      );
+    }
+
+    const orderDir = sort === 'oldest' ? { ascending: true } : { ascending: false };
+    query = query.order("created_at", orderDir);
+
+    const fromIdx = (pageNum - 1) * limitNum;
+    query = query.range(fromIdx, fromIdx + limitNum - 1);
+
+    const { data, error, count } = await query;
     if (error) throw error;
-    return res.json(data);
+
+    const parsed = (data || []).map((r: any) => {
+      let meta: Record<string, any> = {};
+      try { meta = r.details?._meta || {}; } catch { meta = {}; }
+      const moduleVal = r.module || meta.module || getModuleFromAction(r.action) || 'General';
+      const userRole = r.user_role || meta.userRole || '';
+      const userName = r.user_name || meta.userName || r.user_email || 'Unknown';
+      return {
+        ...r,
+        user_name: userName,
+        user_role: userRole,
+        module: moduleVal,
+        previous_value: r.previous_value || meta.previousValue || null,
+        new_value: r.new_value || meta.newValue || null,
+        device: r.device || meta.device || '',
+        ip_address: r.ip_address || meta.ipAddress || '',
+        notes: r.notes || meta.notes || '',
+      };
+    });
+
+    return res.json({ data: parsed, total: count || parsed.length, page: pageNum, limit: limitNum });
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
