@@ -1,4 +1,4 @@
-const { app, BrowserWindow, crashReporter, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, crashReporter, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -6,7 +6,20 @@ const isDev = !app.isPackaged;
 const PORT = 3000;
 
 // ---------------------------------------------------------------------------
-// PRODUCTION CONFIGURATION — load before anything else
+// SINGLE-INSTANCE LOCK
+// ---------------------------------------------------------------------------
+const gotSingleLock = app.requestSingleInstanceLock();
+if (!gotSingleLock) {
+  app.quit();
+}
+
+// ---------------------------------------------------------------------------
+// WINDOWS APP USER MODEL ID (proper taskbar grouping)
+// ---------------------------------------------------------------------------
+app.setAppUserModelId('com.hellodarzi.app');
+
+// ---------------------------------------------------------------------------
+// PRODUCTION CONFIGURATION
 // ---------------------------------------------------------------------------
 function loadProductionConfig() {
   if (isDev) return true;
@@ -53,15 +66,17 @@ function validateConfig() {
 }
 
 // ---------------------------------------------------------------------------
-// SINGLE-INSTANCE LOCK — prevents second EADDRINUSE crash
+// ENSURE USER DATA DIRECTORY (persists across updates)
 // ---------------------------------------------------------------------------
-const gotSingleLock = app.requestSingleInstanceLock();
-if (!gotSingleLock) {
-  app.quit();
+const userDataPath = app.getPath('userData');
+const dataDir = path.join(userDataPath, 'data');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
 }
+process.env.ELECTRON_USER_DATA = userDataPath;
 
 // ---------------------------------------------------------------------------
-// AUTO-UPDATER — loaded lazily so a missing module never crashes the app
+// AUTO-UPDATER (GitHub Releases)
 // ---------------------------------------------------------------------------
 let autoUpdater = null;
 let log = null;
@@ -77,46 +92,83 @@ if (!isDev) {
 
 if (!isDev && autoUpdater && log) {
   autoUpdater.logger = log;
-  autoUpdater.autoDownload = false;
+  autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('update-available', (info) => {
-    dialog.showMessageBox({
-      type: 'info',
-      title: 'Update Available',
-      message: `A new version (${info.version}) is available.`,
-      detail: 'Would you like to download it now?',
-      buttons: ['Download & Install', 'Later'],
-      defaultId: 0,
-    }).then(({ response }) => {
-      if (response === 0) autoUpdater.downloadUpdate();
-    });
+    log.info('Update available:', info.version);
+    mainWindow?.webContents.send('update-available', { version: info.version });
   });
 
   autoUpdater.on('update-not-available', () => {
     log.info('No updates available.');
+    mainWindow?.webContents.send('update-not-available');
   });
 
   autoUpdater.on('download-progress', (progress) => {
     log.info(`Download progress: ${progress.percent}%`);
-  });
-
-  autoUpdater.on('update-downloaded', () => {
-    dialog.showMessageBox({
-      type: 'info',
-      title: 'Update Ready',
-      message: 'Update downloaded. Restart now to install?',
-      buttons: ['Restart Now', 'Later'],
-      defaultId: 0,
-    }).then(({ response }) => {
-      if (response === 0) autoUpdater.quitAndInstall();
+    mainWindow?.webContents.send('update-download-progress', {
+      percent: progress.percent,
+      bytesPerSecond: progress.bytesPerSecond,
+      transferred: progress.transferred,
+      total: progress.total,
     });
   });
 
+  autoUpdater.on('update-downloaded', () => {
+    log.info('Update downloaded, installing on quit...');
+    mainWindow?.webContents.send('update-downloaded');
+    autoUpdater.quitAndInstall();
+  });
+
   autoUpdater.on('error', (err) => {
-    log.error('Auto-updater error:', err);
+    log.error('Auto-updater error:', err.message);
+    mainWindow?.webContents.send('update-error', { message: err.message });
   });
 }
+
+// ---------------------------------------------------------------------------
+// IPC HANDLERS
+// ---------------------------------------------------------------------------
+ipcMain.handle('get-app-version', () => {
+  try {
+    return require(path.join(__dirname, '..', 'package.json')).version;
+  } catch {
+    return '1.0.0';
+  }
+});
+
+ipcMain.handle('get-user-data-path', () => {
+  return userDataPath;
+});
+
+ipcMain.handle('get-auto-launch', () => {
+  return app.getLoginItemSettings().openAtLogin;
+});
+
+ipcMain.handle('set-auto-launch', (_event, enable) => {
+  app.setLoginItemSettings({
+    openAtLogin: enable,
+    path: app.getPath('exe'),
+  });
+  return true;
+});
+
+ipcMain.handle('check-for-updates', async () => {
+  if (!autoUpdater) return { updateAvailable: false, error: 'Auto-updater not available' };
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return { updateAvailable: true, version: result?.updateInfo?.version };
+  } catch (err) {
+    return { updateAvailable: false, error: err.message };
+  }
+});
+
+ipcMain.handle('install-update', () => {
+  if (autoUpdater) {
+    autoUpdater.quitAndInstall();
+  }
+});
 
 // ---------------------------------------------------------------------------
 // GLOBAL CRASH & ERROR HANDLING
@@ -143,9 +195,9 @@ process.on('unhandledRejection', (reason) => {
 });
 
 // ---------------------------------------------------------------------------
-// WINDOW STATE PERSISTENCE (debounced)
+// WINDOW STATE PERSISTENCE
 // ---------------------------------------------------------------------------
-const STATE_FILE = path.join(app.getPath('userData'), 'window-state.json');
+const STATE_FILE = path.join(userDataPath, 'window-state.json');
 let stateSaveTimer = null;
 
 function loadWindowState() {
@@ -172,7 +224,7 @@ function debouncedSaveWindowState() {
 }
 
 // ---------------------------------------------------------------------------
-// SECOND-INSTANCE HANDLER — focus existing window
+// SECOND-INSTANCE HANDLER
 // ---------------------------------------------------------------------------
 app.on('second-instance', () => {
   if (mainWindow) {
@@ -225,7 +277,7 @@ async function createWindow() {
 }
 
 // ---------------------------------------------------------------------------
-// START EXPRESS SERVER (production only)
+// START EXPRESS SERVER
 // ---------------------------------------------------------------------------
 async function startExpressServer() {
   if (isDev) return;
