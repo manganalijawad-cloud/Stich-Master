@@ -16,10 +16,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: 'npm'
@@ -27,13 +27,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build and publish installer
-        run: npm run electron:build -- --publish always
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build server bundle
+        run: npm run build:server
+
+      - name: Bundle production config
+        run: node scripts/bundle-config.cjs
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      - name: Build installer
+        run: npx electron-builder --win --x64 --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload installer as artifact
         uses: actions/upload-artifact@v4
