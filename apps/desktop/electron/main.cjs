@@ -25,7 +25,7 @@ function loadProductionConfig() {
   if (isDev) return true;
 
   const searchPaths = [
-    path.join(__dirname, '..', 'config', 'production.json'),
+    path.join(__dirname, '..', '..', '..', 'config', 'production.json'),
     path.join(process.resourcesPath || '', 'config', 'production.json'),
   ];
 
@@ -132,7 +132,7 @@ if (!isDev && autoUpdater && log) {
 // ---------------------------------------------------------------------------
 ipcMain.handle('get-app-version', () => {
   try {
-    return require(path.join(__dirname, '..', 'package.json')).version;
+    return require(path.join(__dirname, '..', '..', '..', 'package.json')).version;
   } catch {
     return '1.0.0';
   }
@@ -251,7 +251,7 @@ async function createWindow() {
     title: 'Hello Darzi',
     backgroundColor: '#F8FAFC',
     show: false,
-    icon: (function() { const p = path.join(__dirname, '..', 'dist', 'icon.ico'); try { if (fs.existsSync(p)) return p; } catch {} return path.join(__dirname, '..', 'public', 'icon.ico'); })(),
+    icon: (function() { const p = path.join(__dirname, '..', '..', '..', 'dist', 'icon.ico'); try { if (fs.existsSync(p)) return p; } catch {} return path.join(__dirname, '..', '..', '..', 'public', 'icon.ico'); })(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
@@ -295,7 +295,7 @@ async function startExpressServer() {
   }
 
   try {
-    const serverPath = path.join(__dirname, '..', 'dist', 'server.cjs');
+    const serverPath = path.join(__dirname, '..', '..', '..', 'dist', 'server.cjs');
     const serverModule = require(serverPath);
     serverPort = await serverModule.startServer(serverModule.PORT);
   } catch (err) {

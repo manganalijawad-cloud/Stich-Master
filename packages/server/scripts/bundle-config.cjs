@@ -1,3 +1,15 @@
+/**
+ * bundle-config.cjs
+ *
+ * Generates config/production.json from environment variables
+ * so the packaged Electron app never depends on a .env file.
+ *
+ * Resolution order (first wins):
+ *   1. Actual environment variable (set in shell / CI)
+ *   2. .env file in the project root
+ *   3. Hard-coded empty string (validation catches it)
+ */
+
 const fs = require('fs');
 const path = require('path');
 

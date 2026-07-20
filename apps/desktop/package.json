@@ -1,0 +1,56 @@
+{
+  "name": "@hello-darzi/desktop",
+  "version": "1.0.2",
+  "private": true,
+  "type": "commonjs",
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "com.hellodarzi.app",
+    "productName": "Hello Darzi",
+    "directories": {
+      "output": "../../release"
+    },
+    "files": [
+      "../../dist/**/*",
+      "electron/**/*",
+      "../../config/**/*"
+    ],
+    "asarUnpack": [
+      "../../dist/**",
+      "../../config/**"
+    ],
+    "win": {
+      "icon": "../../public/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Hello Darzi",
+      "runAfterFinish": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "manganalijawad-cloud",
+      "repo": "Stich-Master",
+      "releaseType": "release"
+    }
+  },
+  "dependencies": {
+    "electron-log": "^5.4.4",
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
+    "electron": "^43.1.1",
+    "electron-builder": "^26.15.3",
+    "wait-on": "^9.0.10"
+  }
+}

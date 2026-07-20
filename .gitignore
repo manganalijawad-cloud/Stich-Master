@@ -29,3 +29,9 @@ build/
 .claude/
 .commandcode/
 skills-lock.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

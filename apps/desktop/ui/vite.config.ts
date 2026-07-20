@@ -5,13 +5,12 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
-    root: './apps/desktop/ui',
     base: './',
     plugins: [react(), tailwindcss()],
     envPrefix: ['VITE_'],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, 'apps/desktop/ui/src'),
+        '@': path.resolve(__dirname, 'src'),
       },
     },
     server: {
@@ -19,7 +18,7 @@ export default defineConfig(() => {
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
     build: {
-      outDir: path.resolve(__dirname, 'dist'),
+      outDir: path.resolve(__dirname, '..', '..', '..', 'dist'),
       emptyOutDir: true,
     },
   };

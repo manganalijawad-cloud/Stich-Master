@@ -1,9 +1,9 @@
 import * as esbuild from 'esbuild';
 
 await esbuild.build({
-  entryPoints: ['scripts/api-entry.ts'],
+  entryPoints: ['packages/server/src/api-entry.ts'],
   bundle: true,
-  outfile: 'api/index.cjs',
+  outfile: '../../api/index.cjs',
   format: 'cjs',
   platform: 'node',
   target: 'node18',
