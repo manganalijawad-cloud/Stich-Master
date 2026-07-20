@@ -1,6 +1,6 @@
 {
   "name": "@hello-darzi/desktop",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "type": "commonjs",
   "main": "electron/main.cjs",
