@@ -756,14 +756,7 @@ export default function App() {
           </div>
         )}
 
-        <footer className="footer-base flex flex-col sm:flex-row sm:justify-between items-center gap-1">
-          <p className="font-medium">&copy; {new Date().getFullYear()} {shopName || 'Unnamed Tailor Shop'} Hello Darzi. All rights reserved.</p>
-          <div className="flex gap-4 text-slate-400">
-            <span className="font-semibold uppercase tracking-wider text-3xs">Tailored Suite Pro</span>
-            <span className="text-slate-300" aria-hidden="true">|</span>
-            <span className="font-semibold uppercase tracking-wider text-3xs">Staff Portal</span>
-          </div>
-        </footer>
+
 
       </div>
     </div>

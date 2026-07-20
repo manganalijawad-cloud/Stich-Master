@@ -604,7 +604,7 @@ export default function CustomersSection({
 
   if (showAllPage) {
     return (
-      <div className="card animate-fade-in space-y-3">
+      <div className="card animate-fade-in space-y-2">
         {/* Full Customers Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
           <div>
@@ -710,11 +710,11 @@ export default function CustomersSection({
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-start">
       
       {/* LEFT COLUMN: Customer Search & List */}
-      <div className="lg:col-span-5 card space-y-3">
-        <div className="space-y-3">
+      <div className="lg:col-span-5 card space-y-2">
+        <div className="space-y-2">
           <div className="flex items-center justify-between">
             <h2 className="text-h2 font-semibold text-slate-900 tracking-tight font-display">Customers</h2>
             {!isCreating && (
@@ -787,12 +787,12 @@ export default function CustomersSection({
             </form>
           ) : (
             /* RECENT CUSTOMER OR SEARCH LIST */
-            <div className="space-y-3">
-              <span className="text-caption-xs font-extrabold text-slate-400 uppercase block">
-                {searchQuery ? `Search Results (${customers.length})` : 'Newly Added Customers'}
-              </span>
+            <div className="space-y-2">
+                <span className="text-caption-xs font-extrabold text-slate-400 uppercase">
+                  {searchQuery ? `Search Results (${customers.length})` : 'Newly Added Customers'}
+                </span>
 
-              <div className="space-y-1 max-h-[50vh] overflow-y-auto pr-1">
+              <div className="space-y-1 max-h-[42vh] overflow-y-auto pr-1">
                 {loading && (
                   <p className="text-center text-slate-400 py-3 text-caption-xs font-semibold uppercase tracking-wider animate-pulse">Searching...</p>
                 )}
@@ -811,7 +811,7 @@ export default function CustomersSection({
                     onClick={() => {
                       setSelectedCustomer(c);
                     }}
-                    className={`w-full p-2.5 rounded-lg text-left border transition-[background-color,border-color,color] flex items-center justify-between cursor-pointer ${
+                    className={`w-full p-2 rounded-lg text-left border transition-[background-color,border-color,color] flex items-center justify-between cursor-pointer ${
                       selectedCustomer?.id === c.id
                         ? 'bg-sky-50/70 border-sky-400 text-sky-900 font-semibold'
                         : 'bg-white hover:bg-slate-50 border-slate-200'
@@ -840,12 +840,12 @@ export default function CustomersSection({
 
         {/* "Show More" Button - Always visible at the bottom of the Left Column except when creating customer */}
         {!isCreating && (
-          <div className="pt-4 border-t border-slate-100 mt-4">
+          <div className="pt-2.5 border-t border-slate-100 mt-2.5">
             <button
               onClick={() => {
                 setShowAllPage(true);
               }}
-              className="w-full py-3 px-4 bg-sky-50 hover:bg-sky-100 text-sky-700 font-semibold text-xs uppercase tracking-wider rounded-xl border border-sky-200 cursor-pointer text-center flex items-center justify-center gap-1.5 transition-[background-color] shadow-3xs"
+              className="w-full py-2.5 px-4 bg-sky-50 hover:bg-sky-100 text-sky-700 font-semibold text-xs uppercase tracking-wider rounded-xl border border-sky-200 cursor-pointer text-center flex items-center justify-center gap-1.5 transition-[background-color] shadow-3xs"
             >
               Show More
             </button>
@@ -854,9 +854,9 @@ export default function CustomersSection({
       </div>
 
       {/* RIGHT COLUMN: Customer Details & Measurements */}
-      <div className="lg:col-span-7 card space-y-3">
+      <div className="lg:col-span-7 card space-y-2">
         {duplicateAlert && (
-          <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs font-semibold flex items-start justify-between gap-2.5 animate-fade-in">
+          <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs font-semibold flex items-start justify-between gap-2 animate-fade-in">
             <span>{duplicateAlert}</span>
             <button 
               onClick={() => setDuplicateAlert(null)}
@@ -869,9 +869,9 @@ export default function CustomersSection({
         )}
 
         {selectedCustomer ? (
-          <div className="space-y-3 animate-fade-in print:hidden">
+          <div className="space-y-2 animate-fade-in print:hidden">
             {/* Header */}
-            <div className="border-b border-slate-100 pb-2 space-y-2">
+            <div className="border-b border-slate-100 pb-1.5 space-y-1.5">
               {editingCustomer ? (
                 <input
                   type="text"
@@ -884,7 +884,7 @@ export default function CustomersSection({
               )}
 
               {/* Attributes display - compact 2-column */}
-              <div className="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
+              <div className="grid grid-cols-2 gap-1.5 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                 {editingCustomer ? (
                   <>
                     <div>
@@ -975,7 +975,7 @@ export default function CustomersSection({
               </div>
 
               {!editingCustomer && (
-                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+                <div className="grid grid-cols-2 gap-2 pt-1.5 border-t border-slate-100">
                   <button onClick={() => onBookOrder(selectedCustomer)} className="btn-primary py-2">
                     <ShoppingCart className="icon-sm text-brand-sky" />
                     Create New Order
@@ -999,7 +999,7 @@ export default function CustomersSection({
 
             {/* ORDER HISTORY TOGGLE AREA */}
             {showHistory && (
-              <div className="border-t border-slate-150 pt-3 space-y-3 animate-fade-in">
+              <div className="border-t border-slate-150 pt-2 space-y-2 animate-fade-in">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider font-display">Order History ({orderHistory.length})</h3>
                   <button
@@ -1015,7 +1015,7 @@ export default function CustomersSection({
                 ) : orderHistory.length === 0 ? (
                   <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider py-4 text-center">No orders booked yet for this customer.</p>
                 ) : (
-                  <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
+                  <div className="space-y-1.5 max-h-[35vh] overflow-y-auto pr-1">
                     {orderHistory.map((order) => (
                       <div key={order.id} className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-4">
                         <div className="space-y-1">
@@ -1063,10 +1063,10 @@ export default function CustomersSection({
 
             {/* MEASUREMENT PROFILES COMPONENT SECTION */}
             {!showHistory && (
-            <div className="space-y-4 pt-3 border-t border-slate-100">
+            <div className="space-y-3 pt-2 border-t border-slate-100">
               
               {/* Header */}
-              <div className="border-b border-slate-100 pb-3">
+              <div className="border-b border-slate-100 pb-2">
                 <h3 className="text-h3 font-semibold text-slate-900 uppercase tracking-wider font-display flex items-center gap-1.5">
                   <Layers className="icon-md text-brand-sky" />
                   MEASUREMENTS
@@ -1087,7 +1087,7 @@ export default function CustomersSection({
 
               {/* Inline form: Add Another Garment Profile */}
               {isAddingProfile ? (
-                <form onSubmit={handleAddProfile} className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 shadow-3xs animate-fade-in">
+                <form onSubmit={handleAddProfile} className="p-2.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 shadow-3xs animate-fade-in">
                   <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                     <span className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                       <Sparkles className="icon-xs text-amber-500" />
@@ -1134,7 +1134,7 @@ export default function CustomersSection({
                             No parameter fields declared for this garment type.
                           </p>
                         ) : (
-                          <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-2 p-2 bg-white rounded-lg border border-slate-150">
+                          <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-2 gap-y-1.5 p-2 bg-white rounded-lg border border-slate-150">
                             {chosen.measurement_fields.map((field) => (
                               <div key={field.name} className="flex flex-col min-w-0">
                                 <label className="text-3xs font-bold text-slate-500 uppercase tracking-wide break-words leading-snug">
@@ -1181,7 +1181,7 @@ export default function CustomersSection({
 
               {/* Profiles Selector tabs */}
               {!isAddingProfile && profiles.length > 0 && (
-                <div className="flex flex-wrap gap-2 pb-2 border-b border-slate-100">
+                <div className="flex flex-wrap gap-1.5 pb-1.5 border-b border-slate-100">
                   {profiles.map((p) => {
                     const isSelected = p.id === activeProfileId;
                     return (
@@ -1227,7 +1227,7 @@ export default function CustomersSection({
 
               {/* Opened Profile View Area */}
               {!isAddingProfile && activeProfile && (
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 animate-fade-in">
+                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 animate-fade-in">
                   {editingProfileId === activeProfile.id && !editingCustomer && (
                     <div className="flex items-center justify-end border-b border-slate-200 pb-2 gap-1.5">
                       <button
@@ -1252,7 +1252,7 @@ export default function CustomersSection({
                   {editingProfileId === activeProfile.id ? (
                     /* EDITING MEASUREMENTS FOR THIS PROFILE */
                     activeGarmentType ? (
-                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-2 bg-white p-3 rounded-lg border border-slate-200">
+                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-2 gap-y-1.5 bg-white p-3 rounded-lg border border-slate-200">
                         {activeGarmentType.measurement_fields.map((field) => (
                           <div key={field.name} className="flex flex-col min-w-0">
                             <label className="text-3xs font-bold text-slate-500 uppercase tracking-wide break-words leading-snug">
@@ -1275,7 +1275,7 @@ export default function CustomersSection({
                         ))}
                       </div>
                     ) : (
-                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-2 bg-white p-3 rounded-lg border border-slate-200">
+                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-2 gap-y-1.5 bg-white p-3 rounded-lg border border-slate-200">
                         {Object.keys(activeProfile.values).map((fieldName) => (
                           <div key={fieldName} className="flex flex-col min-w-0">
                             <label className="text-3xs font-bold text-slate-500 uppercase tracking-wide break-words leading-snug">
@@ -1300,11 +1300,11 @@ export default function CustomersSection({
                   ) : (
                     /* READ-ONLY DISPLAY */
                     activeGarmentType ? (
-                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-1.5">
                         {activeGarmentType.measurement_fields.map((field) => {
                           const val = activeProfile.values[field.name];
                           return (
-                            <div key={field.name} className="p-2.5 bg-white border border-slate-150 rounded-lg flex flex-col justify-between min-w-0">
+                            <div key={field.name} className="p-2 bg-white border border-slate-150 rounded-lg flex flex-col justify-between min-w-0">
                               <span className="text-3xs font-bold text-slate-400 uppercase break-words leading-tight">
                                 {field.name}
                               </span>
@@ -1325,11 +1325,11 @@ export default function CustomersSection({
                         })}
                       </div>
                     ) : (
-                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 lg:grid-cols-3 gap-1.5">
                         {Object.keys(activeProfile.values).map((fieldName) => {
                           const val = activeProfile.values[fieldName];
                           return (
-                            <div key={fieldName} className="p-2.5 bg-white border border-slate-150 rounded-lg flex flex-col justify-between min-w-0">
+                            <div key={fieldName} className="p-2 bg-white border border-slate-150 rounded-lg flex flex-col justify-between min-w-0">
                               <span className="text-3xs font-bold text-slate-400 uppercase break-words leading-tight">
                                 {fieldName}
                               </span>
@@ -1352,7 +1352,7 @@ export default function CustomersSection({
                     )
                   )}
 
-                  <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider pt-2 flex justify-between">
+                  <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider pt-1.5 flex justify-between">
                     <span>Created: {new Date(activeProfile.created_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span>
                     <span>Updated: {new Date(activeProfile.updated_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span>
                   </div>
@@ -1362,7 +1362,7 @@ export default function CustomersSection({
 
               {/* No profiles placeholder */}
               {!isAddingProfile && profiles.length === 0 && (
-                <div className="flex flex-col items-center justify-center p-8 text-center border-2 border-dashed border-slate-200 bg-slate-50/50 rounded-2xl">
+                <div className="flex flex-col items-center justify-center p-6 text-center border-2 border-dashed border-slate-200 bg-slate-50/50 rounded-2xl">
                   <Layers className="w-10 h-10 text-slate-300 animate-pulse mb-3" />
                   <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider">No Measurement Profiles</h4>
                   <p className="text-slate-400 text-3xs font-semibold uppercase tracking-widest max-w-xs mt-1 leading-relaxed">
@@ -1386,8 +1386,8 @@ export default function CustomersSection({
               )}
 
               {editingCustomer && (
-                <div className="grid grid-cols-2 gap-2 pt-4 border-t border-slate-100">
-                  <button onClick={handleSaveCustomer} className="btn-primary py-2.5">
+                <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-slate-100">
+                  <button onClick={handleSaveCustomer} className="btn-primary py-2">
                     <Check className="icon-sm text-brand-sky" />
                     Save Changes
                   </button>
@@ -1407,7 +1407,7 @@ export default function CustomersSection({
         ) : isCreating ? (
           <div className="flex flex-col h-full animate-fade-in print:hidden">
             {/* Header */}
-            <div className="border-b border-slate-100 pb-3 mb-3">
+            <div className="border-b border-slate-100 pb-2 mb-2">
               <h3 className="text-base font-bold text-slate-900 uppercase tracking-wider font-display flex items-center gap-1.5">
                 <Sparkles className="icon-sm text-brand-sky" />
                 Measurements
@@ -1415,7 +1415,7 @@ export default function CustomersSection({
             </div>
 
             {/* Garment Type Selector */}
-            <div className="mb-3">
+            <div className="mb-2">
               <select
                 id="garment-profile-selector"
                 value={selectedGarmentTypeId}
@@ -1441,7 +1441,7 @@ export default function CustomersSection({
                     No custom fields defined for this garment type.
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-2.5 p-3 border border-slate-200 rounded-lg bg-slate-50">
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-2 gap-y-1.5 p-2.5 border border-slate-200 rounded-lg bg-slate-50">
                     {selectedGarmentTypeForNewCustomer.measurement_fields.map((field) => (
                       <div key={field.name} className="flex flex-col min-w-0">
                         <label className="text-3xs font-bold text-slate-500 uppercase tracking-wide break-words leading-snug">
@@ -1467,14 +1467,14 @@ export default function CustomersSection({
               id="btn-save-customer-profile-right"
               type="button"
               onClick={(e) => handleCreateCustomer(e)}
-              className="btn-success w-full mt-3"
+              className="btn-success w-full mt-2"
             >
               <Check className="icon-xs" />
               Save Customer Profile
             </button>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-24 text-center print:hidden">
+                  <div className="flex flex-col items-center justify-center py-16 text-center print:hidden">
             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-400 mb-4 border border-slate-200">
               <Search className="w-8 h-8 text-slate-400" />
             </div>
