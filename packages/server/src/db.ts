@@ -292,6 +292,14 @@ export function updateCustomer(id: string, createdBy: string, data: Partial<DbCu
   return getCustomerById(id, createdBy);
 }
 
+export function deleteCustomer(id: string, createdBy: string): boolean {
+  const customer = getCustomerById(id, createdBy);
+  if (!customer) return false;
+  db.prepare("DELETE FROM measurements WHERE customer_id = ? AND created_by = ?").run(id, createdBy);
+  db.prepare("DELETE FROM customers WHERE id = ? AND created_by = ?").run(id, createdBy);
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // MEASUREMENT HELPERS
 // ---------------------------------------------------------------------------

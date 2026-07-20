@@ -36,9 +36,13 @@
 
 html {
   font-size: 16px;
+  height: 100%;
+  overflow: hidden;
 }
 
 body {
+  height: 100%;
+  overflow: hidden;
   background-color: var(--color-brand-bg);
   color: #1E293B;
   font-family: var(--font-sans);
@@ -335,6 +339,21 @@ svg.lucide,
 @utility modal-content {
   width: 100%;
   max-width: 28rem;
+  max-height: 90vh;
+  overflow-y: auto;
+  background-color: white;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-modal);
+  box-shadow: var(--shadow-modal);
+  padding: 1.25rem;
+  animation: scale-up 0.2s ease-out;
+}
+
+@utility modal-content-lg {
+  width: 100%;
+  max-width: 36rem;
+  max-height: 90vh;
+  overflow-y: auto;
   background-color: white;
   border: 1px solid #e2e8f0;
   border-radius: var(--radius-modal);
@@ -759,4 +778,99 @@ svg.lucide,
   0% { top: 5%; }
   50% { top: 95%; }
   100% { top: 5%; }
+}
+
+/* ─── Frameless Title Bar ─── */
+.title-bar {
+  height: 32px;
+  background: #0F172A;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  -webkit-app-region: drag;
+  -webkit-user-select: none;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.title-bar-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: 0.01em;
+}
+
+.title-bar-controls {
+  display: flex;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.title-bar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: #ffffff;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  outline: none;
+}
+
+.title-bar-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.title-bar-btn:active {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.title-bar-btn.title-bar-close:hover {
+  background: #e81123;
+}
+
+.title-bar-btn.title-bar-close:active {
+  background: #bf0f1d;
+}
+
+.title-bar-max-icon {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid currentColor;
+  border-radius: 1px;
+}
+
+.title-bar-restore-icon {
+  position: relative;
+  width: 10px;
+  height: 10px;
+}
+
+.restore-back {
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid currentColor;
+  border-radius: 1px;
+  opacity: 0.5;
+}
+
+.restore-front {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid currentColor;
+  border-radius: 1px;
+  background: #0F172A;
 }

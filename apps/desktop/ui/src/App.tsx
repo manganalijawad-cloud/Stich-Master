@@ -12,6 +12,7 @@ import OwnerDashboard from './components/OwnerDashboard';
 import FinancialReports from './components/FinancialReports';
 
 import SyncIndicator from './components/SyncIndicator';
+import TitleBar from './components/TitleBar';
 import { Customer, UserProfile, UserRole, PipelineStage } from './types';
 import { supabase, ensureSupabase } from './lib/supabase';
 
@@ -158,6 +159,8 @@ export default function App() {
   const [activeOrderId, setActiveOrderId] = useState<string | undefined>(undefined);
   const [activeItemIdx, setActiveItemIdx] = useState<number | undefined>(undefined);
   const [isVerifyingSession, setIsVerifyingSession] = useState(true);
+
+  const isElectron = !!(window as any).electronAPI?.isElectron;
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -348,15 +351,23 @@ export default function App() {
 
   if (isVerifyingSession) {
     return (
-      <div className="min-h-screen bg-brand-sidebar flex flex-col items-center justify-center text-white">
-        <p className="text-lg font-semibold animate-pulse text-brand-sky">Initializing Workspace…</p>
+      <div className="h-screen flex flex-col">
+        {isElectron && <TitleBar />}
+        <div className="flex-1 bg-brand-sidebar flex flex-col items-center justify-center text-white">
+          <p className="text-lg font-semibold animate-pulse text-brand-sky">Initializing Workspace…</p>
+        </div>
       </div>
     );
   }
 
   if (!user || !token) {
     return (
-      <LoginScreen onLoginSuccess={handleLoginSuccess} />
+      <div className="h-screen flex flex-col">
+        {isElectron && <TitleBar />}
+        <div className="flex-1">
+          <LoginScreen onLoginSuccess={handleLoginSuccess} />
+        </div>
+      </div>
     );
   }
 
@@ -394,13 +405,17 @@ export default function App() {
     : 'Admin Panel';
 
   return (
-    <div className="min-h-screen bg-brand-bg flex flex-col md:flex-row font-sans text-slate-800">
+    <div className="h-screen flex flex-col">
+
+      {isElectron && <TitleBar />}
+
+      <div className="flex flex-1 min-h-0 flex-col md:flex-row font-sans text-slate-800 bg-brand-bg">
 
       {/* ──────────────────────────────────────────────────────────── */}
       {/* DESKTOP SIDEBAR                                              */}
       {/* ──────────────────────────────────────────────────────────── */}
       <aside
-        className={`hidden md:flex flex-col bg-brand-sidebar text-white shrink-0 border-r border-slate-800 print:hidden sticky top-0 h-screen overflow-y-auto transition-[width,padding] duration-300 ease-in-out ${
+        className={`hidden md:flex flex-col bg-brand-sidebar text-white shrink-0 border-r border-slate-800 print:hidden h-full overflow-y-auto transition-[width,padding] duration-300 ease-in-out ${
           isSidebarCollapsed ? 'w-14 py-3 items-center' : 'w-56 p-3'
         }`}
       >
@@ -751,6 +766,7 @@ export default function App() {
         </footer>
 
       </div>
+    </div>
     </div>
   );
 }

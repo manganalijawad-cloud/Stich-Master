@@ -1295,7 +1295,7 @@ Note: This is an automated message. Please do not reply.`;
       
       {/* LEFT COLUMN: Queue / Filters */}
       {!isCreating && (
-        <div className="lg:col-span-5 card space-y-2">
+        <div className="lg:col-span-5 card space-y-2 overflow-y-auto">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-black text-slate-900 tracking-tight font-display uppercase">
               {viewMode === 'Active' ? 'Active Queue' : 'Archived Vault'}
@@ -1904,7 +1904,7 @@ Note: This is an automated message. Please do not reply.`;
                 </div>
 
                 {/* Financials */}
-                <div className="grid grid-cols-[1fr_2fr] gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr] gap-3">
                   <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
                     <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Total</span>
                     <span className="text-2xl font-black text-slate-800 font-display">
@@ -2916,7 +2916,7 @@ Note: This is an automated message. Please do not reply.`;
       {/* SCANNED GARMENT COMPACT ACTION MODAL */}
       {scannedGarmentItem && (
         <div className="modal-overlay">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-slate-100 space-y-4 relative overflow-hidden flex flex-col justify-between" style={{ minHeight: '380px' }}>
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-slate-100 space-y-4 relative overflow-y-auto flex flex-col justify-between max-h-[90vh]">
             
             {/* Header / Indicator */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">

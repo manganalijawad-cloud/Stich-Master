@@ -1233,6 +1233,94 @@ app.post("/api/customers", requireAuth, async (req: AuthenticatedRequest, res: R
   }
 });
 
+// Update customer
+app.put("/api/customers/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const customerId = req.params.id;
+  const { name, phone, address } = req.body;
+  try {
+    if (useLocalDb()) {
+      const customer = db.getCustomerById(customerId, req.user!.id);
+      if (!customer) {
+        return res.status(404).json({ error: "Customer not found or access denied." });
+      }
+      const updated = db.updateCustomer(customerId, req.user!.id, { name, phone, address, updated_by: req.user!.id });
+      db.logAction("UPDATE_CUSTOMER", req.user!.id, req.user!.email, req.user!.shop_id, { customer_id: customerId });
+      sync.syncAfterMutation("customers", customerId, "update", updated, req.token);
+      return res.json(updated);
+    }
+    const userSupabase = getSupabaseClient(req.token);
+    const { data: customer } = await userSupabase
+      .from("customers")
+      .select("id")
+      .eq("id", customerId)
+      .eq("created_by", req.user!.id)
+      .maybeSingle();
+    if (!customer) {
+      return res.status(404).json({ error: "Customer not found or access denied." });
+    }
+    const { data: updated, error } = await userSupabase
+      .from("customers")
+      .update({
+        name,
+        phone: phone || null,
+        address: address || null,
+        updated_by: req.user!.id,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", customerId)
+      .eq("created_by", req.user!.id)
+      .select()
+      .single();
+    if (error) throw error;
+    await logAction(req.user!, "UPDATE_CUSTOMER", { customer_id: customerId }, req.token);
+    return res.json(updated);
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete customer
+app.delete("/api/customers/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const customerId = req.params.id;
+  try {
+    if (useLocalDb()) {
+      const deleted = db.deleteCustomer(customerId, req.user!.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Customer not found or access denied." });
+      }
+      db.logAction("DELETE_CUSTOMER", req.user!.id, req.user!.email, req.user!.shop_id, { customer_id: customerId });
+      sync.syncAfterMutation("customers", customerId, "delete", null, req.token);
+      return res.json({ success: true });
+    }
+    const userSupabase = getSupabaseClient(req.token);
+    const { data: customer } = await userSupabase
+      .from("customers")
+      .select("id")
+      .eq("id", customerId)
+      .eq("created_by", req.user!.id)
+      .maybeSingle();
+    if (!customer) {
+      return res.status(404).json({ error: "Customer not found or access denied." });
+    }
+    const { error: measErr } = await userSupabase
+      .from("measurements")
+      .delete()
+      .eq("customer_id", customerId)
+      .eq("created_by", req.user!.id);
+    if (measErr) throw measErr;
+    const { error } = await userSupabase
+      .from("customers")
+      .delete()
+      .eq("id", customerId)
+      .eq("created_by", req.user!.id);
+    if (error) throw error;
+    await logAction(req.user!, "DELETE_CUSTOMER", { customer_id: customerId }, req.token);
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // -------------------------------------------------------------------------
 // MEASUREMENT MANAGEMENT
 // -------------------------------------------------------------------------

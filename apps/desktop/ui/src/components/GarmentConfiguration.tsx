@@ -1192,7 +1192,7 @@ Do you absolutely want to proceed with deletion?`;
                           const val = e.target.value;
                           setSelectedTypePrice(val === '' ? '' : Number(val));
                         }}
-                        className="input-base w-24"
+                        className="input-base w-full max-w-24"
                       />
                       <button
                         type="button"
@@ -1252,7 +1252,7 @@ Do you absolutely want to proceed with deletion?`;
 
                     {/* New Field Creator Form */}
                     <form onSubmit={handleAddField} className="card flex flex-wrap gap-3 items-end">
-                      <div className="flex-1 min-w-[200px] space-y-1">
+                      <div className="flex-1 min-w-[160px] sm:min-w-[200px] space-y-1">
                         <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest block">Parameter Name</label>
                         <input
                           type="text"

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, crashReporter, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, crashReporter, dialog, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -171,6 +171,29 @@ ipcMain.handle('install-update', () => {
 });
 
 // ---------------------------------------------------------------------------
+// WINDOW CONTROL IPC (frameless window)
+// ---------------------------------------------------------------------------
+ipcMain.handle('window-minimize', () => {
+  mainWindow?.minimize();
+});
+
+ipcMain.handle('window-maximize', () => {
+  if (mainWindow?.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow.maximize();
+  }
+});
+
+ipcMain.handle('window-close', () => {
+  mainWindow?.close();
+});
+
+ipcMain.handle('window-is-maximized', () => {
+  return mainWindow?.isMaximized() ?? false;
+});
+
+// ---------------------------------------------------------------------------
 // GLOBAL CRASH & ERROR HANDLING
 // ---------------------------------------------------------------------------
 crashReporter.start({ uploadToServer: false });
@@ -206,19 +229,21 @@ function loadWindowState() {
       return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
     }
   } catch {}
-  return { width: 1280, height: 800, x: undefined, y: undefined };
+  return { width: 1280, height: 800, x: undefined, y: undefined, maximized: true };
 }
 
-function saveWindowState(bounds) {
+function saveWindowState(bounds, maximized) {
   try {
-    fs.writeFileSync(STATE_FILE, JSON.stringify(bounds));
+    fs.writeFileSync(STATE_FILE, JSON.stringify({ ...bounds, maximized }));
   } catch {}
 }
 
 function debouncedSaveWindowState() {
   if (stateSaveTimer) clearTimeout(stateSaveTimer);
   stateSaveTimer = setTimeout(() => {
-    if (mainWindow) saveWindowState(mainWindow.getBounds());
+    if (mainWindow) {
+      saveWindowState(mainWindow.getBounds(), mainWindow.isMaximized());
+    }
     stateSaveTimer = null;
   }, 500);
 }
@@ -249,6 +274,7 @@ async function createWindow() {
     minWidth: 1024,
     minHeight: 600,
     title: 'Hello Darzi',
+    frame: false,
     backgroundColor: '#F8FAFC',
     show: false,
     icon: (function() { const p = path.join(__dirname, '..', '..', '..', 'dist', 'icon.ico'); try { if (fs.existsSync(p)) return p; } catch {} return path.join(__dirname, '..', '..', '..', 'public', 'icon.ico'); })(),
@@ -264,7 +290,20 @@ async function createWindow() {
   mainWindow.on('move', debouncedSaveWindowState);
   mainWindow.on('closed', () => { mainWindow = null; });
 
+  mainWindow.on('maximize', () => {
+    debouncedSaveWindowState();
+    mainWindow?.webContents.send('window-maximized-changed', true);
+  });
+
+  mainWindow.on('unmaximize', () => {
+    debouncedSaveWindowState();
+    mainWindow?.webContents.send('window-maximized-changed', false);
+  });
+
   mainWindow.once('ready-to-show', () => {
+    if (state.maximized) {
+      mainWindow.maximize();
+    }
     mainWindow.show();
   });
 
@@ -312,6 +351,8 @@ async function startExpressServer() {
 // APP LIFECYCLE
 // ---------------------------------------------------------------------------
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null);
+
   await startExpressServer();
   await createWindow();
 
@@ -331,5 +372,7 @@ app.on('activate', () => {
 });
 
 app.on('before-quit', () => {
-  if (mainWindow) saveWindowState(mainWindow.getBounds());
+  if (mainWindow) {
+    saveWindowState(mainWindow.getBounds(), mainWindow.isMaximized());
+  }
 });

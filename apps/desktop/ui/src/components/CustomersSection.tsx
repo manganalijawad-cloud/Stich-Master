@@ -8,7 +8,6 @@ import {
   Search, 
   UserPlus, 
   Phone, 
-  Mail, 
   FileText, 
   Check, 
   ChevronRight, 
@@ -66,7 +65,6 @@ export default function CustomersSection({
   const [isNameDuplicate, setIsNameDuplicate] = useState(false);
   const [newWhatsapp, setNewWhatsapp] = useState('');
   const [newAddress, setNewAddress] = useState('');
-  const [newEmail, setNewEmail] = useState('');
 
   
   // Selected garment type for NEW customer
@@ -94,6 +92,14 @@ export default function CustomersSection({
 
   // Print single profile state
   const [printProfileId, setPrintProfileId] = useState<string | null>(null);
+
+  // Customer editing state
+  const [editingCustomer, setEditingCustomer] = useState(false);
+  const [editCustomerForm, setEditCustomerForm] = useState({
+    name: '',
+    phone: '',
+    address: '',
+  });
 
   // Error/Success state for measurements/profiles edits
   const [measError, setMeasError] = useState<string | null>(null);
@@ -239,6 +245,8 @@ export default function CustomersSection({
       setShowHistory(false);
       setIsAddingProfile(false);
       setEditingProfileId(null);
+      setEditingProfileMeasurements({});
+      setEditingCustomer(false);
       setPrintProfileId(null);
       return;
     }
@@ -310,6 +318,8 @@ export default function CustomersSection({
     setShowHistory(false);
     setIsAddingProfile(false);
     setEditingProfileId(null);
+    setEditingProfileMeasurements({});
+    setEditingCustomer(false);
     setPrintProfileId(null);
   }, [selectedCustomer, token, garmentTypes]);
 
@@ -370,7 +380,6 @@ export default function CustomersSection({
           phone: newPhone.trim(),
           whatsapp: newWhatsapp.trim(),
           address: newAddress.trim(),
-          email: newEmail.trim(),
           measurements: payloadMeasurements,
         }),
       });
@@ -389,7 +398,6 @@ export default function CustomersSection({
         setNewPhone('');
         setNewWhatsapp('');
         setNewAddress('');
-        setNewEmail('');
         setInitialMeasurements({});
         onBookOrder(data.customer);
         return;
@@ -401,7 +409,6 @@ export default function CustomersSection({
       setNewPhone('');
       setNewWhatsapp('');
       setNewAddress('');
-      setNewEmail('');
       setInitialMeasurements({});
       
       // Auto-select newly created customer
@@ -491,37 +498,97 @@ export default function CustomersSection({
     setEditingProfileId(null);
   };
 
-  // Delete profile
-  const handleDeleteProfile = async (profileId: string, garmentName: string) => {
-    if (!confirm(`Are you absolutely sure you want to delete the "${garmentName}" measurement profile? This action is irreversible.`)) {
-      return;
+  const handleStartEditCustomer = () => {
+    if (!selectedCustomer) return;
+    setEditCustomerForm({
+      name: selectedCustomer.name,
+      phone: selectedCustomer.phone || '',
+      address: selectedCustomer.address || '',
+    });
+    setEditingCustomer(true);
+    if (activeProfileId) {
+      setEditingProfileId(activeProfileId);
+      setEditingProfileMeasurements({ ...profiles.find(p => p.id === activeProfileId)?.values || {} });
     }
+  };
 
-    const updatedProfiles = profiles.filter(p => p.id !== profileId);
-    await handleSaveProfiles(updatedProfiles);
+  const handleCancelEditCustomer = () => {
+    setEditingCustomer(false);
+    setEditingProfileId(null);
+    setEditingProfileMeasurements({});
+  };
 
-    if (activeProfileId === profileId) {
-      if (updatedProfiles.length > 0) {
-        setActiveProfileId(updatedProfiles[0].id);
-      } else {
-        setActiveProfileId(null);
+  const handleSaveCurrentProfileMeasurements = async () => {
+    if (!editingProfileId) return;
+    const updatedProfiles = profiles.map(p => {
+      if (p.id === editingProfileId) {
+        return { ...p, values: editingProfileMeasurements, updated_at: new Date().toISOString() };
       }
+      return p;
+    });
+    await handleSaveProfiles(updatedProfiles);
+  };
+
+  const handleSaveCustomer = async () => {
+    if (!selectedCustomer) return;
+    setMeasError(null);
+    try {
+      const res = await fetch(`/api/customers/${selectedCustomer.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: editCustomerForm.name.trim(),
+          phone: editCustomerForm.phone.trim(),
+          address: editCustomerForm.address.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update customer.');
+
+      setSelectedCustomer(data);
+
+      await handleSaveCurrentProfileMeasurements();
+
+      setEditingCustomer(false);
+      setEditingProfileId(null);
+      setEditingProfileMeasurements({});
+      setMeasSuccess(true);
+      setTimeout(() => setMeasSuccess(false), 4000);
+    } catch (err: any) {
+      setMeasError(err.message);
     }
   };
 
-  // Print Profile helper
-  const handlePrintSingleProfile = (profileId: string) => {
-    setPrintProfileId(profileId);
-    setTimeout(() => {
-      window.print();
-    }, 150);
-  };
-
-  const handlePrintAllProfiles = () => {
+  const handlePrintCustomer = () => {
     setPrintProfileId(null);
     setTimeout(() => {
       window.print();
     }, 150);
+  };
+
+  const handleDeleteCustomer = () => {
+    if (!selectedCustomer) return;
+    if (!confirm(`Are you absolutely sure you want to delete customer "${selectedCustomer.name}"? This will permanently delete the customer record and all associated measurement profiles. This action is irreversible.`)) {
+      return;
+    }
+    fetch(`/api/customers/${selectedCustomer.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to delete customer.');
+        setSelectedCustomer(null);
+        setProfiles([]);
+        setActiveProfileId(null);
+        setMeasurementsUpdatedAt(null);
+        fetchRecentCustomers();
+      })
+      .catch((err: any) => {
+        setMeasError(err.message);
+      });
   };
 
   const handleInitMeasChange = (field: string, val: string) => {
@@ -618,7 +685,7 @@ export default function CustomersSection({
                         <span className="text-slate-400 italic">No phone</span>
                       )}
                     </td>
-                    <td className="p-4 break-words min-w-0 max-w-[250px]">{c.address || <span className="text-slate-400 italic">No address</span>}</td>
+                    <td className="p-4 break-words min-w-0">{c.address || <span className="text-slate-400 italic">No address</span>}</td>
                     <td className="p-4 text-right">
                       <button
                         onClick={() => {
@@ -805,76 +872,129 @@ export default function CustomersSection({
           <div className="space-y-3 animate-fade-in print:hidden">
             {/* Header */}
             <div className="border-b border-slate-100 pb-2 space-y-2">
-              <h1 className="text-base font-bold text-slate-900 tracking-tight uppercase">{selectedCustomer.name}</h1>
+              {editingCustomer ? (
+                <input
+                  type="text"
+                  value={editCustomerForm.name}
+                  onChange={(e) => setEditCustomerForm(f => ({ ...f, name: e.target.value }))}
+                  className="text-base font-bold text-slate-900 tracking-tight uppercase w-full border-b-2 border-sky-300 pb-0.5 bg-transparent focus-visible:outline-none"
+                />
+              ) : (
+                <h1 className="text-base font-bold text-slate-900 tracking-tight uppercase">{selectedCustomer.name}</h1>
+              )}
 
               {/* Attributes display - compact 2-column */}
               <div className="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <div>
-                  <span className="text-3xs font-semibold text-slate-400 uppercase block">Phone Number</span>
-                  {selectedCustomer.phone && !selectedCustomer.phone.startsWith('NO-PHONE-') ? (
-                    <span className="text-xs font-semibold text-slate-700 flex items-center gap-1 mt-0.5">
-                      <Phone className="icon-xs text-slate-400 shrink-0" />
-                      {selectedCustomer.phone}
-                    </span>
-                  ) : (
-                    <span className="text-caption-xs text-slate-400 italic block mt-0.5">No phone</span>
-                  )}
-                </div>
-                <div>
-                  <span className="text-3xs font-semibold text-slate-400 uppercase block">Last Updated</span>
-                  <span className="text-xs font-bold text-slate-700 block mt-0.5">
-                    {getLastUpdated().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                  </span>
-                </div>
-                <div className="col-span-2">
-                  <span className="text-3xs font-semibold text-slate-400 uppercase block">Address</span>
-                  {selectedCustomer.address ? (
-                    <span className="text-xs font-semibold text-slate-700 flex items-center gap-1 mt-0.5">
-                      <MapPin className="icon-xs text-slate-400 shrink-0" />
-                      {selectedCustomer.address}
-                    </span>
-                  ) : (
-                    <span className="text-caption-xs text-slate-400 italic block mt-0.5">No address</span>
-                  )}
-                </div>
+                {editingCustomer ? (
+                  <>
+                    <div>
+                      <span className="text-3xs font-semibold text-slate-400 uppercase block">Phone Number</span>
+                      <input
+                        type="text"
+                        value={editCustomerForm.phone}
+                        onChange={(e) => setEditCustomerForm(f => ({ ...f, phone: e.target.value }))}
+                        className="mt-0.5 px-2 py-1 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 w-full"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-3xs font-semibold text-slate-400 uppercase block">Last Updated</span>
+                      <span className="text-xs font-bold text-slate-700 block mt-0.5">
+                        {getLastUpdated().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      </span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-3xs font-semibold text-slate-400 uppercase block">Address</span>
+                      <input
+                        type="text"
+                        value={editCustomerForm.address}
+                        onChange={(e) => setEditCustomerForm(f => ({ ...f, address: e.target.value }))}
+                        className="mt-0.5 px-2 py-1 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 w-full"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <span className="text-3xs font-semibold text-slate-400 uppercase block">Phone Number</span>
+                      {selectedCustomer.phone && !selectedCustomer.phone.startsWith('NO-PHONE-') ? (
+                        <span className="text-xs font-semibold text-slate-700 flex items-center gap-1 mt-0.5">
+                          <Phone className="icon-xs text-slate-400 shrink-0" />
+                          {selectedCustomer.phone}
+                        </span>
+                      ) : (
+                        <span className="text-caption-xs text-slate-400 italic block mt-0.5">No phone</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-3xs font-semibold text-slate-400 uppercase flex items-center justify-between">
+                        <span>Last Updated</span>
+                        <span className="flex items-center gap-0.5">
+                          <button
+                            onClick={handleStartEditCustomer}
+                            className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 rounded-md cursor-pointer transition-colors"
+                            title="Edit customer"
+                            aria-label="Edit customer"
+                          >
+                            <Edit2 className="icon-xs" />
+                          </button>
+                          <button
+                            onClick={handlePrintCustomer}
+                            className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 rounded-md cursor-pointer transition-colors"
+                            title="Print customer profile"
+                            aria-label="Print customer"
+                          >
+                            <Printer className="icon-xs" />
+                          </button>
+                          <button
+                            onClick={handleDeleteCustomer}
+                            className="p-1 text-red-400 hover:text-red-700 hover:bg-red-50 rounded-md cursor-pointer transition-colors"
+                            title="Delete customer"
+                            aria-label="Delete customer"
+                          >
+                            <Trash2 className="icon-xs" />
+                          </button>
+                        </span>
+                      </span>
+                      <span className="text-xs font-bold text-slate-700 block mt-0.5">
+                        {getLastUpdated().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      </span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-3xs font-semibold text-slate-400 uppercase block">Address</span>
+                      {selectedCustomer.address ? (
+                        <span className="text-xs font-semibold text-slate-700 flex items-center gap-1 mt-0.5">
+                          <MapPin className="icon-xs text-slate-400 shrink-0" />
+                          {selectedCustomer.address}
+                        </span>
+                      ) : (
+                        <span className="text-caption-xs text-slate-400 italic block mt-0.5">No address</span>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
 
-              {/* Extra details inline */}
-              {(selectedCustomer.email || selectedCustomer.notes) && (
-                <div className="text-caption-xs text-slate-600 font-medium">
-                  {selectedCustomer.email && (
-                    <p className="flex items-center gap-1">
-                      <Mail className="icon-xs text-slate-400" />
-                      <span className="font-semibold text-slate-800">{selectedCustomer.email}</span>
-                    </p>
-                  )}
-                  {selectedCustomer.notes && (
-                    <div className="flex items-start gap-1.5 mt-1 text-xs">
-                      <FileText className="icon-xs mt-0.5 shrink-0 text-slate-400" />
-                      <p>{selectedCustomer.notes}</p>
-                    </div>
+              {!editingCustomer && (
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+                  <button onClick={() => onBookOrder(selectedCustomer)} className="btn-primary py-2">
+                    <ShoppingCart className="icon-sm text-brand-sky" />
+                    Create New Order
+                  </button>
+                  {orderHistory.length > 0 && (
+                    <button
+                      onClick={() => setShowHistory(!showHistory)}
+                      className={`py-2 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer rounded-lg border transition-colors ${
+                        showHistory
+                          ? 'bg-sky-50 border-brand-sky text-sky-700'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <FileText className="icon-sm text-sky-500" />
+                      Orders ({orderHistory.length})
+                    </button>
                   )}
                 </div>
               )}
-
-              {/* Actions panel - compact */}
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
-                <button onClick={() => onBookOrder(selectedCustomer)} className="btn-primary py-2">
-                  <ShoppingCart className="icon-sm text-brand-sky" />
-                  Create New Order
-                </button>
-                <button
-                  onClick={() => setShowHistory(!showHistory)}
-                  className={`py-2 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer rounded-lg border transition-colors ${
-                    showHistory
-                      ? 'bg-sky-50 border-brand-sky text-sky-700'
-                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  <FileText className="icon-sm text-sky-500" />
-                  Orders ({orderHistory.length})
-                </button>
-              </div>
             </div>
 
             {/* ORDER HISTORY TOGGLE AREA */}
@@ -942,44 +1062,15 @@ export default function CustomersSection({
             )}
 
             {/* MEASUREMENT PROFILES COMPONENT SECTION */}
+            {!showHistory && (
             <div className="space-y-4 pt-3 border-t border-slate-100">
               
               {/* Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                <div>
-                  <h3 className="text-h3 font-semibold text-slate-900 uppercase tracking-wider font-display flex items-center gap-1.5">
-                    <Layers className="icon-md text-brand-sky" />
-                    MEASUREMENTS
-                  </h3>
-                </div>
-
-                {!isAddingProfile && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        setIsAddingProfile(true);
-                        const enabled = garmentTypes.filter(g => g.enabled);
-                        if (enabled.length > 0) {
-                          setNewProfileGarmentTypeId(enabled[0].id);
-                        }
-                        setNewProfileMeasurements({});
-                      }}
-                      className="px-3 py-1.5 bg-slate-950 hover:bg-slate-800 text-white font-extrabold text-caption-xs uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer transition-[background-color]"
-                    >
-                      <Plus className="icon-xs text-brand-sky" />
-                      Add Profile
-                    </button>
-                    {profiles.length > 0 && (
-                      <button
-                        onClick={handlePrintAllProfiles}
-                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-caption-xs uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer transition-[background-color] border border-slate-200"
-                      >
-                        <Printer className="icon-sm text-slate-500" />
-                        Print All
-                      </button>
-                    )}
-                  </div>
-                )}
+              <div className="border-b border-slate-100 pb-3">
+                <h3 className="text-h3 font-semibold text-slate-900 uppercase tracking-wider font-display flex items-center gap-1.5">
+                  <Layers className="icon-md text-brand-sky" />
+                  MEASUREMENTS
+                </h3>
               </div>
 
               {measSuccess && (
@@ -1022,7 +1113,7 @@ export default function CustomersSection({
                       }}
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 bg-white uppercase tracking-wider"
                     >
-                      {garmentTypes.filter(g => g.enabled).map((g) => (
+                      {garmentTypes.filter(g => g.enabled && !profiles.some(p => p.garment_type_id === g.id)).map((g) => (
                         <option key={g.id} value={g.id}>
                           {g.name}
                         </option>
@@ -1099,7 +1190,10 @@ export default function CustomersSection({
                         type="button"
                         onClick={() => {
                           setActiveProfileId(p.id);
-                          setEditingProfileId(null);
+                          setEditingProfileId(editingCustomer ? p.id : null);
+                          if (editingCustomer) {
+                            setEditingProfileMeasurements({ ...p.values });
+                          }
                         }}
                         className={`px-4 py-2 rounded-xl text-xs font-extrabold uppercase tracking-wider border-2 transition-[background-color,border-color,color] cursor-pointer ${
                           isSelected
@@ -1111,70 +1205,48 @@ export default function CustomersSection({
                       </button>
                     );
                   })}
+                  {editingCustomer && garmentTypes.filter(g => g.enabled && !profiles.some(p => p.garment_type_id === g.id)).length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAddingProfile(true);
+                        const available = garmentTypes.filter(g => g.enabled && !profiles.some(p => p.garment_type_id === g.id));
+                        if (available.length > 0) {
+                          setNewProfileGarmentTypeId(available[0].id);
+                        }
+                        setNewProfileMeasurements({});
+                      }}
+                      className="px-3 py-2 rounded-xl text-xs font-extrabold uppercase tracking-wider border-2 border-dashed border-slate-300 text-slate-400 hover:text-sky-700 hover:border-sky-400 hover:bg-sky-50 transition-colors cursor-pointer flex items-center gap-1"
+                    >
+                      <Plus className="icon-xs" />
+                      Add
+                    </button>
+                  )}
                 </div>
               )}
 
               {/* Opened Profile View Area */}
               {!isAddingProfile && activeProfile && (
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 animate-fade-in">
-                  <div className="flex items-center justify-between border-b border-slate-200 pb-2 flex-wrap gap-2">
-                    <div />
-
-                    <div className="flex items-center gap-1.5">
-                      {editingProfileId === activeProfile.id ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => setEditingProfileId(null)}
-                            className="px-2.5 py-1.5 text-slate-500 hover:text-slate-800 font-extrabold text-caption-xs uppercase tracking-wider cursor-pointer"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleEditProfileSave(activeProfile.id)}
-                            className="px-3 py-1.5 bg-brand-sidebar hover:bg-brand-active text-white font-black text-caption-xs uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
-                          >
-                            <Check className="icon-sm text-brand-sky" />
-                            Save
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingProfileId(activeProfile.id);
-                              setEditingProfileMeasurements({ ...activeProfile.values });
-                            }}
-                            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-200/50 rounded-lg cursor-pointer transition-colors"
-                            title="Edit measurements"
-                            aria-label="Edit profile"
-                          >
-                            <Edit2 className="icon-sm" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handlePrintSingleProfile(activeProfile.id)}
-                            className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-200/50 rounded-lg cursor-pointer transition-colors"
-                            title="Print profile sheet"
-                            aria-label="Print measurements"
-                          >
-                            <Printer className="icon-sm" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteProfile(activeProfile.id, activeProfile.garment_name)}
-                            className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg cursor-pointer transition-colors"
-                            title="Delete profile"
-                            aria-label="Delete profile"
-                          >
-                            <Trash2 className="icon-sm" />
-                          </button>
-                        </>
-                      )}
+                  {editingProfileId === activeProfile.id && !editingCustomer && (
+                    <div className="flex items-center justify-end border-b border-slate-200 pb-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setEditingProfileId(null)}
+                        className="px-2.5 py-1.5 text-slate-500 hover:text-slate-800 font-extrabold text-caption-xs uppercase tracking-wider cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleEditProfileSave(activeProfile.id)}
+                        className="px-3 py-1.5 bg-brand-sidebar hover:bg-brand-active text-white font-black text-caption-xs uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <Check className="icon-sm text-brand-sky" />
+                        Save
+                      </button>
                     </div>
-                  </div>
+                  )}
 
                   {/* Render fields inside profile */}
                   {editingProfileId === activeProfile.id ? (
@@ -1313,7 +1385,24 @@ export default function CustomersSection({
                 </div>
               )}
 
+              {editingCustomer && (
+                <div className="grid grid-cols-2 gap-2 pt-4 border-t border-slate-100">
+                  <button onClick={handleSaveCustomer} className="btn-primary py-2.5">
+                    <Check className="icon-sm text-brand-sky" />
+                    Save Changes
+                  </button>
+                  <button
+                    onClick={handleCancelEditCustomer}
+                    className="py-2.5 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer rounded-lg border transition-colors bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                  >
+                    <X className="icon-sm" />
+                    Cancel
+                  </button>
+                </div>
+              )}
+
             </div>
+            )}
           </div>
         ) : isCreating ? (
           <div className="flex flex-col h-full animate-fade-in print:hidden">
@@ -1420,13 +1509,6 @@ export default function CustomersSection({
               <p><strong>Measurement Status:</strong> {profiles.length > 0 ? 'Active Profiles Available' : 'No Profiles'}</p>
             </div>
           </div>
-
-          {selectedCustomer.notes && (
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-sm">
-              <p className="font-semibold border-b border-slate-200 pb-1 mb-1">Customer Notes / Style Preferences:</p>
-              <p className="italic text-slate-700">{selectedCustomer.notes}</p>
-            </div>
-          )}
 
           {/* Profiles printable content */}
           <div className="space-y-6">

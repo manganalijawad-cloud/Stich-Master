@@ -24,6 +24,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAutoLaunch: () => ipcRenderer.invoke('get-auto-launch'),
   setAutoLaunch: (enable) => ipcRenderer.invoke('set-auto-launch', enable),
 
+  // Window controls (frameless)
+  minimize: () => ipcRenderer.invoke('window-minimize'),
+  maximize: () => ipcRenderer.invoke('window-maximize'),
+  close: () => ipcRenderer.invoke('window-close'),
+  isMaximized: () => ipcRenderer.invoke('window-is-maximized'),
+  onMaximizedChange: (callback) => {
+    const handler = (_event, maximized) => callback(maximized);
+    ipcRenderer.on('window-maximized-changed', handler);
+    return () => ipcRenderer.removeListener('window-maximized-changed', handler);
+  },
+
   // Auto-update controls
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   installUpdate: () => ipcRenderer.invoke('install-update'),

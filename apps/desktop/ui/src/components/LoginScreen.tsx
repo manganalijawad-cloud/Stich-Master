@@ -70,7 +70,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   };
 
   return (
-    <div className="min-h-screen bg-brand-sidebar flex flex-col justify-center items-center px-4 font-sans">
+    <div className="h-full bg-brand-sidebar flex flex-col justify-center items-center px-4 font-sans">
       <div className="w-full max-w-sm">
         <div className="text-center mb-4">
           <img src="/favicon.svg" alt="Hello Darzi" className="w-16 h-16 object-contain mx-auto mb-2" />

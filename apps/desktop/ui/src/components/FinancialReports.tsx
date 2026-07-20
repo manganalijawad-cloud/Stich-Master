@@ -341,7 +341,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
 
       {/* Profit (if inventory data exists) */}
       {stats.hasExpenses && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="bg-rose-50 border border-rose-100 p-3 rounded-xl">
             <span className="text-3xs font-bold text-rose-500 uppercase tracking-wider">Material Costs</span>
             <span className="text-base font-bold text-rose-700 font-display block mt-0.5">{currency}{stats.totalExpenses.toLocaleString()}</span>

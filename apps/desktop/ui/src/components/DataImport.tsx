@@ -544,7 +544,7 @@ export default function DataImport({ token, garmentTypes, onComplete }: DataImpo
                 </div>
               )}
               {importResults.details && importResults.details.length > 0 && (
-                <div className="max-h-[30vh] overflow-y-auto border border-slate-200 rounded-lg">
+                <div className="max-h-[30vh] overflow-y-auto overflow-x-auto border border-slate-200 rounded-lg">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="bg-slate-50">
