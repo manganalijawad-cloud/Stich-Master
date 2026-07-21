@@ -3,13 +3,25 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 const buildUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const buildKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-let _supabase: SupabaseClient = createClient(buildUrl, buildKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-  }
-});
+let _supabase: SupabaseClient;
+
+function createPlaceholderClient(): SupabaseClient {
+  return createClient('https://placeholder.supabase.co', 'placeholder-key', {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+  });
+}
+
+if (buildUrl && buildKey) {
+  _supabase = createClient(buildUrl, buildKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    }
+  });
+} else {
+  _supabase = createPlaceholderClient();
+}
 
 export const supabase = _supabase;
 

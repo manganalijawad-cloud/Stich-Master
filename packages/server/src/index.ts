@@ -3601,18 +3601,22 @@ if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
   let distPath = path.join(process.cwd(), "dist");
   if (!fs.existsSync(path.join(distPath, "index.html"))) {
     const fallbacks = [
+      __dirname,
       path.join(__dirname, "dist"),
       path.join(__dirname, "..", "dist"),
     ];
     for (const p of fallbacks) {
-      if (fs.existsSync(p)) { distPath = p; break; }
+      if (fs.existsSync(path.join(p, "index.html"))) { distPath = p; break; }
     }
   }
   if (fs.existsSync(path.join(distPath, "index.html"))) {
+    console.log(`Serving static files from: ${distPath}`);
     app.use(express.static(distPath));
     app.get("*", (req: Request, res: Response) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
+  } else {
+    console.warn(`Static files not found at ${distPath} — SPA catch-all not registered`);
   }
 }
 
@@ -3675,14 +3679,16 @@ async function startServer(preferredPort?: number): Promise<number> {
       let distPath = path.join(process.cwd(), "dist");
       if (!fs.existsSync(path.join(distPath, "index.html"))) {
         const fallbacks = [
+          __dirname,
           path.join(__dirname, "dist"),
           path.join(__dirname, "..", "dist"),
         ];
         for (const p of fallbacks) {
-          if (fs.existsSync(p)) { distPath = p; break; }
+          if (fs.existsSync(path.join(p, "index.html"))) { distPath = p; break; }
         }
       }
       if (fs.existsSync(path.join(distPath, "index.html"))) {
+        console.log(`[Dev fallback] Serving static files from: ${distPath}`);
         app.use(express.static(distPath));
         app.get("*", (req: Request, res: Response) => {
           res.sendFile(path.join(distPath, "index.html"));

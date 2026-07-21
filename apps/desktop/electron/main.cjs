@@ -32,6 +32,8 @@ function loadProductionConfig() {
       if (config.SUPABASE_URL) process.env.SUPABASE_URL = config.SUPABASE_URL;
       if (config.SUPABASE_ANON_KEY) process.env.SUPABASE_ANON_KEY = config.SUPABASE_ANON_KEY;
       if (config.SUPABASE_SERVICE_ROLE_KEY) process.env.SUPABASE_SERVICE_ROLE_KEY = config.SUPABASE_SERVICE_ROLE_KEY;
+      if (config.VITE_SUPABASE_URL) process.env.VITE_SUPABASE_URL = config.VITE_SUPABASE_URL;
+      if (config.VITE_SUPABASE_ANON_KEY) process.env.VITE_SUPABASE_ANON_KEY = config.VITE_SUPABASE_ANON_KEY;
       return true;
     }
   } catch (err) {
@@ -41,12 +43,12 @@ function loadProductionConfig() {
 }
 
 function validateConfig() {
-  const url = process.env.SUPABASE_URL || '';
-  const key = process.env.SUPABASE_ANON_KEY || '';
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+  const key = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
   if (!url || !key) {
     const missing = [];
-    if (!url) missing.push('SUPABASE_URL');
-    if (!key) missing.push('SUPABASE_ANON_KEY');
+    if (!url && !process.env.VITE_SUPABASE_URL) missing.push('SUPABASE_URL');
+    if (!key && !process.env.VITE_SUPABASE_ANON_KEY) missing.push('SUPABASE_ANON_KEY');
     dialog.showErrorBox(
       'Configuration Required',
       'Hello Darzi cannot start without Supabase configuration.\n\n' +
@@ -272,7 +274,7 @@ async function createWindow() {
     frame: false,
     backgroundColor: '#F8FAFC',
     show: false,
-    icon: (function() { const p = path.join(__dirname, '..', '..', '..', 'dist', 'icon.ico'); try { if (fs.existsSync(p)) return p; } catch {} return path.join(__dirname, '..', '..', '..', 'public', 'icon.ico'); })(),
+    icon: (function() { const candidates = [ path.join(process.resourcesPath || '', 'dist', 'icon.ico'), path.join(__dirname, 'icon.ico'), ]; for (const c of candidates) { try { if (fs.existsSync(c)) return c; } catch {} } return undefined; })(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
@@ -302,8 +304,35 @@ async function createWindow() {
     mainWindow.show();
   });
 
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+  let loadRetries = 0;
+  const MAX_LOAD_RETRIES = 5;
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     console.error('Failed to load page:', errorCode, errorDescription);
+    if (loadRetries < MAX_LOAD_RETRIES && mainWindow) {
+      loadRetries++;
+      console.log(`Retrying load (${loadRetries}/${MAX_LOAD_RETRIES})...`);
+      setTimeout(() => {
+        if (mainWindow) {
+          mainWindow.loadURL(`http://localhost:${serverPort}`).catch(e => console.error('Retry failed:', e));
+        }
+      }, 1000 * loadRetries);
+    }
+  });
+
+  mainWindow.webContents.on('crashed', () => {
+    console.error('Renderer process crashed');
+    dialog.showErrorBox(
+      'Application Error',
+      'The application encountered an error and needs to reload.'
+    );
+    if (mainWindow) {
+      mainWindow.loadURL(`http://localhost:${serverPort}`).catch(() => {});
+    }
+  });
+
+  mainWindow.on('unresponsive', () => {
+    console.warn('Window became unresponsive');
   });
 
   const url = `http://localhost:${serverPort}`;
