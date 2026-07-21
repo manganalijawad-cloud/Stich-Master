@@ -47,9 +47,8 @@ const missing = [];
 if (!config.SUPABASE_URL) missing.push('SUPABASE_URL');
 if (!config.SUPABASE_ANON_KEY) missing.push('SUPABASE_ANON_KEY');
 if (missing.length > 0) {
-  console.warn(`WARNING: Missing Supabase configuration: ${missing.join(', ')}`);
-  console.warn('The packaged application will fail at startup with a configuration error.');
-  process.exitCode = 1;
-} else {
-  console.log('✓ Production config generated: config/production.json');
+  console.error(`ERROR: Missing Supabase configuration: ${missing.join(', ')}`);
+  console.error('Set these values in your .env file or as environment variables.');
+  process.exit(1);
 }
+console.log('✓ Production config generated: config/production.json');

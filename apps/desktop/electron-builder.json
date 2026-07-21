@@ -7,12 +7,17 @@
   },
   "files": [
     "../../dist/**/*",
-    "electron/**/*",
-    "../../config/**/*"
+    "electron/**/*"
   ],
   "asarUnpack": [
-    "../../dist/**",
-    "../../config/**"
+    "../../dist/**"
+  ],
+  "extraResources": [
+    {
+      "from": "../../config",
+      "to": "config",
+      "filter": ["**/*"]
+    }
   ],
   "win": {
     "icon": "../../public/icon.ico",
