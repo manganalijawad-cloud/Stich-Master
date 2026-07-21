@@ -17,7 +17,7 @@
     "dev:desktop": "concurrently -k \"npm run dev:server\" \"wait-on http://localhost:3000 && npm run start:desktop\"",
     "start:desktop": "electron apps/desktop/electron/main.cjs",
     "build:ui": "vite build",
-    "build:server": "esbuild packages/server/src/index.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs --external:better-sqlite3",
+    "build:server": "esbuild packages/server/src/index.ts --bundle --platform=node --format=cjs --sourcemap --outfile=dist/server.cjs --external:better-sqlite3",
     "build": "npm run build:ui",
     "build:all": "npm run build:ui && npm run build:server",
     "start": "node dist/server.cjs",

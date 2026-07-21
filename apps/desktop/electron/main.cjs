@@ -24,23 +24,18 @@ app.setAppUserModelId('com.hellodarzi.app');
 function loadProductionConfig() {
   if (isDev) return true;
 
-  const searchPaths = [
-    path.join(__dirname, '..', '..', '..', 'config', 'production.json'),
-    path.join(process.resourcesPath || '', 'config', 'production.json'),
-  ];
+  const configPath = path.join(process.resourcesPath || '', 'config', 'production.json');
 
-  for (const configPath of searchPaths) {
-    try {
-      if (fs.existsSync(configPath)) {
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        if (config.SUPABASE_URL) process.env.SUPABASE_URL = config.SUPABASE_URL;
-        if (config.SUPABASE_ANON_KEY) process.env.SUPABASE_ANON_KEY = config.SUPABASE_ANON_KEY;
-        if (config.SUPABASE_SERVICE_ROLE_KEY) process.env.SUPABASE_SERVICE_ROLE_KEY = config.SUPABASE_SERVICE_ROLE_KEY;
-        return true;
-      }
-    } catch (err) {
-      console.error('Failed to load config from', configPath, err.message);
+  try {
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      if (config.SUPABASE_URL) process.env.SUPABASE_URL = config.SUPABASE_URL;
+      if (config.SUPABASE_ANON_KEY) process.env.SUPABASE_ANON_KEY = config.SUPABASE_ANON_KEY;
+      if (config.SUPABASE_SERVICE_ROLE_KEY) process.env.SUPABASE_SERVICE_ROLE_KEY = config.SUPABASE_SERVICE_ROLE_KEY;
+      return true;
     }
+  } catch (err) {
+    console.error('Failed to load config from', configPath, err.message);
   }
   return false;
 }
@@ -334,7 +329,7 @@ async function startExpressServer() {
   }
 
   try {
-    const serverPath = path.join(__dirname, '..', '..', '..', 'dist', 'server.cjs');
+    const serverPath = path.join(process.resourcesPath || '', 'dist', 'server.cjs');
     const serverModule = require(serverPath);
     serverPort = await serverModule.startServer(serverModule.PORT);
   } catch (err) {

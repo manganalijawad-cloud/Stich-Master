@@ -6,13 +6,14 @@
     "output": "../../release"
   },
   "files": [
-    "../../dist/**/*",
     "electron/**/*"
   ],
-  "asarUnpack": [
-    "../../dist/**"
-  ],
   "extraResources": [
+    {
+      "from": "../../dist",
+      "to": "dist",
+      "filter": ["**/*"]
+    },
     {
       "from": "../../config",
       "to": "config",
