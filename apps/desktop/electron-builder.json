@@ -1,6 +1,7 @@
 {
   "appId": "com.hellodarzi.app",
   "productName": "Hello Darzi",
+  "electronVersion": "43.1.1",
   "directories": {
     "output": "../../release"
   },
