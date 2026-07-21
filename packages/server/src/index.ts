@@ -14,8 +14,10 @@ import { createClient as supabaseCreateClient, SupabaseClient } from "@supabase/
 import * as db from "./db";
 import * as sync from "./sync";
 
+let localDbAvailable = false;
+
 function useLocalDb(): boolean {
-  return process.env.ELECTRON_RUN === "true" && db.db != null;
+  return process.env.ELECTRON_RUN === "true" && localDbAvailable;
 }
 
 // In development, load .env via dotenv.
@@ -3628,11 +3630,13 @@ async function startServer(preferredPort?: number): Promise<number> {
     initialized = true;
 
     await checkDatabaseSchema();
-    if (useLocalDb()) {
+    if (process.env.ELECTRON_RUN === "true") {
       try {
         db.initDatabase();
+        localDbAvailable = true;
         console.log("SQLite database initialized successfully");
       } catch (err: any) {
+        localDbAvailable = false;
         console.error("Failed to initialize SQLite database:", err.message);
       }
     }
