@@ -41,7 +41,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
       - name: Build installer
-        run: npx electron-builder --win --x64 --publish always --config apps/desktop/package.json
+        run: npx electron-builder --win --x64 --publish always --config apps/desktop/electron-builder.json
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

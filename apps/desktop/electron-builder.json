@@ -1,0 +1,40 @@
+{
+  "appId": "com.hellodarzi.app",
+  "productName": "Hello Darzi",
+  "directories": {
+    "output": "../../release"
+  },
+  "files": [
+    "../../dist/**/*",
+    "electron/**/*",
+    "../../config/**/*"
+  ],
+  "asarUnpack": [
+    "../../dist/**",
+    "../../config/**"
+  ],
+  "win": {
+    "icon": "../../public/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Hello Darzi",
+    "runAfterFinish": true
+  },
+  "publish": {
+    "provider": "github",
+    "owner": "manganalijawad-cloud",
+    "repo": "Stich-Master",
+    "releaseType": "release"
+  }
+}
