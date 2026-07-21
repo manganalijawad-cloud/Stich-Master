@@ -21,7 +21,7 @@
     "build": "npm run build:ui",
     "build:all": "npm run build:ui && npm run build:server",
     "start": "node dist/server.cjs",
-    "electron:build": "npm run build:all && node scripts/bundle-config.cjs && npx electron-builder --win --x64 --config apps/desktop/package.json",
+    "electron:build": "npm run build:all && node scripts/bundle-config.cjs && npx electron-builder --win --x64 --config apps/desktop/electron-builder.json --project apps/desktop",
     "clean": "rm -rf dist release config",
     "lint": "tsc --noEmit"
   },
