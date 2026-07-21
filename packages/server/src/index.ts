@@ -15,7 +15,7 @@ import * as db from "./db";
 import * as sync from "./sync";
 
 function useLocalDb(): boolean {
-  return process.env.ELECTRON_RUN === "true";
+  return process.env.ELECTRON_RUN === "true" && db.db != null;
 }
 
 // In development, load .env via dotenv.
