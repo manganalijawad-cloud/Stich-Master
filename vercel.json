@@ -1,7 +1,9 @@
 {
-  "name": "hello-darzi",
   "version": 2,
+  "buildCommand": "echo 'Static site — nothing to build'",
+  "outputDirectory": "apps/website",
   "framework": null,
+  "installCommand": "echo 'no install needed'",
   "cleanUrls": true,
   "trailingSlash": false,
   "headers": [
