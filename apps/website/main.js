@@ -172,7 +172,9 @@
   }
 
   function initDownload(manifest) {
-    downloadUrl = 'release/' + manifest.filename;
+    if (!manifest) { showError(); return; }
+    downloadUrl = manifest.downloadUrl || (manifest.filename ? 'release/' + manifest.filename : null);
+    if (!downloadUrl) { showError(); return; }
 
     downloadBtns.forEach(function (btn) {
       setReady(btn);
@@ -183,7 +185,8 @@
     });
 
     if (versionEl) {
-      versionEl.innerHTML = '<span>Version ' + manifest.version + ' \u2014 Windows 10 and above</span>';
+      var ver = manifest.version || '';
+      versionEl.innerHTML = '<span>' + (ver ? 'Version ' + ver + ' \u2014 ' : '') + 'Windows 10 and above</span>';
     }
   }
 

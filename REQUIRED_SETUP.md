@@ -279,6 +279,9 @@ After installing the app, Windows will recognize `hellodarzi://` links and open 
 | `VITE_SUPABASE_ANON_KEY` | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` | All |
 | `SUPABASE_URL` | `https://vecwyofzniisruyxnzwe.supabase.co` | All |
 | `SUPABASE_ANON_KEY` | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` | All |
+| `GITHUB_TOKEN` | Your GitHub personal access token (classic, with `repo` scope) | All |
+
+> **Why `GITHUB_TOKEN`?** During the Vercel build, `build.mjs` fetches the latest release from `github.com/manganalijawad-cloud/Stich-Master` to get the download URL for the Windows installer. Since the repo is private, a token with `repo` scope is required. [Create a classic token here](https://github.com/settings/tokens).
 
 ### Step 6.2 — Deploy
 
