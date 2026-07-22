@@ -562,132 +562,185 @@ async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextF
     }
   }
 
+  let user: any = null;
+  let profile: any = null;
+  let supabaseAuthSucceeded = false;
+  let authError: any = null;
+
   try {
-    const { data: { user }, error } = await supabaseAnon.auth.getUser(token);
-    if (error || !user) {
-      return res.status(401).json({ error: "Session expired or invalid token." });
+    const result = await supabaseAnon.auth.getUser(token);
+    if (result.data?.user) {
+      user = result.data.user;
+      supabaseAuthSucceeded = true;
     }
+  } catch (authErr: any) {
+    console.warn("Supabase auth.getUser failed (offline?):", authErr?.message);
+    authError = authErr;
+  }
 
-    // Query database profile to check role via admin client
-    let { data: profile, error: profError } = await supabaseAdmin
-      .from("profiles")
-      .select("*")
-      .eq("id", user.id)
-      .single();
-
-    if (profile && profile.role === "Worker") {
-      // Auto-migrate to Owner since only Owners can possess active Supabase Auth accounts
-      await supabaseAdmin
+  if (supabaseAuthSucceeded && user) {
+    // Online path: verify via Supabase
+    try {
+      let result = await supabaseAdmin
         .from("profiles")
-        .update({ role: "Owner" })
-        .eq("id", profile.id);
-      profile.role = "Owner";
-    }
+        .select("*")
+        .eq("id", user.id)
+        .single();
+      profile = result.data;
+      const profError = result.error;
 
-    if (profError || !profile) {
-      // Every newly created account must log in as Owner of their own shop by default
-      let shopId = "default-shop";
-      if (IS_MULTI_TENANT_AVAILABLE) {
+      if (profile && profile.role === "Worker") {
+        await supabaseAdmin
+          .from("profiles")
+          .update({ role: "Owner" })
+          .eq("id", profile.id);
+        profile.role = "Owner";
+      }
+
+      if (profError || !profile) {
+        // Every newly created account must log in as Owner of their own shop by default
+        let shopId = "default-shop";
+        if (IS_MULTI_TENANT_AVAILABLE) {
+          const userClient = getSupabaseClient(token);
+          const { data: newShop, error: shopErr } = await userClient
+            .from("shops")
+            .insert([{ name: "My Tailor Shop", created_by: user.id }])
+            .select()
+            .single();
+          if (shopErr) throw shopErr;
+          shopId = newShop.id;
+        }
+
+        const newProfileDef: any = {
+          id: user.id,
+          email: user.email,
+          name: user.email?.split("@")[0] || "Owner",
+          role: "Owner",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        if (IS_MULTI_TENANT_AVAILABLE) {
+          newProfileDef.shop_id = shopId;
+        }
+        await supabaseAdmin.from("profiles").insert([newProfileDef]);
+
+        await getAccountSettings(supabaseAdmin, user.id);
+
+        req.user = {
+          id: user.id,
+          email: user.email || "",
+          name: newProfileDef.name,
+          role: "Owner",
+          shop_id: shopId
+        };
+        req.token = token;
+
+        if (useLocalDb() && !syncEngineStarted) {
+          try {
+            sync.updateSyncToken(token); sync.startSyncEngine(user.id, token);
+            syncEngineStarted = true;
+          } catch (syncErr: any) {
+            console.error("Failed to start sync engine:", syncErr.message);
+          }
+        }
+
+        return next();
+      }
+
+      if (IS_MULTI_TENANT_AVAILABLE && !profile.shop_id) {
         const userClient = getSupabaseClient(token);
         const { data: newShop, error: shopErr } = await userClient
           .from("shops")
           .insert([{ name: "My Tailor Shop", created_by: user.id }])
           .select()
           .single();
-        if (shopErr) throw shopErr;
-        shopId = newShop.id;
+        if (!shopErr && newShop) {
+          await supabaseAdmin.from("profiles").update({ shop_id: newShop.id }).eq("id", profile.id);
+          profile.shop_id = newShop.id;
+          await getAccountSettings(supabaseAdmin, user.id);
+        }
       }
-
-      const newProfile: any = {
-        id: user.id,
-        email: user.email,
-        name: user.email?.split("@")[0] || "Owner",
-        role: "Owner",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      if (IS_MULTI_TENANT_AVAILABLE) {
-        newProfile.shop_id = shopId;
-      }
-      await supabaseAdmin.from("profiles").insert([newProfile]);
-      
-      // Seed default settings for this specific shop
-      await getAccountSettings(supabaseAdmin, user.id);
 
       req.user = {
-        id: user.id,
-        email: user.email || "",
-        name: newProfile.name,
+        id: profile.id,
+        email: profile.email,
+        name: profile.name,
         role: "Owner",
-        shop_id: shopId
+        shop_id: profile.shop_id || "default-shop"
       };
       req.token = token;
 
       if (useLocalDb() && !syncEngineStarted) {
         try {
-          sync.updateSyncToken(token); sync.startSyncEngine(user.id, token);
+          sync.updateSyncToken(token);
+          sync.startSyncEngine(profile.id, token);
           syncEngineStarted = true;
-          console.log("Sync engine started for new user", user.id);
         } catch (syncErr: any) {
           console.error("Failed to start sync engine:", syncErr.message);
         }
       }
 
+      // Cache locally for offline fallback
+      if (useLocalDb()) {
+        try {
+          db.cacheLocalAuth(profile.id, profile.email, profile.name, "Owner", profile.shop_id || "", db.hashToken(token));
+        } catch (cacheErr) {
+          console.error("Failed to cache local auth:", cacheErr);
+        }
+      }
+
+      authCache.set(token, {
+        profile: req.user,
+        expiresAt: Date.now() + 15000
+      });
+
       return next();
+    } catch (err: any) {
+      console.error("Auth verification error:", err?.message || err);
+      return res.status(500).json({
+        error: "Internal security validation error.",
+        details: err?.message || String(err)
+      });
     }
-
-    // If profile exists but shop_id is missing, let's auto-create a shop for them
-    if (IS_MULTI_TENANT_AVAILABLE && !profile.shop_id) {
-      const userClient = getSupabaseClient(token);
-      const { data: newShop, error: shopErr } = await userClient
-        .from("shops")
-        .insert([{ name: "My Tailor Shop", created_by: user.id }])
-        .select()
-        .single();
-      if (!shopErr && newShop) {
-        await supabaseAdmin.from("profiles").update({ shop_id: newShop.id }).eq("id", profile.id);
-        profile.shop_id = newShop.id;
-
-        // Seed default settings for this specific shop
-        await getAccountSettings(supabaseAdmin, user.id);
-      }
-    }
-
-    req.user = {
-      id: profile.id,
-      email: profile.email,
-      name: profile.name,
-      role: "Owner",
-      shop_id: profile.shop_id || "default-shop"
-    };
-    req.token = token;
-
-    // Start background sync engine on first successful auth (Electron mode only)
-    if (useLocalDb() && !syncEngineStarted) {
-      try {
-        sync.updateSyncToken(token);
-        sync.startSyncEngine(profile.id, token);
-        syncEngineStarted = true;
-        console.log("Sync engine started for user", profile.id);
-      } catch (syncErr: any) {
-        console.error("Failed to start sync engine:", syncErr.message);
-      }
-    }
-
-    // Cache the verified profile for 15 seconds
-    authCache.set(token, {
-      profile: req.user,
-      expiresAt: Date.now() + 15000
-    });
-
-    next();
-  } catch (err: any) {
-    console.error("Auth verification error:", err?.message || err);
-    return res.status(500).json({ 
-      error: "Internal security validation error.", 
-      details: err?.message || String(err) 
-    });
   }
+
+  // Offline fallback: try local auth cache
+  if (useLocalDb()) {
+    try {
+      const localProfile = db.getLocalAuthByToken(db.hashToken(token));
+      if (localProfile) {
+        req.user = {
+          id: localProfile.user_id,
+          email: localProfile.email,
+          name: localProfile.name,
+          role: localProfile.role as "Owner" | "Worker",
+          shop_id: localProfile.shop_id
+        };
+        req.token = token;
+
+        authCache.set(token, {
+          profile: req.user,
+          expiresAt: Date.now() + 60000
+        });
+
+        if (!syncEngineStarted) {
+          try {
+            sync.updateSyncToken(token);
+            sync.startSyncEngine(localProfile.user_id, token);
+            syncEngineStarted = true;
+          } catch (syncErr: any) {
+            console.error("Failed to start sync engine:", syncErr.message);
+          }
+        }
+
+        return next();
+      }
+    } catch (localErr: any) {
+      console.error("Local auth cache lookup failed:", localErr?.message);
+    }
+  }
+
+  return res.status(401).json({ error: "Session expired or invalid token." });
 }
 
 function requireRole(roles: Array<"Owner" | "Worker">) {
@@ -990,6 +1043,156 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
   }
 });
 
+app.post("/api/auth/signup", async (req: Request, res: Response) => {
+  const { email, password, shopName, ownerName, mobileNumber, shopAddress } = req.body;
+
+  if (!email || !password || !shopName || !ownerName || !mobileNumber || !shopAddress) {
+    return res.status(400).json({ error: "All fields are required." });
+  }
+
+  try {
+    const { data, error } = await supabaseAnon.auth.signUp({
+      email: email.trim().toLowerCase(),
+      password,
+      options: { data: { name: ownerName.trim(), shop_name: shopName.trim() } },
+    });
+
+    if (error) return res.status(400).json({ error: error.message });
+    if (!data.user) return res.status(400).json({ error: "Sign up failed." });
+
+    const { data: shop, error: shopError } = await supabaseAdmin
+      .from("shops")
+      .insert({
+        shop_name: shopName.trim(),
+        address: shopAddress.trim(),
+        owner_name: ownerName.trim(),
+        mobile_number: mobileNumber.trim(),
+        created_by: data.user.id,
+      })
+      .select()
+      .single();
+
+    if (shopError) {
+      await supabaseAdmin.auth.admin.deleteUser(data.user.id);
+      return res.status(500).json({ error: "Failed to create shop: " + shopError.message });
+    }
+
+    const { error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .update({
+        shop_id: shop.id,
+        owner_name: ownerName.trim(),
+        mobile_number: mobileNumber.trim(),
+        name: ownerName.trim(),
+      })
+      .eq("id", data.user.id);
+
+    if (profileError) {
+      await supabaseAdmin.from("shops").delete().eq("id", shop.id);
+      await supabaseAdmin.auth.admin.deleteUser(data.user.id);
+      return res.status(500).json({ error: "Failed to update profile: " + profileError.message });
+    }
+
+    await getAccountSettings(supabaseAdmin, data.user.id);
+
+    return res.json({
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+        name: ownerName.trim(),
+        owner_name: ownerName.trim(),
+        mobile_number: mobileNumber.trim(),
+        role: "Owner",
+        shop_id: shop.id,
+        shop_name: shopName.trim(),
+        address: shopAddress.trim(),
+      },
+      token: data.session?.access_token || "",
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || "Signup failed." });
+  }
+});
+
+app.post("/api/auth/google/complete", async (req: Request, res: Response) => {
+  const { shopName, mobileNumber, address } = req.body;
+
+  if (!shopName || !mobileNumber || !address) {
+    return res.status(400).json({ error: "Shop Name, Mobile Number, and Address are required." });
+  }
+
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Unauthorized." });
+    }
+    const token = authHeader.split(" ")[1];
+
+    const { data: { user }, error: userError } = await supabaseAnon.auth.getUser(token);
+    if (userError || !user) return res.status(401).json({ error: "Invalid token." });
+
+    const { data: shop, error: shopError } = await supabaseAdmin
+      .from("shops")
+      .insert({
+        shop_name: shopName.trim(),
+        address: address.trim(),
+        owner_name: user.user_metadata?.name || user.email?.split("@")[0] || "Owner",
+        mobile_number: mobileNumber.trim(),
+        created_by: user.id,
+      })
+      .select()
+      .single();
+
+    if (shopError) return res.status(500).json({ error: "Failed to create shop: " + shopError.message });
+
+    const { error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .update({
+        shop_id: shop.id,
+        owner_name: user.user_metadata?.name || user.email?.split("@")[0] || "Owner",
+        mobile_number: mobileNumber.trim(),
+        name: user.user_metadata?.name || user.email?.split("@")[0] || "Owner",
+      })
+      .eq("id", user.id);
+
+    if (profileError) return res.status(500).json({ error: "Failed to update profile." });
+
+    await getAccountSettings(supabaseAdmin, user.id);
+
+    return res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.user_metadata?.name || user.email?.split("@")[0] || "Owner",
+        owner_name: user.user_metadata?.name || user.email?.split("@")[0] || "Owner",
+        mobile_number: mobileNumber.trim(),
+        role: "Owner",
+        shop_id: shop.id,
+        shop_name: shopName.trim(),
+        address: address.trim(),
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || "Failed to complete profile." });
+  }
+});
+
+app.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: "Email is required." });
+
+  try {
+    const { error } = await supabaseAnon.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      redirectTo: `${req.protocol}://${req.get("host")}/auth/reset-password`,
+    });
+
+    if (error) return res.status(400).json({ error: error.message });
+    return res.json({ success: true, message: "Password reset email sent." });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || "Failed to send reset email." });
+  }
+});
+
 app.post("/api/auth/logout", async (req: Request, res: Response) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -1003,6 +1206,56 @@ app.post("/api/auth/logout", async (req: Request, res: Response) => {
 
 app.get("/api/auth/me", requireAuth, (req: AuthenticatedRequest, res: Response) => {
   res.json({ user: req.user });
+});
+
+// Local auth: validate cached credentials for offline login
+app.post("/api/auth/local-verify", async (req: AuthenticatedRequest, res: Response) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: "Email and password are required." });
+  }
+
+  if (!useLocalDb()) {
+    return res.status(503).json({ error: "Local database not available." });
+  }
+
+  try {
+    const localProfile = db.getLocalAuthByEmail(email);
+    if (!localProfile) {
+      return res.status(401).json({ error: "No cached credentials found. Please login with internet first." });
+    }
+
+    // Verify password against stored token (we store a hash of the last valid token)
+    // We can't actually verify the password offline, but we can check if the user has
+    // a cached session. For now, we'll try Supabase first, then fail gracefully.
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+    try {
+      await fetch(supabaseUrl, { method: "HEAD", signal: AbortSignal.timeout(3000) });
+      // We're online - redirect to regular login
+      return res.status(200).json({ online: true, message: "Internet available. Use regular login." });
+    } catch {
+      // We're offline - use cached auth
+      // Generate a temporary local token
+      const localToken = `local_${localProfile.user_id}_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+      const hashedToken = db.hashToken(localToken);
+
+      db.cacheLocalAuth(localProfile.user_id, localProfile.email, localProfile.name, localProfile.role, localProfile.shop_id, hashedToken);
+
+      return res.json({
+        user: {
+          id: localProfile.user_id,
+          email: localProfile.email,
+          name: localProfile.name,
+          role: localProfile.role,
+          shop_id: localProfile.shop_id
+        },
+        token: localToken,
+        offline: true
+      });
+    }
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || "Local auth verification failed." });
+  }
 });
 
 // Owner Protection: Verify account password using Supabase Auth

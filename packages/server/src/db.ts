@@ -177,6 +177,19 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status);
 CREATE INDEX IF NOT EXISTS idx_customers_updated_at ON customers(updated_at);
 CREATE INDEX IF NOT EXISTS idx_orders_updated_at ON orders(updated_at);
+
+-- Offline auth cache
+CREATE TABLE IF NOT EXISTS local_auth (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL UNIQUE,
+  email TEXT NOT NULL,
+  name TEXT DEFAULT '',
+  role TEXT NOT NULL DEFAULT 'Owner',
+  shop_id TEXT DEFAULT '',
+  token_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `;
 
 export function initDatabase(dbPath?: string): void {
@@ -220,6 +233,47 @@ export function closeDatabase(): void {
   if (db) {
     db.close();
   }
+}
+
+// ---------------------------------------------------------------------------
+// LOCAL AUTH HELPERS (offline support)
+// ---------------------------------------------------------------------------
+export function cacheLocalAuth(userId: string, email: string, name: string, role: string, shopId: string, tokenHash: string): void {
+  const now = nowISO();
+  db.prepare(`
+    INSERT INTO local_auth (user_id, email, name, role, shop_id, token_hash, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      email = excluded.email,
+      name = excluded.name,
+      role = excluded.role,
+      shop_id = excluded.shop_id,
+      token_hash = excluded.token_hash,
+      updated_at = excluded.updated_at
+  `).run(userId, email, name, role, shopId, tokenHash, now, now);
+}
+
+export function getLocalAuthByToken(tokenHash: string): { user_id: string; email: string; name: string; role: string; shop_id: string } | undefined {
+  return db.prepare("SELECT user_id, email, name, role, shop_id FROM local_auth WHERE token_hash = ?").get(tokenHash) as any | undefined;
+}
+
+export function getLocalAuthByEmail(email: string): { user_id: string; email: string; name: string; role: string; shop_id: string; token_hash: string } | undefined {
+  return db.prepare("SELECT * FROM local_auth WHERE email = ?").get(email) as any | undefined;
+}
+
+export function clearLocalAuth(): void {
+  db.prepare("DELETE FROM local_auth").run();
+}
+
+// Simple token hash (not cryptographic - just for local verification)
+export function hashToken(token: string): string {
+  let hash = 0;
+  for (let i = 0; i < token.length; i++) {
+    const char = token.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
 }
 
 export function nowISO(): string {

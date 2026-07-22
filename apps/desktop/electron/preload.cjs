@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Auto-update controls
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   installUpdate: () => ipcRenderer.invoke('install-update'),
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
 
   // Update event listeners
   onUpdateAvailable: (callback) => {
@@ -69,4 +70,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('update-error', handler);
     return () => ipcRenderer.removeListener('update-error', handler);
   },
+
+  // OAuth (Google Sign-In)
+  oauthSignIn: (authUrl) => ipcRenderer.invoke('oauth-signin-electron', authUrl),
+  oauthGetSessionFromUrl: (url) => ipcRenderer.invoke('oauth-get-session-from-url', url),
 });

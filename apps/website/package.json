@@ -1,0 +1,11 @@
+{
+  "name": "@hello-darzi/website",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx live-server . --port=5173",
+    "build": "echo 'Static site — nothing to build'",
+    "start": "npx serve . -l 5173"
+  }
+}

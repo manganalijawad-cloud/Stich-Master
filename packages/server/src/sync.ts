@@ -125,7 +125,7 @@ async function pushChanges(token: string): Promise<number> {
         }
 
         if (item.operation === "insert") {
-          const { error } = await _supabase.from(table).insert(supabaseData);
+          const { error } = await _supabase.from(table).upsert(supabaseData, { onConflict: "id" });
           if (error) throw error;
         } else {
           const { error } = await _supabase.from(table).update(supabaseData).eq("id", rowId);
@@ -180,10 +180,10 @@ async function pullChanges(token: string): Promise<number> {
           // Convert Supabase data types to SQLite-compatible values
           const localRow = flattenRow(row);
 
-          // Check conflict: if local row has newer updated_at, skip
+          // Check conflict: if local row has newer updated_at, skip (local changes take precedence)
           const local = db.prepare(`SELECT updated_at FROM ${table} WHERE id = ?`).get(row.id) as { updated_at: string } | undefined;
-          if (local && local.updated_at > since) {
-            // Local change exists that hasn't been pushed yet - skip pull for this row
+          if (local && local.updated_at > row.updated_at) {
+            // Local version is newer than cloud version - keep local changes
             continue;
           }
 
@@ -315,9 +315,8 @@ async function syncCycle(token: string): Promise<void> {
     }
   }
 
-  if (_status === "syncing") return; // already syncing
+  if (_status === "syncing") return;
 
-  const prevStatus = _status;
   _status = "syncing";
 
   try {
@@ -330,11 +329,7 @@ async function syncCycle(token: string): Promise<void> {
     _lastSyncAt = nowISO();
     _lastError = null;
 
-    if (pushed > 0 || pulled > 0) {
-      _status = "synced";
-    } else {
-      _status = prevStatus === "error" ? "synced" : prevStatus;
-    }
+    _status = "synced";
   } catch (err: any) {
     _lastError = err?.message || String(err);
     _status = "error";

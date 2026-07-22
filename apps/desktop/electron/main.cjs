@@ -89,8 +89,8 @@ if (!isDev) {
 
 if (!isDev && autoUpdater && log) {
   autoUpdater.logger = log;
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
 
   autoUpdater.on('update-available', (info) => {
     log.info('Update available:', info.version);
@@ -113,14 +113,23 @@ if (!isDev && autoUpdater && log) {
   });
 
   autoUpdater.on('update-downloaded', () => {
-    log.info('Update downloaded, installing on quit...');
+    log.info('Update downloaded, ready to install.');
     mainWindow?.webContents.send('update-downloaded');
-    autoUpdater.quitAndInstall();
   });
 
   autoUpdater.on('error', (err) => {
     log.error('Auto-updater error:', err.message);
-    mainWindow?.webContents.send('update-error', { message: err.message });
+    if (err.message && (
+      err.message.includes('net_error') ||
+      err.message.includes('ERR_INTERNET_DISCONNECTED') ||
+      err.message.includes('ERR_NETWORK_CHANGED') ||
+      err.message.includes('ERR_CONNECTION') ||
+      err.message.includes('ERR_NAME_NOT_RESOLVED')
+    )) {
+      mainWindow?.webContents.send('update-not-available');
+    } else {
+      mainWindow?.webContents.send('update-error', { message: err.message });
+    }
   });
 }
 
@@ -128,11 +137,20 @@ if (!isDev && autoUpdater && log) {
 // IPC HANDLERS
 // ---------------------------------------------------------------------------
 ipcMain.handle('get-app-version', () => {
-  try {
-    return require(path.join(__dirname, '..', '..', '..', 'package.json')).version;
-  } catch {
-    return '1.0.0';
+  const paths = [
+    path.join(__dirname, '..', '..', '..', 'package.json'),
+    path.join(__dirname, '..', 'package.json'),
+    path.join(process.resourcesPath || '', '..', 'package.json'),
+    path.join(process.cwd(), 'package.json'),
+  ];
+  for (const p of paths) {
+    try {
+      if (fs.existsSync(p)) {
+        return JSON.parse(fs.readFileSync(p, 'utf8')).version || '1.0.0';
+      }
+    } catch {}
   }
+  return '1.0.0';
 });
 
 ipcMain.handle('get-user-data-path', () => {
@@ -155,15 +173,34 @@ ipcMain.handle('check-for-updates', async () => {
   if (!autoUpdater) return { updateAvailable: false, error: 'Auto-updater not available' };
   try {
     const result = await autoUpdater.checkForUpdates();
-    return { updateAvailable: true, version: result?.updateInfo?.version };
+    if (result?.updateInfo?.version) {
+      // Start downloading
+      await autoUpdater.downloadUpdate(result.updateInfo);
+      return { updateAvailable: true, version: result.updateInfo.version };
+    }
+    return { updateAvailable: false };
   } catch (err) {
-    return { updateAvailable: false, error: err.message };
+    const msg = err.message || String(err);
+    if (msg.includes('net_error') || msg.includes('ERR_INTERNET_DISCONNECTED') || msg.includes('ERR_NETWORK') || msg.includes('ERR_CONNECTION') || msg.includes('ERR_NAME')) {
+      return { updateAvailable: false, offline: true };
+    }
+    return { updateAvailable: false, error: msg };
   }
 });
 
 ipcMain.handle('install-update', () => {
   if (autoUpdater) {
     autoUpdater.quitAndInstall();
+  }
+});
+
+ipcMain.handle('download-update', async () => {
+  if (!autoUpdater) return { success: false, error: 'Auto-updater not available' };
+  try {
+    await autoUpdater.downloadUpdate();
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
   }
 });
 
@@ -307,6 +344,109 @@ async function createWindow() {
   let loadRetries = 0;
   const MAX_LOAD_RETRIES = 5;
 
+  let currentOAuthResolve = null;
+
+  function handleOAuthFlow(authUrl) {
+    const authWindow = new BrowserWindow({
+      width: 600,
+      height: 700,
+      title: 'Sign in with Google',
+      resizable: false,
+      frame: true,
+      autoHideMenuBar: true,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+      },
+    });
+
+    let resolved = false;
+
+    const cleanup = () => {
+      resolved = true;
+      if (!authWindow.isDestroyed()) authWindow.close();
+      if (currentOAuthResolve) {
+        const r = currentOAuthResolve;
+        currentOAuthResolve = null;
+        r({ error: 'Authentication window was closed.' });
+      }
+    };
+
+    const timeout = setTimeout(cleanup, 120000);
+
+    authWindow.webContents.on('will-redirect', (_event, url) => {
+      tryToResolve(url);
+    });
+
+    authWindow.webContents.on('will-navigate', (_event, url) => {
+      tryToResolve(url);
+    });
+
+    function tryToResolve(url) {
+      try {
+        const parsed = new URL(url);
+        if (parsed.hash && parsed.hash.includes('access_token')) {
+          clearTimeout(timeout);
+          if (!resolved) {
+            resolved = true;
+            authWindow.close();
+            if (currentOAuthResolve) {
+              const r = currentOAuthResolve;
+              currentOAuthResolve = null;
+              r({ url });
+            }
+          }
+        } else if (parsed.searchParams?.has('error')) {
+          clearTimeout(timeout);
+          if (!resolved) {
+            resolved = true;
+            authWindow.close();
+            if (currentOAuthResolve) {
+              const r = currentOAuthResolve;
+              currentOAuthResolve = null;
+              r({ error: parsed.searchParams.get('error') || 'Authentication failed.' });
+            }
+          }
+        }
+      } catch {}
+    }
+
+    authWindow.on('closed', cleanup);
+    authWindow.loadURL(authUrl);
+  }
+
+  // IPC handler for Electron OAuth (used as fallback for custom protocol redirects)
+  ipcMain.handle('oauth-signin-electron', async (_event, authUrl) => {
+    return new Promise((resolve) => {
+      currentOAuthResolve = resolve;
+      handleOAuthFlow(authUrl);
+    });
+  });
+
+  ipcMain.handle('oauth-get-session-from-url', async (_event, url) => {
+    try {
+      const parsed = new URL(url);
+      const hash = parsed.hash.replace('#', '');
+      const params = new URLSearchParams(hash);
+      const accessToken = params.get('access_token');
+      const refreshToken = params.get('refresh_token');
+      const expiresIn = params.get('expires_in');
+      const tokenType = params.get('token_type');
+      if (accessToken) {
+        return {
+          access_token: accessToken,
+          refresh_token: refreshToken,
+          expires_in: expiresIn ? parseInt(expiresIn) : null,
+          token_type: tokenType,
+        };
+      }
+      return { error: 'No access token found in callback URL.' };
+    } catch {
+      return { error: 'Invalid callback URL.' };
+    }
+  });
+
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     console.error('Failed to load page:', errorCode, errorDescription);
     if (loadRetries < MAX_LOAD_RETRIES && mainWindow) {
@@ -381,9 +521,13 @@ app.whenReady().then(async () => {
   await createWindow();
 
   if (!isDev && autoUpdater) {
-    setTimeout(() => autoUpdater.checkForUpdates().catch((err) => {
+    const checkUpdate = () => autoUpdater.checkForUpdates().catch((err) => {
       if (log) log.warn('Update check failed:', err.message);
-    }), 5000);
+    });
+    // Check shortly after startup
+    setTimeout(checkUpdate, 5000);
+    // Then check every hour
+    setInterval(checkUpdate, 60 * 60 * 1000);
   }
 });
 

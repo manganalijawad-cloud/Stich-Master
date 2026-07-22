@@ -1,11 +1,5 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState, useEffect } from 'react';
 import { Shield, Users, ShoppingBag, Settings, LogOut, Menu, X, DollarSign, Lock, Unlock } from 'lucide-react';
-import LoginScreen from './components/LoginScreen';
 import CustomersSection from './components/CustomersSection';
 import OrdersSection from './components/OrdersSection';
 import OwnerDashboard from './components/OwnerDashboard';
@@ -13,8 +7,21 @@ import FinancialReports from './components/FinancialReports';
 
 import SyncIndicator from './components/SyncIndicator';
 import TitleBar from './components/TitleBar';
+import VersionInfo from './components/VersionInfo';
 import { Customer, UserProfile, UserRole, PipelineStage } from './types';
 import { supabase, ensureSupabase } from './lib/supabase';
+
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import LoginPage from './components/auth/LoginPage';
+import SignUpPage from './components/auth/SignUpPage';
+import ForgotPasswordPage from './components/auth/ForgotPasswordPage';
+import ResetPasswordPage from './components/auth/ResetPasswordPage';
+import GoogleAuthCallback from './components/auth/GoogleAuthCallback';
+import OfflineBanner from './components/auth/OfflineBanner';
+
+import type { ExtendedUserProfile } from './lib/auth';
+
+type AuthPage = 'login' | 'signup' | 'forgot-password' | 'reset-password' | 'google-callback';
 
 const originalFetch = window.fetch;
 const customFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -43,32 +50,42 @@ try {
   });
 }
 
-export default function App() {
-  const [token, setToken] = useState<string | null>(() => {
-    return localStorage.getItem('tailor_token') || null;
-  });
-  const [user, setUser] = useState<UserProfile | null>(() => {
-    const savedUser = localStorage.getItem('tailor_user');
-    if (savedUser) {
-      try {
-        return JSON.parse(savedUser) as UserProfile;
-      } catch (e) {
-        /* ignore */
-      }
-    }
-    return null;
-  });
+function AuthPage({ page, onNavigate }: { page: AuthPage; onNavigate: (p: AuthPage) => void }) {
+  switch (page) {
+    case 'signup':
+      return <SignUpPage onNavigateLogin={() => onNavigate('login')} />;
+    case 'forgot-password':
+      return <ForgotPasswordPage onNavigateLogin={() => onNavigate('login')} />;
+    case 'reset-password':
+      return <ResetPasswordPage />;
+    case 'google-callback':
+      return <GoogleAuthCallback />;
+    default:
+      return (
+        <LoginPage
+          onNavigateSignUp={() => onNavigate('signup')}
+          onNavigateForgotPassword={() => onNavigate('forgot-password')}
+        />
+      );
+  }
+}
 
-  useEffect(() => {
-    if (user?.role === 'Worker') {
-      setUser({ ...user, role: 'Owner' });
-      localStorage.setItem('tailor_user', JSON.stringify({ ...user, role: 'Owner' }));
-    }
-  }, []);
+function AuthWrapper() {
+  const { user, token, isLoading, isOnline, signOut, setSession } = useAuth();
+  const [authPage, setAuthPage] = useState<AuthPage>('login');
 
   useEffect(() => { ensureSupabase(); }, []);
 
-  const activeRole = (user?.role ?? 'Owner') as UserRole;
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash && (hash.includes('access_token') || hash.includes('type=recovery'))) {
+      if (hash.includes('type=recovery')) {
+        setAuthPage('reset-password');
+      } else if (hash.includes('access_token')) {
+        setAuthPage('google-callback');
+      }
+    }
+  }, []);
 
   const [activeMode, setActiveMode] = useState<'Manager' | 'Owner'>(() => {
     const stored = localStorage.getItem('tailor_active_role');
@@ -158,7 +175,6 @@ export default function App() {
   const [whatsappNotifyOnReady, setWhatsappNotifyOnReady] = useState(false);
   const [activeOrderId, setActiveOrderId] = useState<string | undefined>(undefined);
   const [activeItemIdx, setActiveItemIdx] = useState<number | undefined>(undefined);
-  const [isVerifyingSession, setIsVerifyingSession] = useState(true);
 
   const isElectron = !!(window as any).electronAPI?.isElectron;
 
@@ -177,115 +193,12 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchWithRetry = async (url: string, options: RequestInit, retries = 5, delay = 1000): Promise<Response> => {
-      try {
-        const res = await fetch(url, options);
-        return res;
-      } catch (err) {
-        if (retries > 0 && isMounted) {
-          await new Promise(resolve => setTimeout(resolve, delay));
-          return fetchWithRetry(url, options, retries - 1, delay * 1.5);
-        }
-        throw err;
-      }
-    };
-
-    const initializeAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session && isMounted) {
-          const tkn = session.access_token;
-          setToken(tkn);
-          localStorage.setItem('tailor_token', tkn);
-
-          const res = await fetchWithRetry('/api/auth/me', {
-            headers: { Authorization: `Bearer ${tkn}` },
-          });
-
-          const contentType = res.headers.get('content-type') || '';
-          if (res.ok && contentType.includes('application/json')) {
-            const data = await res.json();
-            if (isMounted) {
-              setUser(data.user);
-              localStorage.setItem('tailor_user', JSON.stringify(data.user));
-            }
-          } else {
-            await handleLogout();
-          }
-        } else if (isMounted) {
-          setUser(null);
-          setToken(null);
-          localStorage.removeItem('tailor_token');
-          localStorage.removeItem('tailor_user');
-        }
-      } catch (err) {
-        console.error('Failed to initialize or restore Supabase session:', err);
-      } finally {
-        if (isMounted) {
-          setIsVerifyingSession(false);
-        }
-      }
-    };
-
-    initializeAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!isMounted) return;
-
-      if (event === 'SIGNED_OUT') {
-        setUser(null);
-        setToken(null);
-        localStorage.removeItem('tailor_token');
-        localStorage.removeItem('tailor_user');
-        setIsVerifyingSession(false);
-      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        if (session) {
-          const tkn = session.access_token;
-          setToken(tkn);
-          localStorage.setItem('tailor_token', tkn);
-
-          try {
-            const res = await fetchWithRetry('/api/auth/me', {
-              headers: { Authorization: `Bearer ${tkn}` },
-            });
-            const contentType = res.headers.get('content-type') || '';
-            if (res.ok && contentType.includes('application/json')) {
-              const data = await res.json();
-              if (isMounted) {
-                setUser(data.user);
-                localStorage.setItem('tailor_user', JSON.stringify(data.user));
-              }
-            } else {
-              await handleLogout();
-            }
-          } catch (err) {
-            console.error('Error fetching profile on auth change:', err);
-          } finally {
-            if (isMounted) {
-              setIsVerifyingSession(false);
-            }
-          }
-        }
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
-
   const fetchShopMetadata = async () => {
     if (!token) return;
     try {
-      const configRes = await fetch('/api/config-status');
-      const configContentType = configRes.headers.get('content-type') || '';
       const settingsRes = await fetch('/api/settings', {
         headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(10000),
       });
       const settingsContentType = settingsRes.headers.get('content-type') || '';
       if (settingsRes.ok && settingsContentType.includes('application/json')) {
@@ -319,28 +232,8 @@ export default function App() {
     fetchShopMetadata();
   }, [token]);
 
-  const handleLoginSuccess = (usr: UserProfile, tkn: string) => {
-    setUser(usr);
-    setToken(tkn);
-    localStorage.setItem('tailor_token', tkn);
-    localStorage.setItem('tailor_user', JSON.stringify(usr));
-    setActiveTab('Customers');
-  };
-
   const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-    } catch (err) {
-      console.error(err);
-    }
-    setUser(null);
-    setToken(null);
-    localStorage.removeItem('tailor_token');
-    localStorage.removeItem('tailor_user');
+    await signOut();
     localStorage.removeItem('tailor_active_role');
     localStorage.removeItem('tailor_intentional_worker_mode');
   };
@@ -349,12 +242,12 @@ export default function App() {
     fetchShopMetadata();
   };
 
-  if (isVerifyingSession) {
+  if (isLoading) {
     return (
       <div className="h-screen flex flex-col">
         {isElectron && <TitleBar />}
-        <div className="flex-1 bg-brand-sidebar flex flex-col items-center justify-center text-white">
-          <p className="text-lg font-semibold animate-pulse text-brand-sky">Initializing Workspace…</p>
+        <div className="flex-1 bg-[#0F172A] flex flex-col items-center justify-center text-white">
+          <p className="text-lg font-semibold animate-pulse text-brand-sky">Initializing Workspace...</p>
         </div>
       </div>
     );
@@ -364,12 +257,16 @@ export default function App() {
     return (
       <div className="h-screen flex flex-col">
         {isElectron && <TitleBar />}
-        <div className="flex-1">
-          <LoginScreen onLoginSuccess={handleLoginSuccess} />
+        <div className="flex-1 relative">
+          {!isOnline && <OfflineBanner />}
+          <AuthPage page={authPage} onNavigate={setAuthPage} />
         </div>
       </div>
     );
   }
+
+  const activeRole = (user?.role ?? 'Owner') as UserRole;
+  const displayName = user?.shop_name || user?.name || 'My Shop';
 
   const navItems = [
     {
@@ -406,21 +303,18 @@ export default function App() {
 
   return (
     <div className="h-screen flex flex-col">
+      {!isOnline && <OfflineBanner />}
 
       {isElectron && <TitleBar />}
 
       <div className="flex flex-1 min-h-0 flex-col md:flex-row font-sans text-slate-800 bg-brand-bg">
 
-      {/* ──────────────────────────────────────────────────────────── */}
-      {/* DESKTOP SIDEBAR                                              */}
-      {/* ──────────────────────────────────────────────────────────── */}
       <aside
         className={`hidden md:flex flex-col bg-brand-sidebar text-white shrink-0 border-r border-slate-800 print:hidden h-full overflow-y-auto transition-[width,padding] duration-300 ease-in-out ${
           isSidebarCollapsed ? 'w-14 py-3 items-center' : 'w-56 p-3'
         }`}
       >
 
-        {/* ── Logo / Brand Area ── */}
         <div className={`${isSidebarCollapsed ? 'mb-3' : 'mb-3'} w-full flex justify-center`}>
           <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3'} w-full`}>
             {shopLogo ? (
@@ -430,7 +324,7 @@ export default function App() {
             )}
             {!isSidebarCollapsed && (
               <div className="overflow-hidden animate-fade-in min-w-0">
-                <span className="text-lg block text-brand-sky font-display uppercase font-bold whitespace-normal">{shopName || 'Unnamed Tailor Shop'}</span>
+                <span className="text-lg block text-brand-sky font-display uppercase font-bold whitespace-normal">{displayName}</span>
                 <span className="text-3xs font-semibold text-slate-500 block uppercase tracking-wider mt-0.5">
                   Staff Workspace
                 </span>
@@ -439,7 +333,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* ── Primary Navigation ── */}
         <nav className="flex-1 w-full space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -476,7 +369,6 @@ export default function App() {
           })}
         </nav>
 
-        {/* ── Account / Session Section ── */}
         <div className="w-full pt-2 mt-auto border-t border-slate-800/60 space-y-2">
           {activeMode === 'Manager' ? (
             <button
@@ -508,6 +400,8 @@ export default function App() {
 
           <SyncIndicator token={token} collapsed={isSidebarCollapsed} />
 
+          <VersionInfo collapsed={isSidebarCollapsed} />
+
           <button
             onClick={handleLogout}
             className={`w-full ${isSidebarCollapsed ? 'flex justify-center p-2' : 'flex items-center gap-2.5 px-3 py-2'} rounded-lg text-sm font-semibold uppercase tracking-wider bg-red-950/20 hover:bg-red-950/40 text-red-400 border border-red-900/20 cursor-pointer transition-colors relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60`}
@@ -524,9 +418,6 @@ export default function App() {
 
       </aside>
 
-      {/* ──────────────────────────────────────────────────────────── */}
-      {/* MOBILE HEADER                                               */}
-      {/* ──────────────────────────────────────────────────────────── */}
       <header className="md:hidden bg-brand-sidebar text-white py-3.5 px-5 flex items-center justify-between sticky top-0 z-50 print:hidden border-b border-slate-800">
         <div className="flex items-center gap-2.5 min-w-0">
           {shopLogo ? (
@@ -534,7 +425,7 @@ export default function App() {
           ) : (
             <img src="/favicon.svg" alt="Logo" className="w-6 h-6 object-contain shrink-0" />
           )}
-          <span className="font-bold text-base tracking-tight text-brand-sky uppercase truncate">{shopName || 'Hello Darzi'}</span>
+          <span className="font-bold text-base tracking-tight text-brand-sky uppercase truncate">{displayName}</span>
         </div>
         <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -545,7 +436,6 @@ export default function App() {
         </button>
       </header>
 
-      {/* ── Mobile Menu Overlay ── */}
       {isMobileMenuOpen && (
         <div className="md:hidden fixed inset-0 top-[57px] bg-brand-sidebar z-40 px-5 py-6 flex flex-col overflow-y-auto animate-fade-in print:hidden">
           <nav className="space-y-1 flex-1">
@@ -607,12 +497,8 @@ export default function App() {
         </div>
       )}
 
-      {/* ──────────────────────────────────────────────────────────── */}
-      {/* MAIN WORKSPACE                                              */}
-      {/* ──────────────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
 
-        {/* ── Desktop Top Header ── */}
         <header className="hidden md:flex items-center justify-between bg-white h-12 px-4 border-b border-slate-200 shrink-0 print:hidden">
           <div className="flex items-center gap-4">
             <button
@@ -648,7 +534,6 @@ export default function App() {
           </div>
         </header>
 
-        {/* ── Page Content ── */}
         <main className="flex-1 p-1.5 md:p-2 overflow-auto">
           <div className="animate-fade-in">
             {activeTab === 'Customers' && (
@@ -712,7 +597,10 @@ export default function App() {
           </div>
         </main>
 
-        {/* ── Password Modal ── */}
+        <div className="hidden md:block print:hidden">
+          <VersionInfo collapsed={false} position="bottom-right" />
+        </div>
+
         {showPasswordModal && (
           <div role="presentation" className="modal-overlay" onClick={() => { setShowPasswordModal(false); setPasswordError(null); setOwnerPassword(''); }}>
             <div className="modal-content max-w-sm" onClick={(e) => e.stopPropagation()}>
@@ -733,7 +621,7 @@ export default function App() {
                 value={ownerPassword}
                 onChange={(e) => setOwnerPassword(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') handlePasswordSubmit(); }}
-                placeholder="Enter password…"
+                placeholder="Enter password..."
                 className="input-base mb-4"
                 autoFocus
               />
@@ -749,17 +637,23 @@ export default function App() {
                   disabled={isVerifyingPassword || !ownerPassword}
                   className="flex-1 py-2 px-4 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold cursor-pointer transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  {isVerifyingPassword ? 'Verifying…' : 'Unlock'}
+                  {isVerifyingPassword ? 'Verifying...' : 'Unlock'}
                 </button>
               </div>
             </div>
           </div>
         )}
 
-
-
       </div>
     </div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AuthWrapper />
+    </AuthProvider>
   );
 }
