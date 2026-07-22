@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://hellodarzi.com/sitemap.xml
+Sitemap: https://hellodarzi.shop/sitemap.xml

@@ -126,11 +126,12 @@
 (function () {
   var downloadBtns = document.querySelectorAll('#download-btn');
   var versionEl = document.getElementById('download-version');
+  var downloadUrl = null;
 
-  function setLoading(btn) {
+  function setLoading(btn, text) {
     btn.classList.add('loading');
     btn.classList.remove('error');
-    btn.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Preparing download...';
+    btn.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> ' + (text || 'Preparing download...');
   }
 
   function setReady(btn) {
@@ -144,10 +145,14 @@
     btn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v12m0 0-3-3m3 3 3-3M5 19h14"/></svg> Download unavailable';
   }
 
-  function triggerDownload(url, btn) {
-    setLoading(btn);
+  function triggerDownload(btn) {
+    if (!downloadUrl) {
+      setError(btn);
+      return;
+    }
+    setLoading(btn, 'Preparing download...');
     var a = document.createElement('a');
-    a.href = url;
+    a.href = downloadUrl;
     a.download = '';
     a.style.display = 'none';
     document.body.appendChild(a);
@@ -156,43 +161,67 @@
     setTimeout(function () { setReady(btn); }, 2000);
   }
 
-  downloadBtns.forEach(function (btn) {
-    btn.classList.add('loading');
-    btn.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Checking for latest version...';
-  });
-
-  if (versionEl) {
-    versionEl.innerHTML = '<span>Checking for latest version...</span>';
+  function showLoading() {
+    downloadBtns.forEach(function (btn) {
+      btn.classList.add('loading');
+      btn.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Checking for latest version...';
+    });
+    if (versionEl) {
+      versionEl.innerHTML = '<span>Checking for latest version...</span>';
+    }
   }
 
-  fetch('/release/manifest.json')
-    .then(function (res) {
-      if (!res.ok) throw new Error('Failed to fetch manifest: ' + res.status);
-      return res.json();
-    })
-    .then(function (manifest) {
-      var downloadUrl = '/release/' + manifest.filename;
+  function initDownload(manifest) {
+    downloadUrl = 'release/' + manifest.filename;
 
-      downloadBtns.forEach(function (btn) {
-        setReady(btn);
-        btn.addEventListener('click', function (e) {
-          e.preventDefault();
-          triggerDownload(downloadUrl, btn);
-        });
+    downloadBtns.forEach(function (btn) {
+      setReady(btn);
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        triggerDownload(btn);
       });
-
-      if (versionEl) {
-        versionEl.innerHTML = '<span>Version ' + manifest.version + ' \u2014 Windows 10 and above</span>';
-      }
-    })
-    .catch(function () {
-      downloadBtns.forEach(function (btn) {
-        setError(btn);
-      });
-      if (versionEl) {
-        versionEl.innerHTML = '<span class="text-red-400">Unable to load download. Please try again later.</span>';
-      }
     });
+
+    if (versionEl) {
+      versionEl.innerHTML = '<span>Version ' + manifest.version + ' \u2014 Windows 10 and above</span>';
+    }
+  }
+
+  function showError() {
+    downloadBtns.forEach(function (btn) {
+      setError(btn);
+    });
+    if (versionEl) {
+      versionEl.innerHTML = '<span class="text-red-400">Unable to load download. Please try again later.</span>';
+    }
+  }
+
+  showLoading();
+
+  if (window.__RELEASE_MANIFEST__) {
+    initDownload(window.__RELEASE_MANIFEST__);
+    return;
+  }
+
+  var script = document.createElement('script');
+  script.src = 'release/version.js';
+  script.onload = function () {
+    if (window.__RELEASE_MANIFEST__) {
+      initDownload(window.__RELEASE_MANIFEST__);
+    } else {
+      fetch('release/manifest.json')
+        .then(function (r) { if (!r.ok) throw Error('status ' + r.status); return r.json(); })
+        .then(initDownload)
+        .catch(showError);
+    }
+  };
+  script.onerror = function () {
+    fetch('release/manifest.json')
+      .then(function (r) { if (!r.ok) throw Error('status ' + r.status); return r.json(); })
+      .then(initDownload)
+      .catch(showError);
+  };
+  document.head.appendChild(script);
 })();
 
 (function () {

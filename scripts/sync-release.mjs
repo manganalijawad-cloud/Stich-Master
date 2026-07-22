@@ -67,6 +67,11 @@ function main() {
     JSON.stringify(manifest, null, 2)
   );
 
+  writeFileSync(
+    join(websiteReleaseDir, 'version.js'),
+    'window.__RELEASE_MANIFEST__=' + JSON.stringify(manifest) + ';'
+  );
+
   console.log(`\u2713 Release synced: v${version} (${latest.name}) \u2192 apps/website/release/`);
 }
 
