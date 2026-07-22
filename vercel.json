@@ -1,8 +1,7 @@
 {
   "version": 2,
-  "rootDirectory": "apps/website",
   "buildCommand": "echo 'Static site — nothing to build'",
-  "outputDirectory": ".",
+  "outputDirectory": "apps/website",
   "framework": null,
   "installCommand": "echo 'no install needed'",
   "cleanUrls": true,
