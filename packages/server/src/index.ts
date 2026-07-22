@@ -13,6 +13,7 @@ import { createClient as supabaseCreateClient, SupabaseClient } from "@supabase/
 
 import * as db from "./db";
 import * as sync from "./sync";
+import { runMigrations } from "./migrate";
 
 let localDbAvailable = false;
 
@@ -3883,6 +3884,11 @@ async function startServer(preferredPort?: number): Promise<number> {
     initialized = true;
 
     await checkDatabaseSchema();
+    try {
+      await runMigrations(supabaseAdmin);
+    } catch (err: any) {
+      console.warn("Migration check failed:", err.message);
+    }
     if (process.env.ELECTRON_RUN === "true") {
       try {
         db.initDatabase();
