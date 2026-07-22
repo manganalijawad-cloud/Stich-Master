@@ -127,55 +127,62 @@
   var downloadBtns = document.querySelectorAll('#download-btn');
   var versionEl = document.getElementById('download-version');
 
+  function setLoading(btn) {
+    btn.classList.add('loading');
+    btn.classList.remove('error');
+    btn.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Preparing download...';
+  }
+
+  function setReady(btn) {
+    btn.classList.remove('loading', 'error');
+    btn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v12m0 0-3-3m3 3 3-3M5 19h14"/></svg> Download for Windows';
+  }
+
   function setError(btn) {
-    btn.href = 'https://github.com/manganalijawad-cloud/Stich-Master/releases';
-    btn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v12m0 0-3-3m3 3 3-3M5 19h14"/></svg> Download from GitHub';
     btn.classList.remove('loading');
     btn.classList.add('error');
-    if (versionEl) versionEl.textContent = 'Visit GitHub to download';
+    btn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v12m0 0-3-3m3 3 3-3M5 19h14"/></svg> Download unavailable';
+  }
+
+  function triggerDownload(url, btn) {
+    setLoading(btn);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = '';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { setReady(btn); }, 2000);
   }
 
   downloadBtns.forEach(function (btn) {
     btn.classList.add('loading');
-    btn.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Fetching latest version...';
+    btn.innerHTML = '<svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> Checking for latest version...';
   });
 
   if (versionEl) {
-    versionEl.textContent = 'Checking for latest version...';
+    versionEl.innerHTML = '<span>Checking for latest version...</span>';
   }
 
-  fetch('https://api.github.com/repos/manganalijawad-cloud/Stich-Master/releases/latest')
+  fetch('/release/manifest.json')
     .then(function (res) {
-      if (!res.ok) throw new Error('GitHub API error: ' + res.status);
+      if (!res.ok) throw new Error('Failed to fetch manifest: ' + res.status);
       return res.json();
     })
-    .then(function (data) {
-      var asset = data.assets.find(function (a) {
-        return a.name.endsWith('.exe') && a.name.toLowerCase().includes('setup');
-      });
-      var url;
-      if (asset) {
-        url = asset.browser_download_url;
-      } else {
-        var exeAsset = data.assets.find(function (a) {
-          return a.name.endsWith('.exe');
-        });
-        url = exeAsset ? exeAsset.browser_download_url : null;
-      }
+    .then(function (manifest) {
+      var downloadUrl = '/release/' + manifest.filename;
 
       downloadBtns.forEach(function (btn) {
-        if (url) {
-          btn.href = url;
-          btn.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v12m0 0-3-3m3 3 3-3M5 19h14"/></svg> Download for Windows';
-          btn.classList.remove('loading');
-        } else {
-          setError(btn);
-        }
+        setReady(btn);
+        btn.addEventListener('click', function (e) {
+          e.preventDefault();
+          triggerDownload(downloadUrl, btn);
+        });
       });
 
       if (versionEl) {
-        var tag = data.tag_name || '';
-        versionEl.textContent = tag ? tag.replace(/^v/, 'Version ') + ' \u2014 Windows 10 and above' : 'Windows 10 and above';
+        versionEl.innerHTML = '<span>Version ' + manifest.version + ' \u2014 Windows 10 and above</span>';
       }
     })
     .catch(function () {
@@ -183,7 +190,7 @@
         setError(btn);
       });
       if (versionEl) {
-        versionEl.textContent = 'Unable to fetch version. Visit GitHub to download.';
+        versionEl.innerHTML = '<span class="text-red-400">Unable to load download. Please try again later.</span>';
       }
     });
 })();

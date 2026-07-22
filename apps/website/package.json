@@ -4,8 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "sync": "node ../../scripts/sync-release.mjs",
+    "predev": "node ../../scripts/sync-release.mjs",
     "dev": "npx live-server . --port=5173",
-    "build": "echo 'Static site — nothing to build'",
+    "build": "node ../../scripts/sync-release.mjs && echo 'Static site — nothing to build'",
+    "prestart": "node ../../scripts/sync-release.mjs",
     "start": "npx serve . -l 5173"
   }
 }
