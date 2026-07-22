@@ -28,17 +28,13 @@
               bg: '#F8FAFC',
             },
           },
-          borderRadius: {
-            btn: '0.5rem',
-            card: '0.75rem',
-          },
         },
       },
     }
   </script>
   <style>
-    html { scroll-behavior: smooth; }
-    body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    html { scroll-behavior: smooth; overflow-x: hidden; }
+    body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; overflow-x: hidden; width: 100%; }
     ::selection { background-color: rgba(56, 189, 248, 0.2); color: #0F172A; }
     a:focus-visible, button:focus-visible { outline: 2px solid rgba(56, 189, 248, 0.4); outline-offset: 2px; }
   </style>
@@ -49,7 +45,7 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-16">
         <a href="/" class="flex items-center gap-2.5 group" aria-label="Hello Darzi — Tailor Shop Management Software">
-          <img src="/favicon.svg" alt="Hello Darzi" class="w-7 h-7" />
+          <img src="/favicon.svg" alt="" class="w-7 h-7 shrink-0" />
           <span class="font-display font-bold text-xl text-brand-sidebar">Hello Darzi</span>
         </a>
         <a href="/" class="text-sm font-semibold text-slate-500 hover:text-brand-sidebar transition-colors">Back to Home</a>
@@ -71,11 +67,11 @@
         If the problem persists, please <a href="contact.html" class="text-brand-sky hover:underline font-semibold">contact us</a>.
       </p>
       <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-        <a href="/" class="inline-flex items-center gap-2 px-6 py-3 bg-brand-sidebar text-white text-sm font-bold rounded-btn hover:bg-brand-active transition-all duration-200 shadow-sm">
+        <a href="/" class="inline-flex items-center gap-2 px-6 py-3 bg-brand-sidebar text-white text-sm font-bold rounded-lg hover:bg-brand-active transition-all duration-200 shadow-sm">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 12h18M3 12l6-6M3 12l6 6"/></svg>
           Go Home
         </a>
-        <button onclick="window.location.reload()" class="inline-flex items-center gap-2 px-6 py-3 bg-brand-sky/10 text-brand-sidebar text-sm font-bold rounded-btn border border-brand-sky/20 hover:bg-brand-sky/20 transition-all duration-200 cursor-pointer">
+        <button onclick="window.location.reload()" class="inline-flex items-center gap-2 px-6 py-3 bg-brand-sky/10 text-brand-sidebar text-sm font-bold rounded-lg border border-brand-sky/20 hover:bg-brand-sky/20 transition-all duration-200 cursor-pointer">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
           Try Again
         </button>

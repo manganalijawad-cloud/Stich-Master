@@ -28,17 +28,13 @@
               bg: '#F8FAFC',
             },
           },
-          borderRadius: {
-            btn: '0.5rem',
-            card: '0.75rem',
-          },
         },
       },
     }
   </script>
   <style>
-    html { scroll-behavior: smooth; }
-    body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    html { scroll-behavior: smooth; overflow-x: hidden; }
+    body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; overflow-x: hidden; width: 100%; }
     ::selection { background-color: rgba(56, 189, 248, 0.2); color: #0F172A; }
     a:focus-visible, button:focus-visible { outline: 2px solid rgba(56, 189, 248, 0.4); outline-offset: 2px; }
   </style>
@@ -49,7 +45,7 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-16">
         <a href="/" class="flex items-center gap-2.5 group" aria-label="Hello Darzi — Tailor Shop Management Software">
-          <img src="/favicon.svg" alt="Hello Darzi" class="w-7 h-7" />
+          <img src="/favicon.svg" alt="" class="w-7 h-7 shrink-0" />
           <span class="font-display font-bold text-xl text-brand-sidebar">Hello Darzi</span>
         </a>
         <a href="/" class="text-sm font-semibold text-slate-500 hover:text-brand-sidebar transition-colors">Back to Home</a>
@@ -68,11 +64,11 @@
         The page you are looking for does not exist or has been moved. Let us get you back on track.
       </p>
       <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-        <a href="/" class="inline-flex items-center gap-2 px-6 py-3 bg-brand-sidebar text-white text-sm font-bold rounded-btn hover:bg-brand-active transition-all duration-200 shadow-sm">
+        <a href="/" class="inline-flex items-center gap-2 px-6 py-3 bg-brand-sidebar text-white text-sm font-bold rounded-lg hover:bg-brand-active transition-all duration-200 shadow-sm">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 12h18M3 12l6-6M3 12l6 6"/></svg>
           Go Home
         </a>
-        <a href="/#download" class="inline-flex items-center gap-2 px-6 py-3 bg-brand-sky/10 text-brand-sidebar text-sm font-bold rounded-btn border border-brand-sky/20 hover:bg-brand-sky/20 transition-all duration-200">
+        <a href="/#download" class="inline-flex items-center gap-2 px-6 py-3 bg-brand-sky/10 text-brand-sidebar text-sm font-bold rounded-lg border border-brand-sky/20 hover:bg-brand-sky/20 transition-all duration-200">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v12m0 0-3-3m3 3 3-3M5 19h14"/></svg>
           Download Hello Darzi
         </a>

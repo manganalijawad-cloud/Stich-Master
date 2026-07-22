@@ -28,10 +28,6 @@
               bg: '#F8FAFC',
             },
           },
-          borderRadius: {
-            btn: '0.5rem',
-            card: '0.75rem',
-          },
         },
       },
     }
@@ -40,12 +36,11 @@
 </head>
 <body class="font-sans text-slate-800 bg-brand-bg antialiased">
 
-  <!-- HEADER -->
   <header class="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200/60 print:hidden">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-16">
         <a href="/" class="flex items-center gap-2.5 group" aria-label="Hello Darzi — Tailor Shop Management Software">
-          <img src="/favicon.svg" alt="Hello Darzi" class="w-7 h-7" />
+          <img src="/favicon.svg" alt="" class="w-7 h-7 shrink-0" />
           <span class="font-display font-bold text-xl text-brand-sidebar">Hello Darzi</span>
         </a>
         <nav class="hidden md:flex items-center gap-8">
@@ -55,70 +50,67 @@
           <a href="about.html" class="text-sm font-semibold text-slate-500 hover:text-brand-sidebar transition-colors">About</a>
           <a href="contact.html" class="text-sm font-semibold text-slate-500 hover:text-brand-sidebar transition-colors">Contact</a>
         </nav>
-        <a href="/#download" class="hidden sm:inline-flex items-center gap-2 px-5 py-2.5 bg-brand-sidebar text-white text-sm font-bold rounded-btn hover:bg-brand-active transition-all duration-200 shadow-sm hover:shadow-md">
+        <a href="/#download" class="hidden sm:inline-flex items-center gap-2 px-5 py-2.5 bg-brand-sidebar text-white text-sm font-bold rounded-lg hover:bg-brand-active transition-all duration-200 shadow-sm hover:shadow-md">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v12m0 0-3-3m3 3 3-3M5 19h14"/></svg>
           Download
         </a>
-        <button id="mobile-menu-btn" class="md:hidden p-2 text-slate-400 hover:text-brand-sidebar rounded-lg hover:bg-slate-100 transition-colors" aria-label="Open menu">
+        <button id="mobile-menu-btn" class="md:hidden p-2 text-slate-400 hover:text-brand-sidebar rounded-lg hover:bg-slate-100 transition-colors" aria-label="Open menu" type="button">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
       </div>
     </div>
-    <div id="mobile-menu" class="md:hidden hidden border-t border-slate-200 bg-white px-4 py-4 space-y-3">
-      <a href="/#features" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">Features</a>
-      <a href="/#pricing" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">Pricing</a>
-      <a href="/#faq" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">FAQ</a>
-      <a href="about.html" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">About</a>
-      <a href="contact.html" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">Contact</a>
-      <a href="/#download" class="block py-2.5 text-sm font-bold text-white bg-brand-sidebar text-center rounded-btn hover:bg-brand-active">Download</a>
+    <div id="mobile-menu-backdrop"></div>
+    <div id="mobile-menu" class="md:hidden border-t border-slate-200 bg-white px-4">
+      <div class="py-4 space-y-3">
+        <a href="/#features" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">Features</a>
+        <a href="/#pricing" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">Pricing</a>
+        <a href="/#faq" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">FAQ</a>
+        <a href="about.html" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">About</a>
+        <a href="contact.html" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">Contact</a>
+        <a href="/#download" class="block py-2.5 text-sm font-bold text-white bg-brand-sidebar text-center rounded-lg hover:bg-brand-active mt-2">Download</a>
+      </div>
     </div>
   </header>
 
   <main>
-    <section class="pt-32 pb-20 sm:pb-28">
+    <section class="pt-32 pb-16 sm:pb-20 lg:pb-28">
       <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="text-center max-w-2xl mx-auto mb-16">
-          <span class="text-xs font-bold uppercase tracking-[0.15em] text-brand-sky bg-brand-sky/10 px-4 py-1.5 rounded-full">Terms of Service</span>
+        <div class="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
+          <span class="inline-block text-xs font-bold uppercase tracking-[0.15em] text-brand-sky bg-brand-sky/10 px-4 py-1.5 rounded-full">Terms of Service</span>
           <h1 class="font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold text-brand-sidebar mt-6 mb-4 leading-tight">Terms of Service</h1>
-          <p class="text-lg text-slate-500">Effective date: July 21, 2026</p>
+          <p class="text-base sm:text-lg text-slate-500">Effective date: July 21, 2026</p>
         </div>
 
-        <div class="bg-white rounded-card border border-slate-200 shadow-card p-8 sm:p-10 space-y-8">
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 sm:p-10 space-y-8">
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">1. Acceptance of Terms</h2>
             <p class="text-slate-600 leading-relaxed">By downloading, installing, or using Hello Darzi ("the Software"), you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use the Software.</p>
           </div>
-
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">2. Description of Service</h2>
             <p class="text-slate-600 leading-relaxed">Hello Darzi is a desktop application that provides tailor shop management tools including customer management, order tracking, measurement storage, financial reporting, and receipt printing. The Software is available for Windows 10 and above.</p>
           </div>
-
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">3. Account Registration</h2>
-            <p class="text-slate-600 leading-relaxed">To use the Software, you must create an account. You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account. You must provide accurate and complete information during registration.</p>
+            <p class="text-slate-600 leading-relaxed">To use the Software, you must create an account. You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account.</p>
           </div>
-
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">4. Free and Paid Plans</h2>
             <p class="text-slate-600 leading-relaxed mb-3">The Software is offered with the following plans:</p>
             <ul class="list-disc pl-6 text-slate-600 leading-relaxed space-y-1.5">
               <li><strong>Free Plan:</strong> Includes up to 50 customers with basic features at no cost.</li>
-              <li><strong>Pro Plan:</strong> Paid subscription with unlimited customers and all features. Pricing is displayed on our website.</li>
+              <li><strong>Pro Plan:</strong> Paid subscription with unlimited customers and all features.</li>
               <li><strong>Enterprise Plan:</strong> Custom pricing for multi-branch and large-scale operations.</li>
             </ul>
           </div>
-
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">5. Payment and Billing</h2>
-            <p class="text-slate-600 leading-relaxed">Paid plans are billed monthly or annually as selected. Payments are non-refundable except as required by applicable law. We reserve the right to change pricing with reasonable notice. Failure to pay may result in downgrade to the Free plan.</p>
+            <p class="text-slate-600 leading-relaxed">Paid plans are billed monthly or annually as selected. Payments are non-refundable except as required by applicable law. We reserve the right to change pricing with reasonable notice.</p>
           </div>
-
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">6. Data Ownership</h2>
             <p class="text-slate-600 leading-relaxed">You retain full ownership of all data you enter into the Software. We do not claim any ownership over your customer data, business information, or any other content you create using the Software.</p>
           </div>
-
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">7. Acceptable Use</h2>
             <p class="text-slate-600 leading-relaxed mb-3">You agree not to:</p>
@@ -129,22 +121,18 @@
               <li>Use the Software to store or transmit malicious code or harmful content.</li>
             </ul>
           </div>
-
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">8. Limitation of Liability</h2>
-            <p class="text-slate-600 leading-relaxed">The Software is provided "as is" without warranty of any kind. We shall not be liable for any direct, indirect, incidental, or consequential damages arising from your use of or inability to use the Software. This includes loss of data, loss of business, or any other financial loss.</p>
+            <p class="text-slate-600 leading-relaxed">The Software is provided "as is" without warranty of any kind. We shall not be liable for any direct, indirect, incidental, or consequential damages arising from your use of or inability to use the Software.</p>
           </div>
-
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">9. Termination</h2>
-            <p class="text-slate-600 leading-relaxed">We reserve the right to suspend or terminate your access to the Software at any time for violation of these terms. Upon termination, your right to use the Software will immediately cease. You may export your data before termination.</p>
+            <p class="text-slate-600 leading-relaxed">We reserve the right to suspend or terminate your access to the Software at any time for violation of these terms. Upon termination, your right to use the Software will immediately cease.</p>
           </div>
-
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">10. Changes to Terms</h2>
-            <p class="text-slate-600 leading-relaxed">We may update these Terms of Service from time to time. We will notify users of material changes via email or through the Software. Continued use of the Software after changes constitutes acceptance of the new terms.</p>
+            <p class="text-slate-600 leading-relaxed">We may update these Terms of Service from time to time. We will notify users of material changes via email or through the Software.</p>
           </div>
-
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">11. Contact</h2>
             <p class="text-slate-600 leading-relaxed">If you have any questions about these Terms of Service, please <a href="contact.html" class="text-brand-sky hover:underline font-semibold">contact us</a>.</p>
@@ -154,13 +142,12 @@
     </section>
   </main>
 
-  <!-- FOOTER -->
   <footer class="bg-brand-sidebar border-t border-slate-800">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-10">
         <div class="sm:col-span-2 lg:col-span-1">
           <a href="/" class="flex items-center gap-2.5 mb-4">
-            <img src="/favicon.svg" alt="Hello Darzi" class="w-7 h-7" />
+            <img src="/favicon.svg" alt="" class="w-7 h-7 shrink-0" />
             <span class="font-display font-bold text-lg text-white">Hello Darzi</span>
           </a>
           <p class="text-sm text-slate-400 leading-relaxed max-w-xs">Simple, powerful tailor shop management software for Pakistan.</p>

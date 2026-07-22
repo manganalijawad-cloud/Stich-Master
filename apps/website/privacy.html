@@ -28,10 +28,6 @@
               bg: '#F8FAFC',
             },
           },
-          borderRadius: {
-            btn: '0.5rem',
-            card: '0.75rem',
-          },
         },
       },
     }
@@ -40,12 +36,11 @@
 </head>
 <body class="font-sans text-slate-800 bg-brand-bg antialiased">
 
-  <!-- HEADER -->
   <header class="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200/60 print:hidden">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-16">
         <a href="/" class="flex items-center gap-2.5 group" aria-label="Hello Darzi — Tailor Shop Management Software">
-          <img src="/favicon.svg" alt="Hello Darzi" class="w-7 h-7" />
+          <img src="/favicon.svg" alt="" class="w-7 h-7 shrink-0" />
           <span class="font-display font-bold text-xl text-brand-sidebar">Hello Darzi</span>
         </a>
         <nav class="hidden md:flex items-center gap-8">
@@ -55,40 +50,42 @@
           <a href="about.html" class="text-sm font-semibold text-slate-500 hover:text-brand-sidebar transition-colors">About</a>
           <a href="contact.html" class="text-sm font-semibold text-slate-500 hover:text-brand-sidebar transition-colors">Contact</a>
         </nav>
-        <a href="/#download" class="hidden sm:inline-flex items-center gap-2 px-5 py-2.5 bg-brand-sidebar text-white text-sm font-bold rounded-btn hover:bg-brand-active transition-all duration-200 shadow-sm hover:shadow-md">
+        <a href="/#download" class="hidden sm:inline-flex items-center gap-2 px-5 py-2.5 bg-brand-sidebar text-white text-sm font-bold rounded-lg hover:bg-brand-active transition-all duration-200 shadow-sm hover:shadow-md">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v12m0 0-3-3m3 3 3-3M5 19h14"/></svg>
           Download
         </a>
-        <button id="mobile-menu-btn" class="md:hidden p-2 text-slate-400 hover:text-brand-sidebar rounded-lg hover:bg-slate-100 transition-colors" aria-label="Open menu">
+        <button id="mobile-menu-btn" class="md:hidden p-2 text-slate-400 hover:text-brand-sidebar rounded-lg hover:bg-slate-100 transition-colors" aria-label="Open menu" type="button">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
       </div>
     </div>
-    <div id="mobile-menu" class="md:hidden hidden border-t border-slate-200 bg-white px-4 py-4 space-y-3">
-      <a href="/#features" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">Features</a>
-      <a href="/#pricing" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">Pricing</a>
-      <a href="/#faq" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">FAQ</a>
-      <a href="about.html" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">About</a>
-      <a href="contact.html" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">Contact</a>
-      <a href="/#download" class="block py-2.5 text-sm font-bold text-white bg-brand-sidebar text-center rounded-btn hover:bg-brand-active">Download</a>
+    <div id="mobile-menu-backdrop"></div>
+    <div id="mobile-menu" class="md:hidden border-t border-slate-200 bg-white px-4">
+      <div class="py-4 space-y-3">
+        <a href="/#features" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">Features</a>
+        <a href="/#pricing" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">Pricing</a>
+        <a href="/#faq" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">FAQ</a>
+        <a href="about.html" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">About</a>
+        <a href="contact.html" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">Contact</a>
+        <a href="/#download" class="block py-2.5 text-sm font-bold text-white bg-brand-sidebar text-center rounded-lg hover:bg-brand-active mt-2">Download</a>
+      </div>
     </div>
   </header>
 
   <main>
-    <section class="pt-32 pb-20 sm:pb-28">
+    <section class="pt-32 pb-16 sm:pb-20 lg:pb-28">
       <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="text-center max-w-2xl mx-auto mb-16">
-          <span class="text-xs font-bold uppercase tracking-[0.15em] text-brand-sky bg-brand-sky/10 px-4 py-1.5 rounded-full">Privacy Policy</span>
+        <div class="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
+          <span class="inline-block text-xs font-bold uppercase tracking-[0.15em] text-brand-sky bg-brand-sky/10 px-4 py-1.5 rounded-full">Privacy Policy</span>
           <h1 class="font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold text-brand-sidebar mt-6 mb-4 leading-tight">Privacy Policy</h1>
-          <p class="text-lg text-slate-500">Effective date: July 21, 2026</p>
+          <p class="text-base sm:text-lg text-slate-500">Effective date: July 21, 2026</p>
         </div>
 
-        <div class="bg-white rounded-card border border-slate-200 shadow-card p-8 sm:p-10 space-y-8">
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 sm:p-10 space-y-8">
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">1. Introduction</h2>
             <p class="text-slate-600 leading-relaxed">Hello Darzi ("we", "our", "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our tailor shop management software and website.</p>
           </div>
-
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">2. Information We Collect</h2>
             <p class="text-slate-600 leading-relaxed mb-3">We collect information that you provide directly to us when you create an account, use the software, or contact us. This includes:</p>
@@ -99,7 +96,6 @@
               <li>Communications you send to us, including inquiries and support requests.</li>
             </ul>
           </div>
-
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">3. How We Use Your Information</h2>
             <p class="text-slate-600 leading-relaxed mb-3">We use the information we collect to:</p>
@@ -111,22 +107,18 @@
               <li>Detect, prevent, and address technical issues or misuse.</li>
             </ul>
           </div>
-
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">4. Data Storage and Security</h2>
-            <p class="text-slate-600 leading-relaxed">Your data is stored securely using industry-standard encryption. We use Supabase, a trusted cloud database platform, for data storage and backup. We implement reasonable technical and organizational measures to protect your information from unauthorized access, alteration, disclosure, or destruction.</p>
+            <p class="text-slate-600 leading-relaxed">Your data is stored securely using industry-standard encryption. We use Supabase, a trusted cloud database platform, for data storage and backup. We implement reasonable technical and organizational measures to protect your information.</p>
           </div>
-
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">5. Data Sharing</h2>
             <p class="text-slate-600 leading-relaxed">We do not sell, trade, or rent your personal information to third parties. We may share anonymized or aggregated data for analytics purposes. We may disclose information if required by law or to protect our legal rights.</p>
           </div>
-
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">6. Data Retention</h2>
-            <p class="text-slate-600 leading-relaxed">We retain your data for as long as your account is active or as needed to provide our services. If you delete your account, your data will be permanently removed from our systems within a reasonable period, subject to legal obligations.</p>
+            <p class="text-slate-600 leading-relaxed">We retain your data for as long as your account is active or as needed to provide our services. If you delete your account, your data will be permanently removed from our systems within a reasonable period.</p>
           </div>
-
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">7. Your Rights</h2>
             <p class="text-slate-600 leading-relaxed mb-3">You have the right to:</p>
@@ -137,12 +129,10 @@
               <li>Withdraw consent where we rely on your consent to process data.</li>
             </ul>
           </div>
-
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">8. Changes to This Policy</h2>
-            <p class="text-slate-600 leading-relaxed">We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new policy on this page and updating the effective date. We encourage you to review this policy periodically.</p>
+            <p class="text-slate-600 leading-relaxed">We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new policy on this page and updating the effective date.</p>
           </div>
-
           <div>
             <h2 class="font-display text-xl font-bold text-brand-sidebar mb-3">9. Contact Us</h2>
             <p class="text-slate-600 leading-relaxed">If you have any questions about this Privacy Policy, please <a href="contact.html" class="text-brand-sky hover:underline font-semibold">contact us</a>.</p>
@@ -152,13 +142,12 @@
     </section>
   </main>
 
-  <!-- FOOTER -->
   <footer class="bg-brand-sidebar border-t border-slate-800">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-10">
         <div class="sm:col-span-2 lg:col-span-1">
           <a href="/" class="flex items-center gap-2.5 mb-4">
-            <img src="/favicon.svg" alt="Hello Darzi" class="w-7 h-7" />
+            <img src="/favicon.svg" alt="" class="w-7 h-7 shrink-0" />
             <span class="font-display font-bold text-lg text-white">Hello Darzi</span>
           </a>
           <p class="text-sm text-slate-400 leading-relaxed max-w-xs">Simple, powerful tailor shop management software for Pakistan.</p>

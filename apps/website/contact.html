@@ -28,10 +28,6 @@
               bg: '#F8FAFC',
             },
           },
-          borderRadius: {
-            btn: '0.5rem',
-            card: '0.75rem',
-          },
         },
       },
     }
@@ -40,12 +36,11 @@
 </head>
 <body class="font-sans text-slate-800 bg-brand-bg antialiased">
 
-  <!-- HEADER -->
   <header class="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200/60 print:hidden">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex items-center justify-between h-16">
         <a href="/" class="flex items-center gap-2.5 group" aria-label="Hello Darzi — Tailor Shop Management Software">
-          <img src="/favicon.svg" alt="Hello Darzi" class="w-7 h-7" />
+          <img src="/favicon.svg" alt="" class="w-7 h-7 shrink-0" />
           <span class="font-display font-bold text-xl text-brand-sidebar">Hello Darzi</span>
         </a>
         <nav class="hidden md:flex items-center gap-8">
@@ -55,37 +50,40 @@
           <a href="about.html" class="text-sm font-semibold text-slate-500 hover:text-brand-sidebar transition-colors">About</a>
           <a href="contact.html" class="text-sm font-semibold text-brand-sky transition-colors">Contact</a>
         </nav>
-        <a href="/#download" class="hidden sm:inline-flex items-center gap-2 px-5 py-2.5 bg-brand-sidebar text-white text-sm font-bold rounded-btn hover:bg-brand-active transition-all duration-200 shadow-sm hover:shadow-md">
+        <a href="/#download" class="hidden sm:inline-flex items-center gap-2 px-5 py-2.5 bg-brand-sidebar text-white text-sm font-bold rounded-lg hover:bg-brand-active transition-all duration-200 shadow-sm hover:shadow-md">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2v12m0 0-3-3m3 3 3-3M5 19h14"/></svg>
           Download
         </a>
-        <button id="mobile-menu-btn" class="md:hidden p-2 text-slate-400 hover:text-brand-sidebar rounded-lg hover:bg-slate-100 transition-colors" aria-label="Open menu">
+        <button id="mobile-menu-btn" class="md:hidden p-2 text-slate-400 hover:text-brand-sidebar rounded-lg hover:bg-slate-100 transition-colors" aria-label="Open menu" type="button">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
       </div>
     </div>
-    <div id="mobile-menu" class="md:hidden hidden border-t border-slate-200 bg-white px-4 py-4 space-y-3">
-      <a href="/#features" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">Features</a>
-      <a href="/#pricing" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">Pricing</a>
-      <a href="/#faq" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">FAQ</a>
-      <a href="about.html" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">About</a>
-      <a href="contact.html" class="block py-2 text-sm font-semibold text-brand-sky">Contact</a>
-      <a href="/#download" class="block py-2.5 text-sm font-bold text-white bg-brand-sidebar text-center rounded-btn hover:bg-brand-active">Download</a>
+    <div id="mobile-menu-backdrop"></div>
+    <div id="mobile-menu" class="md:hidden border-t border-slate-200 bg-white px-4">
+      <div class="py-4 space-y-3">
+        <a href="/#features" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">Features</a>
+        <a href="/#pricing" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">Pricing</a>
+        <a href="/#faq" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">FAQ</a>
+        <a href="about.html" class="block py-2 text-sm font-semibold text-slate-600 hover:text-brand-sidebar">About</a>
+        <a href="contact.html" class="block py-2 text-sm font-semibold text-brand-sky">Contact</a>
+        <a href="/#download" class="block py-2.5 text-sm font-bold text-white bg-brand-sidebar text-center rounded-lg hover:bg-brand-active mt-2">Download</a>
+      </div>
     </div>
   </header>
 
   <main>
-    <section class="pt-32 pb-20 sm:pb-28">
+    <section class="pt-32 pb-16 sm:pb-20 lg:pb-28">
       <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="text-center max-w-2xl mx-auto mb-16">
-          <span class="text-xs font-bold uppercase tracking-[0.15em] text-brand-sky bg-brand-sky/10 px-4 py-1.5 rounded-full">Contact</span>
+        <div class="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
+          <span class="inline-block text-xs font-bold uppercase tracking-[0.15em] text-brand-sky bg-brand-sky/10 px-4 py-1.5 rounded-full">Contact</span>
           <h1 class="font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold text-brand-sidebar mt-6 mb-4 leading-tight">Get in Touch</h1>
-          <p class="text-lg text-slate-500 max-w-xl mx-auto">Have a question, need support, or want to learn more about our tailor shop software? We are here to help.</p>
+          <p class="text-base sm:text-lg text-slate-500 max-w-xl mx-auto leading-relaxed">Have a question, need support, or want to learn more about our tailor shop software? We are here to help.</p>
         </div>
 
         <div class="grid md:grid-cols-5 gap-8">
           <div class="md:col-span-2 space-y-6">
-            <div class="bg-white rounded-card border border-slate-200 shadow-card p-6">
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
               <div class="w-10 h-10 rounded-xl bg-brand-sky/10 flex items-center justify-center mb-4">
                 <svg class="w-5 h-5 text-brand-sky" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
               </div>
@@ -94,7 +92,7 @@
               <a href="mailto:support@hellodarzi.com" class="inline-block mt-3 text-sm font-semibold text-brand-sky hover:underline">support@hellodarzi.com</a>
             </div>
 
-            <div class="bg-white rounded-card border border-slate-200 shadow-card p-6">
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
               <div class="w-10 h-10 rounded-xl bg-brand-sky/10 flex items-center justify-center mb-4">
                 <svg class="w-5 h-5 text-brand-sky" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
               </div>
@@ -103,7 +101,7 @@
               <a href="https://github.com/manganalijawad-cloud/Stich-Master" target="_blank" rel="noopener noreferrer" class="inline-block mt-3 text-sm font-semibold text-brand-sky hover:underline">Visit our GitHub</a>
             </div>
 
-            <div class="bg-white rounded-card border border-slate-200 shadow-card p-6">
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
               <div class="w-10 h-10 rounded-xl bg-brand-sky/10 flex items-center justify-center mb-4">
                 <svg class="w-5 h-5 text-brand-sky" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               </div>
@@ -113,26 +111,26 @@
           </div>
 
           <div class="md:col-span-3">
-            <form id="contact-form" class="bg-white rounded-card border border-slate-200 shadow-card p-8 space-y-5">
+            <form id="contact-form" class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 sm:p-8 space-y-5">
               <div class="grid sm:grid-cols-2 gap-5">
                 <div>
                   <label for="name" class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Your Name</label>
-                  <input type="text" id="name" name="name" required placeholder="Enter your name" class="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-btn text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-brand-sky focus:ring-3 focus:ring-brand-sky/10 transition-all" />
+                  <input type="text" id="name" name="name" required placeholder="Enter your name" class="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/10 transition-all" />
                 </div>
                 <div>
                   <label for="email" class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Email Address</label>
-                  <input type="email" id="email" name="email" required placeholder="Enter your email" class="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-btn text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-brand-sky focus:ring-3 focus:ring-brand-sky/10 transition-all" />
+                  <input type="email" id="email" name="email" required placeholder="Enter your email" class="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/10 transition-all" />
                 </div>
               </div>
               <div>
                 <label for="subject" class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Subject</label>
-                <input type="text" id="subject" name="subject" placeholder="What is this about?" class="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-btn text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-brand-sky focus:ring-3 focus:ring-brand-sky/10 transition-all" />
+                <input type="text" id="subject" name="subject" placeholder="What is this about?" class="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/10 transition-all" />
               </div>
               <div>
                 <label for="message" class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Message</label>
-                <textarea id="message" name="message" rows="5" required placeholder="Tell us how we can help..." class="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-btn text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-brand-sky focus:ring-3 focus:ring-brand-sky/10 transition-all resize-y"></textarea>
+                <textarea id="message" name="message" rows="5" required placeholder="Tell us how we can help..." class="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/10 transition-all resize-y"></textarea>
               </div>
-              <button type="submit" class="w-full py-3 bg-brand-sidebar text-white text-sm font-bold rounded-btn hover:bg-brand-active transition-colors shadow-sm flex items-center justify-center gap-2">
+              <button type="submit" class="w-full py-3 bg-brand-sidebar text-white text-sm font-bold rounded-lg hover:bg-brand-active transition-colors shadow-sm flex items-center justify-center gap-2">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
                 Send Message
               </button>
@@ -144,13 +142,12 @@
     </section>
   </main>
 
-  <!-- FOOTER -->
   <footer class="bg-brand-sidebar border-t border-slate-800">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-10">
         <div class="sm:col-span-2 lg:col-span-1">
           <a href="/" class="flex items-center gap-2.5 mb-4">
-            <img src="/favicon.svg" alt="Hello Darzi" class="w-7 h-7" />
+            <img src="/favicon.svg" alt="" class="w-7 h-7 shrink-0" />
             <span class="font-display font-bold text-lg text-white">Hello Darzi</span>
           </a>
           <p class="text-sm text-slate-400 leading-relaxed max-w-xs">Simple, powerful tailor shop management software for Pakistan.</p>
