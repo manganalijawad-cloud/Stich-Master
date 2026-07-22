@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "node scripts/env-to-website.mjs",
+  "buildCommand": "node build.mjs",
   "outputDirectory": ".",
   "framework": null,
   "installCommand": "echo 'no install needed'",

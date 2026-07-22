@@ -285,10 +285,10 @@ After installing the app, Windows will recognize `hellodarzi://` links and open 
 The `vercel.json` build command is already configured:
 
 ```json
-"buildCommand": "node scripts/env-to-website.mjs"
+"buildCommand": "node build.mjs"
 ```
 
-This script reads the environment variables and injects them into `apps/website/env.js`.
+This script (at `apps/website/build.mjs`) reads the environment variables and injects them into `apps/website/env.js`.
 
 1. Push your code to GitHub (or the connected Git repository).
 2. Vercel will automatically deploy.
