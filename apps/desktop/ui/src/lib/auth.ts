@@ -121,28 +121,10 @@ export async function signInWithGoogle(): Promise<{ error: string | null }> {
     const isElectron = !!(window as any).electronAPI?.isElectron;
 
     if (isElectron) {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-      const authUrl = `${supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent('http://localhost:3000')}`;
-
-      const result = await (window as any).electronAPI.oauthSignIn(authUrl);
-
-      if (result.error) return { error: result.error };
-      if (result.url) {
-        const session = await (window as any).electronAPI.oauthGetSessionFromUrl(result.url);
-
-        if (session.access_token) {
-          const { error: setSessionError } = await supabase.auth.setSession({
-            access_token: session.access_token,
-            refresh_token: session.refresh_token || '',
-          });
-          if (setSessionError) return { error: setSessionError.message };
-          return { error: null };
-        }
-        return { error: session.error || 'Failed to get session from authentication.' };
-      }
-      return { error: 'Authentication failed.' };
+      return signInWithGoogleDesktop();
     }
 
+    // Web flow: use popup or redirect via Supabase
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -156,6 +138,80 @@ export async function signInWithGoogle(): Promise<{ error: string | null }> {
     const message = err instanceof Error ? err.message : 'An unexpected error occurred';
     return { error: message };
   }
+}
+
+async function signInWithGoogleDesktop(): Promise<{ error: string | null }> {
+  const api = (window as any).electronAPI;
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+
+  const redirectTo = 'hellodarzi://auth/callback';
+  const authUrl = `${supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`;
+
+  let resolved = false;
+  let removeListener: (() => void) | null = null;
+
+  const handleDeepLinkCallback = async (callbackUrl: string) => {
+    if (resolved) return;
+    resolved = true;
+    if (removeListener) removeListener();
+
+    try {
+      const session = await api.oauthParseCallback(callbackUrl);
+      if (session.access_token) {
+        const { error: setSessionError } = await supabase.auth.setSession({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token || '',
+        });
+        if (setSessionError) {
+          return { error: setSessionError.message };
+        }
+        return { error: null };
+      } else {
+        return { error: session.error || 'No access token in callback' };
+      }
+    } catch (err) {
+      return { error: 'Failed to process authentication callback' };
+    }
+  };
+
+  // Listen for deep link events from main process (fired when OS delivers the URL)
+  removeListener = api.onOAuthCallback((callbackUrl: string) => {
+    handleDeepLinkCallback(callbackUrl);
+  });
+
+  try {
+    // Open system browser and wait for deep link
+    const result = await api.oauthStart(authUrl);
+
+    if (result.error) {
+      resolved = true;
+      if (removeListener) removeListener();
+      return { error: result.error };
+    }
+
+    if (result.url) {
+      const callbackResult = await handleDeepLinkCallback(result.url);
+      if (callbackResult?.error) {
+        return { error: callbackResult.error };
+      }
+    }
+  } catch (err: unknown) {
+    resolved = true;
+    if (removeListener) removeListener();
+    const message = err instanceof Error ? err.message : 'An unexpected error occurred';
+    return { error: message };
+  }
+
+  // Wait briefly for the session to propagate via auth state listener
+  await new Promise(r => setTimeout(r, 1000));
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    return { error: null };
+  }
+
+  // The auth state listener in AuthContext should catch the session
+  // If we got here without error, assume success (session will populate async)
+  return { error: null };
 }
 
 export async function sendPasswordResetEmail(
@@ -292,4 +348,5 @@ export async function signOut(): Promise<void> {
   await supabase.auth.signOut();
   localStorage.removeItem('tailor_token');
   localStorage.removeItem('tailor_user');
+  localStorage.removeItem('hellodarzi-auth');
 }

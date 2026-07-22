@@ -7,7 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openExternal: (url) => {
     try {
       const parsed = new URL(url);
-      if (parsed.protocol === 'https:' || parsed.protocol === 'mailto:') {
+      if (parsed.protocol === 'https:' || parsed.protocol === 'mailto:' || parsed.protocol === 'hellodarzi:') {
         return shell.openExternal(url);
       }
     } catch {}
@@ -71,7 +71,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('update-error', handler);
   },
 
-  // OAuth (Google Sign-In)
-  oauthSignIn: (authUrl) => ipcRenderer.invoke('oauth-signin-electron', authUrl),
-  oauthGetSessionFromUrl: (url) => ipcRenderer.invoke('oauth-get-session-from-url', url),
+  // OAuth with system browser + deep link (hellodarzi://)
+  oauthStart: (authUrl) => ipcRenderer.invoke('oauth-start', authUrl),
+  oauthCancel: () => ipcRenderer.invoke('oauth-cancel'),
+  oauthParseCallback: (url) => ipcRenderer.invoke('oauth-parse-callback', url),
+  oauthIsProtocolRegistered: () => ipcRenderer.invoke('oauth-is-protocol-registered'),
+  onOAuthCallback: (callback) => {
+    const handler = (_event, url) => callback(url);
+    ipcRenderer.on('oauth-callback', handler);
+    return () => ipcRenderer.removeListener('oauth-callback', handler);
+  },
 });

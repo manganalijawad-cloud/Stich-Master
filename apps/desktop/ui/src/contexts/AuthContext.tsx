@@ -36,6 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
     localStorage.removeItem('tailor_token');
     localStorage.removeItem('tailor_user');
+    localStorage.removeItem('hellodarzi-auth');
   }, []);
 
   const setSession = useCallback((newUser: ExtendedUserProfile, newToken: string) => {
@@ -139,6 +140,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (session) {
             setToken(session.access_token);
             localStorage.setItem('tailor_token', session.access_token);
+
+            // Fetch the user profile for SIGNED_IN events (e.g., from Google OAuth)
+            if (event === 'SIGNED_IN') {
+              try {
+                const { data: { user: authUser } } = await supabase.auth.getUser();
+                if (authUser && mountedRef.current) {
+                  const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('*, shops(shop_name, address)')
+                    .eq('id', authUser.id)
+                    .single();
+
+                  if (profile) {
+                    const extProfile: ExtendedUserProfile = {
+                      id: profile.id,
+                      email: profile.email,
+                      name: profile.name,
+                      owner_name: profile.owner_name || '',
+                      mobile_number: profile.mobile_number || '',
+                      role: profile.role,
+                      shop_id: profile.shop_id,
+                      shop_name: profile.shops?.shop_name || '',
+                      address: profile.shops?.address || '',
+                      created_at: profile.created_at,
+                      updated_at: profile.updated_at,
+                    };
+                    setSession(extProfile, session.access_token);
+                  } else {
+                    // No shop yet — user needs to complete profile
+                    const fallback: ExtendedUserProfile = {
+                      id: authUser.id,
+                      email: authUser.email || '',
+                      name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'Owner',
+                      role: 'Owner',
+                      created_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString(),
+                    };
+                    setSession(fallback, session.access_token);
+                  }
+                }
+              } catch (err) {
+                console.error('Failed to fetch profile after sign in:', err);
+              }
+            }
           }
         }
       }

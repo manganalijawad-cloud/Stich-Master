@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "echo 'Static site — nothing to build'",
+  "buildCommand": "node scripts/env-to-website.mjs",
   "outputDirectory": ".",
   "framework": null,
   "installCommand": "echo 'no install needed'",
@@ -23,6 +23,21 @@
     }
   ],
   "redirects": [
+    {
+      "source": "/login",
+      "destination": "/auth.html",
+      "permanent": true
+    },
+    {
+      "source": "/signin",
+      "destination": "/auth.html",
+      "permanent": true
+    },
+    {
+      "source": "/signup",
+      "destination": "/auth.html?action=signup",
+      "permanent": true
+    },
     {
       "source": "/download",
       "destination": "/#download",

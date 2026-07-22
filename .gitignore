@@ -24,6 +24,9 @@ out/
 dist/
 build/
 
+# Generated website environment (injected during deployment)
+/apps/website/env.js
+
 # AI agent configuration
 .agents/
 .claude/

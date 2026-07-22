@@ -30,6 +30,10 @@
       }
     ]
   },
+  "protocols": {
+    "name": "Hello Darzi",
+    "schemes": ["hellodarzi"]
+  },
   "nsis": {
     "oneClick": false,
     "perMachine": false,

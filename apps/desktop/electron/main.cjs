@@ -1,9 +1,26 @@
-const { app, BrowserWindow, ipcMain, crashReporter, dialog, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, crashReporter, dialog, Menu, shell, session: electronSession } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { URL } = require('url');
 
 const isDev = !app.isPackaged;
 let serverPort = 3000;
+
+// ---------------------------------------------------------------------------
+// CUSTOM PROTOCOL (Deep Link)
+// ---------------------------------------------------------------------------
+const PROTOCOL = 'hellodarzi';
+
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient(PROTOCOL);
+}
+
+// Store the OAuth callback promise resolver so the renderer can await it
+let pendingOAuthResolve = null;
 
 // ---------------------------------------------------------------------------
 // SINGLE-INSTANCE LOCK
@@ -283,14 +300,45 @@ function debouncedSaveWindowState() {
 }
 
 // ---------------------------------------------------------------------------
-// SECOND-INSTANCE HANDLER
+// SECOND-INSTANCE HANDLER (also receives deep link from OS)
 // ---------------------------------------------------------------------------
-app.on('second-instance', () => {
+app.on('second-instance', (_event, argv) => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
   }
+  // Handle deep link from second instance (Windows sends URL as argument)
+  const deepLink = argv.find(a => a.startsWith(`${PROTOCOL}://`));
+  if (deepLink) handleDeepLink(deepLink);
 });
+
+// macOS: Open URL event
+app.on('open-url', (_event, url) => {
+  if (url && url.startsWith(`${PROTOCOL}://`)) {
+    handleDeepLink(url);
+  }
+});
+
+function handleDeepLink(url) {
+  try {
+    const parsed = new URL(url);
+    // Expected format: hellodarzi://auth/callback#access_token=xxx&refresh_token=xxx&...
+    // or hellodarzi://auth/callback?code=xxx&state=xxx (PKCE flow)
+    if (parsed.pathname === '/auth/callback' || parsed.pathname === 'auth/callback') {
+      if (pendingOAuthResolve) {
+        const resolve = pendingOAuthResolve;
+        pendingOAuthResolve = null;
+        resolve({ url: url });
+      }
+      // Also forward to renderer so it can process the session
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('oauth-callback', url);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to parse deep link:', err.message);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // CREATE MAIN WINDOW
@@ -344,107 +392,95 @@ async function createWindow() {
   let loadRetries = 0;
   const MAX_LOAD_RETRIES = 5;
 
-  let currentOAuthResolve = null;
+  // ---------------------------------------------------------------------------
+  // IPC: Start OAuth flow by opening the system browser
+  // ---------------------------------------------------------------------------
+  ipcMain.handle('oauth-start', async (_event, authUrl) => {
+    // Set up a promise that will resolve when the deep link callback arrives
+    return new Promise((resolve, reject) => {
+      // Clear any previous pending resolver
+      pendingOAuthResolve = null;
 
-  function handleOAuthFlow(authUrl) {
-    const authWindow = new BrowserWindow({
-      width: 600,
-      height: 700,
-      title: 'Sign in with Google',
-      resizable: false,
-      frame: true,
-      autoHideMenuBar: true,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        sandbox: true,
-      },
-    });
-
-    let resolved = false;
-
-    const cleanup = () => {
-      resolved = true;
-      if (!authWindow.isDestroyed()) authWindow.close();
-      if (currentOAuthResolve) {
-        const r = currentOAuthResolve;
-        currentOAuthResolve = null;
-        r({ error: 'Authentication window was closed.' });
-      }
-    };
-
-    const timeout = setTimeout(cleanup, 120000);
-
-    authWindow.webContents.on('will-redirect', (_event, url) => {
-      tryToResolve(url);
-    });
-
-    authWindow.webContents.on('will-navigate', (_event, url) => {
-      tryToResolve(url);
-    });
-
-    function tryToResolve(url) {
-      try {
-        const parsed = new URL(url);
-        if (parsed.hash && parsed.hash.includes('access_token')) {
-          clearTimeout(timeout);
-          if (!resolved) {
-            resolved = true;
-            authWindow.close();
-            if (currentOAuthResolve) {
-              const r = currentOAuthResolve;
-              currentOAuthResolve = null;
-              r({ url });
-            }
-          }
-        } else if (parsed.searchParams?.has('error')) {
-          clearTimeout(timeout);
-          if (!resolved) {
-            resolved = true;
-            authWindow.close();
-            if (currentOAuthResolve) {
-              const r = currentOAuthResolve;
-              currentOAuthResolve = null;
-              r({ error: parsed.searchParams.get('error') || 'Authentication failed.' });
-            }
-          }
+      // Set a timeout (2 minutes)
+      const timeout = setTimeout(() => {
+        if (pendingOAuthResolve === resolve) {
+          pendingOAuthResolve = null;
+          resolve({ error: 'Authentication timed out. Please try again.' });
         }
-      } catch {}
-    }
+      }, 120000);
 
-    authWindow.on('closed', cleanup);
-    authWindow.loadURL(authUrl);
-  }
+      pendingOAuthResolve = (result) => {
+        clearTimeout(timeout);
+        resolve(result);
+      };
 
-  // IPC handler for Electron OAuth (used as fallback for custom protocol redirects)
-  ipcMain.handle('oauth-signin-electron', async (_event, authUrl) => {
-    return new Promise((resolve) => {
-      currentOAuthResolve = resolve;
-      handleOAuthFlow(authUrl);
+      // Open the auth URL in the user's default system browser
+      shell.openExternal(authUrl).catch((err) => {
+        clearTimeout(timeout);
+        if (pendingOAuthResolve === resolve) {
+          pendingOAuthResolve = null;
+          resolve({ error: `Failed to open browser: ${err.message}` });
+        }
+      });
     });
   });
 
-  ipcMain.handle('oauth-get-session-from-url', async (_event, url) => {
+  // ---------------------------------------------------------------------------
+  // IPC: Cancel a pending OAuth flow
+  // ---------------------------------------------------------------------------
+  ipcMain.handle('oauth-cancel', async () => {
+    if (pendingOAuthResolve) {
+      const resolve = pendingOAuthResolve;
+      pendingOAuthResolve = null;
+      resolve({ error: 'Authentication cancelled.' });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // IPC: Parse a deep link callback URL and extract the Supabase session
+  // ---------------------------------------------------------------------------
+  ipcMain.handle('oauth-parse-callback', async (_event, url) => {
     try {
       const parsed = new URL(url);
-      const hash = parsed.hash.replace('#', '');
-      const params = new URLSearchParams(hash);
+      // Support both hash fragment (implicit flow) and query params (PKCE code flow)
+      let params;
+      if (parsed.hash) {
+        params = new URLSearchParams(parsed.hash.replace('#', '?'));
+      } else {
+        params = parsed.searchParams;
+      }
+
       const accessToken = params.get('access_token');
       const refreshToken = params.get('refresh_token');
       const expiresIn = params.get('expires_in');
       const tokenType = params.get('token_type');
+      const error = params.get('error');
+      const errorDescription = params.get('error_description');
+
+      if (error) {
+        return { error: errorDescription || error };
+      }
+
       if (accessToken) {
         return {
           access_token: accessToken,
-          refresh_token: refreshToken,
+          refresh_token: refreshToken || '',
           expires_in: expiresIn ? parseInt(expiresIn) : null,
-          token_type: tokenType,
+          token_type: tokenType || 'bearer',
         };
       }
+
       return { error: 'No access token found in callback URL.' };
     } catch {
       return { error: 'Invalid callback URL.' };
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // IPC: Check if custom protocol is registered
+  // ---------------------------------------------------------------------------
+  ipcMain.handle('oauth-is-protocol-registered', async () => {
+    return app.isDefaultProtocolClient(PROTOCOL);
   });
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
@@ -519,6 +555,13 @@ app.whenReady().then(async () => {
 
   await startExpressServer();
   await createWindow();
+
+  // Handle deep link if app was launched via the custom protocol
+  const deepLinkArg = process.argv.find(a => a.startsWith(`${PROTOCOL}://`));
+  if (deepLinkArg) {
+    // Small delay to ensure the renderer is ready
+    setTimeout(() => handleDeepLink(deepLinkArg), 1000);
+  }
 
   if (!isDev && autoUpdater) {
     const checkUpdate = () => autoUpdater.checkForUpdates().catch((err) => {

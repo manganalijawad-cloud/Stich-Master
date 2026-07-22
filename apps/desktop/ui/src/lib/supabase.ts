@@ -11,12 +11,16 @@ function createPlaceholderClient(): SupabaseClient {
   });
 }
 
+// Disable detectSessionInUrl for Electron since deep link callbacks are handled via IPC
+const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI?.isElectron;
+
 if (buildUrl && buildKey) {
   _supabase = createClient(buildUrl, buildKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: true,
+      detectSessionInUrl: !isElectron,
+      storageKey: 'hellodarzi-auth',
     }
   });
 } else {
@@ -32,7 +36,7 @@ export async function ensureSupabase(): Promise<void> {
     const config = await res.json();
     if (config.supabaseUrl && config.supabaseAnonKey) {
       _supabase = createClient(config.supabaseUrl, config.supabaseAnonKey, {
-        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: !isElectron, storageKey: 'hellodarzi-auth' }
       });
       Object.assign(supabase, _supabase);
     }
