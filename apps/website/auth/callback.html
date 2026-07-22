@@ -25,14 +25,24 @@
       <p class="text-sm text-slate-400">Please wait while we verify your credentials</p>
     </div>
 
+    <div id="success-state" class="hidden">
+      <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-green-500/10 flex items-center justify-center">
+        <svg class="w-8 h-8 text-green-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      </div>
+      <h1 class="font-display text-xl font-bold mb-2" id="success-title">Signed in</h1>
+      <p class="text-sm text-slate-400 mb-6" id="success-text">Redirecting you back...</p>
+    </div>
+
     <div id="error-state" class="hidden">
       <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-red-500/10 flex items-center justify-center">
         <svg class="w-8 h-8 text-red-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
         </svg>
       </div>
-      <h1 class="font-display text-xl font-bold mb-2">Sign in failed</h1>
-      <p id="error-message" class="text-sm text-slate-400 mb-6">Something went wrong. Please try again.</p>
+      <h1 class="font-display text-xl font-bold mb-2">Something went wrong</h1>
+      <p id="error-message" class="text-sm text-slate-400 mb-6">Authentication failed.</p>
       <a href="/auth.html" class="inline-flex items-center px-6 py-3 bg-cyan-400 text-slate-900 font-semibold text-sm rounded-xl hover:bg-cyan-300 transition-all duration-200">
         Try again
       </a>
@@ -42,66 +52,94 @@
   <script src="/env.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
   <script>
-    (async function() {
-      const loadingEl = document.getElementById('loading-state');
-      const errorEl = document.getElementById('error-state');
-      const errorMsg = document.getElementById('error-message');
+    (function() {
+      var loadingEl = document.getElementById('loading-state');
+      var successEl = document.getElementById('success-state');
+      var successTitle = document.getElementById('success-title');
+      var successText = document.getElementById('success-text');
+      var errorEl = document.getElementById('error-state');
+      var errorMsg = document.getElementById('error-message');
+
+      function showLoading() {
+        loadingEl.classList.remove('hidden');
+        successEl.classList.add('hidden');
+        errorEl.classList.add('hidden');
+      }
+
+      function showSuccess(title, text, redirectUrl) {
+        loadingEl.classList.add('hidden');
+        errorEl.classList.add('hidden');
+        successEl.classList.remove('hidden');
+        successTitle.textContent = title || 'Signed in';
+        successText.textContent = text || 'Redirecting you back...';
+        if (redirectUrl) {
+          setTimeout(function() { window.location.href = redirectUrl; }, 1500);
+        }
+      }
 
       function showError(msg) {
         loadingEl.classList.add('hidden');
+        successEl.classList.add('hidden');
         errorEl.classList.remove('hidden');
         errorMsg.textContent = msg || 'Something went wrong. Please try again.';
       }
 
-      const env = window.ENV || {};
-      const supabaseUrl = env.VITE_SUPABASE_URL || env.SUPABASE_URL || '';
-      const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY || '';
+      var env = window.ENV || {};
+      var supabaseUrl = env.VITE_SUPABASE_URL || env.SUPABASE_URL || '';
+      var supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY || '';
 
       if (!supabaseUrl || !supabaseAnonKey) {
         showError('Authentication is not configured.');
         return;
       }
 
-      const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey, {
+      var supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey, {
         auth: {
           persistSession: true,
           autoRefreshToken: true,
           detectSessionInUrl: true,
           storageKey: 'hellodarzi-auth',
-          flowType: 'implicit',
         },
       });
 
-      try {
-        const { data: { session }, error } = await supabaseClient.auth.getSession();
+      (async function() {
+        try {
+          // Check for password recovery type
+          var hash = window.location.hash;
+          var params = new URLSearchParams(hash.replace('#', '?'));
+          var type = params.get('type');
 
-        if (error) {
-          showError(error.message);
-          return;
-        }
-
-        if (session) {
-          // Success! Redirect to auth page (it will detect the session)
-          window.location.href = '/auth.html?success=true';
-        } else {
-          // Try to exchange the URL hash for a session
-          const hash = window.location.hash;
-          if (hash && hash.includes('access_token')) {
-            // Supabase should have already handled this via detectSessionInUrl
-            // Wait a moment and retry
-            await new Promise(r => setTimeout(r, 1000));
-            const { data: { session: retrySession } } = await supabaseClient.auth.getSession();
-            if (retrySession) {
-              window.location.href = '/auth.html?success=true';
-              return;
-            }
+          if (type === 'recovery') {
+            // Password reset flow — Supabase handles the session internally
+            // The user needs to set a new password, redirect to auth page
+            showSuccess('Password reset link valid', 'Redirecting you to set a new password...', '/auth.html?action=forgot');
+            return;
           }
-          showError('No session returned from authentication provider.');
+
+          var { data: { session }, error } = await supabaseClient.auth.getSession();
+
+          if (error) { showError(error.message); return; }
+
+          if (session) {
+            showSuccess('Signed in successfully', 'Redirecting you back...', '/auth.html?success=true');
+          } else if (hash && hash.includes('access_token')) {
+            await new Promise(function(r) { setTimeout(r, 1000); });
+            var { data: { session: retrySession } } = await supabaseClient.auth.getSession();
+            if (retrySession) {
+              showSuccess('Signed in successfully', 'Redirecting you back...', '/auth.html?success=true');
+            } else {
+              showError('Could not complete sign in. Please try again.');
+            }
+          } else if (hash && hash.includes('error')) {
+            showError(params.get('error_description') || params.get('error') || 'Authentication denied.');
+          } else {
+            showError('No session returned. Please try signing in again.');
+          }
+        } catch (err) {
+          showError('Failed to complete authentication.');
+          console.error('Auth callback error:', err);
         }
-      } catch (err) {
-        showError('Failed to complete authentication.');
-        console.error('Auth callback error:', err);
-      }
+      })();
     })();
   </script>
 </body>

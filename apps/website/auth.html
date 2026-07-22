@@ -49,10 +49,15 @@
       <div id="auth-container" class="w-full max-w-sm">
         <!-- Signed out state -->
         <div id="signed-out" class="animate-fade-in">
+
           <div class="text-center mb-8">
             <img src="/favicon.svg" alt="Hello Darzi" class="w-14 h-14 mx-auto mb-4" />
-            <h1 class="font-display text-2xl font-bold text-brand-sidebar tracking-tight">Welcome back</h1>
-            <p class="text-sm text-slate-500 mt-1.5">Sign in to manage your account</p>
+            <h1 id="page-title" class="font-display text-2xl font-bold text-brand-sidebar tracking-tight">Welcome back</h1>
+            <p id="page-subtitle" class="text-sm text-slate-500 mt-1.5">Sign in to manage your account</p>
+          </div>
+
+          <div id="auth-success" class="hidden rounded-lg bg-green-50 border border-green-200 px-4 py-3 mb-4">
+            <p id="auth-success-text" class="text-sm font-medium text-green-700"></p>
           </div>
 
           <div id="auth-error" class="hidden rounded-lg bg-red-50 border border-red-200 px-4 py-3 mb-4">
@@ -90,38 +95,122 @@
             </div>
           </div>
 
-          <form id="email-signin-form" class="space-y-4">
-            <div>
-              <input
-                type="email"
-                id="email-input"
-                placeholder="Email address"
-                autocomplete="email"
-                class="w-full h-11 px-4 bg-white border border-slate-300 rounded-xl text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20 transition-all duration-200"
-              />
-            </div>
-            <div>
-              <input
-                type="password"
-                id="password-input"
-                placeholder="Password"
-                autocomplete="current-password"
-                class="w-full h-11 px-4 bg-white border border-slate-300 rounded-xl text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20 transition-all duration-200"
-              />
-            </div>
-            <button
-              type="submit"
-              id="email-signin-btn"
-              class="w-full h-11 bg-brand-sidebar hover:bg-brand-active text-white font-semibold text-sm rounded-xl transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Sign in with Email
-            </button>
-          </form>
+          <!-- Sign In Form -->
+          <div id="signin-form-wrapper">
+            <form id="email-signin-form" class="space-y-4">
+              <div>
+                <input
+                  type="email"
+                  id="signin-email"
+                  placeholder="Email address"
+                  autocomplete="email"
+                  class="w-full h-11 px-4 bg-white border border-slate-300 rounded-xl text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20 transition-all duration-200"
+                />
+              </div>
+              <div>
+                <input
+                  type="password"
+                  id="signin-password"
+                  placeholder="Password"
+                  autocomplete="current-password"
+                  class="w-full h-11 px-4 bg-white border border-slate-300 rounded-xl text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20 transition-all duration-200"
+                />
+              </div>
+              <div class="flex items-center justify-between">
+                <label class="flex items-center gap-2 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    id="remember-me"
+                    class="w-4 h-4 rounded border-slate-300 text-brand-sky focus:ring-brand-sky/30 focus:ring-2 cursor-pointer accent-brand-sky"
+                  />
+                  <span class="text-sm text-slate-500 group-hover:text-slate-700 transition-colors">Remember me</span>
+                </label>
+                <a href="/auth.html?action=forgot" class="text-sm text-brand-sky hover:text-sky-600 font-medium transition-colors">Forgot password?</a>
+              </div>
+              <button
+                type="submit"
+                id="signin-btn"
+                class="w-full h-11 bg-brand-sidebar hover:bg-brand-active text-white font-semibold text-sm rounded-xl transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Sign in
+              </button>
+            </form>
+            <p class="mt-6 text-center text-sm text-slate-500">
+              Don&apos;t have an account?
+              <a href="/auth.html?action=signup" class="text-brand-sky hover:text-sky-600 font-medium transition-colors">Create one</a>
+            </p>
+          </div>
 
-          <p class="mt-6 text-center text-sm text-slate-500">
-            Don&apos;t have an account?
-            <a href="/auth.html?action=signup" class="text-brand-sky hover:text-sky-600 font-medium transition-colors">Create one</a>
-          </p>
+          <!-- Sign Up Form -->
+          <div id="signup-form-wrapper" class="hidden">
+            <form id="email-signup-form" class="space-y-4">
+              <div>
+                <input
+                  type="text"
+                  id="signup-name"
+                  placeholder="Full name"
+                  autocomplete="name"
+                  class="w-full h-11 px-4 bg-white border border-slate-300 rounded-xl text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20 transition-all duration-200"
+                />
+              </div>
+              <div>
+                <input
+                  type="email"
+                  id="signup-email"
+                  placeholder="Email address"
+                  autocomplete="email"
+                  class="w-full h-11 px-4 bg-white border border-slate-300 rounded-xl text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20 transition-all duration-200"
+                />
+              </div>
+              <div>
+                <input
+                  type="password"
+                  id="signup-password"
+                  placeholder="Password (min 8 characters)"
+                  autocomplete="new-password"
+                  class="w-full h-11 px-4 bg-white border border-slate-300 rounded-xl text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20 transition-all duration-200"
+                />
+              </div>
+              <button
+                type="submit"
+                id="signup-btn"
+                class="w-full h-11 bg-brand-sidebar hover:bg-brand-active text-white font-semibold text-sm rounded-xl transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Create account
+              </button>
+            </form>
+            <p class="mt-6 text-center text-sm text-slate-500">
+              Already have an account?
+              <a href="/auth.html" class="text-brand-sky hover:text-sky-600 font-medium transition-colors">Sign in</a>
+            </p>
+          </div>
+
+          <!-- Forgot Password Form -->
+          <div id="forgot-form-wrapper" class="hidden">
+            <form id="forgot-form" class="space-y-4">
+              <p class="text-sm text-slate-500 text-center">Enter your email and we'll send you a reset link</p>
+              <div>
+                <input
+                  type="email"
+                  id="forgot-email"
+                  placeholder="Email address"
+                  autocomplete="email"
+                  class="w-full h-11 px-4 bg-white border border-slate-300 rounded-xl text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20 transition-all duration-200"
+                />
+              </div>
+              <button
+                type="submit"
+                id="forgot-btn"
+                class="w-full h-11 bg-brand-sidebar hover:bg-brand-active text-white font-semibold text-sm rounded-xl transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Send reset link
+              </button>
+            </form>
+            <p class="mt-6 text-center text-sm text-slate-500">
+              <a href="/auth.html" class="text-brand-sky hover:text-sky-600 font-medium transition-colors">Back to sign in</a>
+            </p>
+          </div>
+
         </div>
 
         <!-- Signed in state -->
@@ -158,10 +247,7 @@
     </main>
   </div>
 
-  <!-- Environment variables (injected during deployment) -->
   <script src="env.js"></script>
-
-  <!-- Supabase JS via CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
   <script src="auth.js"></script>
 </body>

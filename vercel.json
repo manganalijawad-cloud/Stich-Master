@@ -39,6 +39,11 @@
       "permanent": true
     },
     {
+      "source": "/forgot-password",
+      "destination": "/auth.html?action=forgot",
+      "permanent": true
+    },
+    {
       "source": "/download",
       "destination": "/#download",
       "permanent": true
