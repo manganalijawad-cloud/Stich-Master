@@ -3414,6 +3414,9 @@ if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
 }
 
 async function startServer(preferredPort?: number): Promise<number> {
+  // #region agent log
+  fetch('http://127.0.0.1:7482/ingest/78538ddb-fa49-4308-a817-2c5f3753e12f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b9451d'},body:JSON.stringify({sessionId:'b9451d',location:'index.ts:startServer:entry',message:'startServer called',data:{preferredPort:preferredPort??PORT,ELECTRON_RUN:process.env.ELECTRON_RUN,NODE_ENV:process.env.NODE_ENV},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
   let initialized = false;
 
   async function initOnce(): Promise<void> {
@@ -3444,6 +3447,9 @@ async function startServer(preferredPort?: number): Promise<number> {
     return new Promise<number>((resolve, reject) => {
       const server = app.listen(port, "0.0.0.0", () => {
         const actualPort = (server.address() as any).port;
+        // #region agent log
+        fetch('http://127.0.0.1:7482/ingest/78538ddb-fa49-4308-a817-2c5f3753e12f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b9451d'},body:JSON.stringify({sessionId:'b9451d',location:'index.ts:serveAtPort:listen',message:'Server listening',data:{requestedPort:port,actualPort},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         console.log(`Express Server booted successfully on http://0.0.0.0:${actualPort}`);
         if (!process.env.ELECTRON_RUN && !process.env.VERCEL && !process.env.NETLIFY) {
           const url = `http://localhost:${actualPort}`;
@@ -3453,6 +3459,9 @@ async function startServer(preferredPort?: number): Promise<number> {
         resolve(actualPort);
       });
       server.on("error", (err: any) => {
+        // #region agent log
+        fetch('http://127.0.0.1:7482/ingest/78538ddb-fa49-4308-a817-2c5f3753e12f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b9451d'},body:JSON.stringify({sessionId:'b9451d',location:'index.ts:serveAtPort:error',message:'Server listen error',data:{port,code:err?.code,message:err?.message},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         if (err.code === "EADDRINUSE") {
           const nextPort = port + 1;
           console.warn(`Port ${port} is in use, trying port ${nextPort}...`);
@@ -3504,6 +3513,9 @@ export { app, PORT, startServer };
 
 if (!process.env.ELECTRON_RUN && !process.env.VERCEL && !process.env.NETLIFY) {
   startServer().catch((err) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7482/ingest/78538ddb-fa49-4308-a817-2c5f3753e12f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b9451d'},body:JSON.stringify({sessionId:'b9451d',location:'index.ts:standaloneStartup:catch',message:'Standalone server startup failed',data:{message:err?.message,code:err?.code},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     console.error("Failed to start server:", err);
     process.exit(1);
   });

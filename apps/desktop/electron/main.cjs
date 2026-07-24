@@ -542,6 +542,9 @@ async function createWindow() {
   });
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7482/ingest/78538ddb-fa49-4308-a817-2c5f3753e12f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b9451d'},body:JSON.stringify({sessionId:'b9451d',location:'main.cjs:did-fail-load',message:'Page load failed',data:{errorCode,errorDescription,serverPort,isDev,loadRetries},timestamp:Date.now(),hypothesisId:'A,D,E'})}).catch(()=>{});
+    // #endregion
     console.error('Failed to load page:', errorCode, errorDescription);
     if (loadRetries < MAX_LOAD_RETRIES && mainWindow) {
       loadRetries++;
@@ -570,6 +573,9 @@ async function createWindow() {
   });
 
   const url = `http://localhost:${serverPort}`;
+  // #region agent log
+  fetch('http://127.0.0.1:7482/ingest/78538ddb-fa49-4308-a817-2c5f3753e12f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b9451d'},body:JSON.stringify({sessionId:'b9451d',location:'main.cjs:createWindow:loadURL',message:'Loading app URL',data:{url,serverPort,isDev,loadRetries},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
+  // #endregion
   await mainWindow.loadURL(url);
 }
 
@@ -577,6 +583,9 @@ async function createWindow() {
 // START EXPRESS SERVER
 // ---------------------------------------------------------------------------
 async function startExpressServer() {
+  // #region agent log
+  fetch('http://127.0.0.1:7482/ingest/78538ddb-fa49-4308-a817-2c5f3753e12f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b9451d'},body:JSON.stringify({sessionId:'b9451d',location:'main.cjs:startExpressServer',message:'startExpressServer called',data:{isDev,serverPort},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   if (isDev) return;
 
   process.env.NODE_ENV = 'production';
