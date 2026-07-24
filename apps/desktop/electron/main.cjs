@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, crashReporter, dialog, Menu, shell, session: electronSession } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { URL } = require('url');
+const { URL, pathToFileURL } = require('url');
 
 const isDev = !app.isPackaged;
 let serverPort = 3000;
@@ -274,6 +274,244 @@ ipcMain.handle('window-close', () => {
 
 ipcMain.handle('window-is-maximized', () => {
   return mainWindow?.isMaximized() ?? false;
+});
+
+// ---------------------------------------------------------------------------
+// PRINT PREVIEW (Electron does not ship Chromium's print-preview WebUI)
+// ---------------------------------------------------------------------------
+const printPreviewTempFiles = new WeakMap();
+
+function cleanupPrintPreviewFiles(win) {
+  const files = printPreviewTempFiles.get(win);
+  if (!files) return;
+  printPreviewTempFiles.delete(win);
+  for (const filePath of files) {
+    try {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch {}
+  }
+}
+
+function buildPrintPreviewHtml(pdfUrl) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Print Preview — Hello Darzi</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+    }
+    .toolbar {
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      background: #0f172a;
+      color: #fff;
+    }
+    .toolbar h1 {
+      margin: 0;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .actions { display: flex; gap: 8px; }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-close {
+      background: transparent;
+      color: #cbd5e1;
+      border: 1px solid #334155;
+    }
+    .btn-close:hover { background: #1e293b; }
+    .btn-print { background: #fff; color: #0f172a; }
+    .btn-print:hover { background: #e2e8f0; }
+    .btn-print:disabled { opacity: 0.65; cursor: wait; }
+    iframe {
+      width: 100%;
+      height: calc(100% - 52px);
+      border: 0;
+      background: #fff;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <h1>Print Preview</h1>
+    <div class="actions">
+      <button type="button" class="btn-close" id="closeBtn">Close</button>
+      <button type="button" class="btn-print" id="printBtn">Print</button>
+    </div>
+  </div>
+  <iframe id="pdfFrame" src="${pdfUrl}" title="Print preview document"></iframe>
+  <script>
+    document.getElementById('closeBtn').addEventListener('click', () => {
+      window.helloDarziPrint?.close();
+    });
+    document.getElementById('printBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('printBtn');
+      btn.disabled = true;
+      try {
+        await window.helloDarziPrint?.print();
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>`;
+}
+
+ipcMain.handle('print', async (event) => {
+  const source = event.sender;
+  if (!source || source.isDestroyed()) {
+    return { success: false, error: 'Window unavailable' };
+  }
+
+  // Wait a tick so React print-option state/DOM updates settle before capture.
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  let pdfData;
+  try {
+    pdfData = await source.printToPDF({
+      printBackground: true,
+      pageSize: 'A4',
+      margins: { marginType: 'default' },
+      preferCSSPageSize: true,
+    });
+  } catch (err) {
+    console.error('printToPDF failed:', err);
+    return { success: false, error: err.message || String(err) };
+  }
+
+  const stamp = Date.now();
+  const tempDir = app.getPath('temp');
+  const pdfPath = path.join(tempDir, `hellodarzi-print-${stamp}.pdf`);
+  const htmlPath = path.join(tempDir, `hellodarzi-print-${stamp}.html`);
+
+  try {
+    fs.writeFileSync(pdfPath, pdfData);
+    const pdfDataUrl = `data:application/pdf;base64,${Buffer.from(pdfData).toString('base64')}`;
+    fs.writeFileSync(htmlPath, buildPrintPreviewHtml(pdfDataUrl), 'utf8');
+  } catch (err) {
+    try { if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath); } catch {}
+    try { if (fs.existsSync(htmlPath)) fs.unlinkSync(htmlPath); } catch {}
+    return { success: false, error: err.message || String(err) };
+  }
+
+  const parent = BrowserWindow.fromWebContents(source);
+  const previewWin = new BrowserWindow({
+    width: 920,
+    height: 740,
+    minWidth: 640,
+    minHeight: 480,
+    title: 'Print Preview — Hello Darzi',
+    parent: parent && !parent.isDestroyed() ? parent : undefined,
+    modal: false,
+    autoHideMenuBar: true,
+    backgroundColor: '#F8FAFC',
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'print-preload.cjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false,
+    },
+  });
+
+  printPreviewTempFiles.set(previewWin, [pdfPath, htmlPath]);
+  previewWin.__hellodarziPdfPath = pdfPath;
+
+  previewWin.once('ready-to-show', () => {
+    if (!previewWin.isDestroyed()) previewWin.show();
+  });
+
+  previewWin.on('closed', () => {
+    cleanupPrintPreviewFiles(previewWin);
+  });
+
+  try {
+    await previewWin.loadFile(htmlPath);
+  } catch (err) {
+    cleanupPrintPreviewFiles(previewWin);
+    if (!previewWin.isDestroyed()) previewWin.close();
+    return { success: false, error: err.message || String(err) };
+  }
+
+  return { success: true };
+});
+
+ipcMain.handle('print-preview-print', async (event) => {
+  const previewWin = BrowserWindow.fromWebContents(event.sender);
+  const pdfPath = previewWin?.__hellodarziPdfPath;
+  if (!pdfPath || !fs.existsSync(pdfPath)) {
+    return { success: false, error: 'Preview document not found' };
+  }
+
+  return new Promise((resolve) => {
+    const printWin = new BrowserWindow({
+      show: false,
+      webPreferences: {
+        sandbox: true,
+        contextIsolation: true,
+      },
+    });
+
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      if (!printWin.isDestroyed()) printWin.close();
+      resolve(result);
+    };
+
+    printWin.webContents.on('did-fail-load', (_e, _code, desc) => {
+      finish({ success: false, error: desc || 'Failed to load print document' });
+    });
+
+    printWin.webContents.on('did-finish-load', () => {
+      setTimeout(() => {
+        if (printWin.isDestroyed()) {
+          finish({ success: false, error: 'Print window closed' });
+          return;
+        }
+        printWin.webContents.print(
+          { silent: false, printBackground: true },
+          (success, failureReason) => {
+            finish({
+              success: !!success,
+              error: success ? undefined : (failureReason || 'Print cancelled or failed'),
+            });
+          }
+        );
+      }, 300);
+    });
+
+    printWin.loadURL(pathToFileURL(pdfPath).href).catch((err) => {
+      finish({ success: false, error: err.message || String(err) });
+    });
+  });
+});
+
+ipcMain.handle('print-preview-close', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win && !win.isDestroyed()) win.close();
 });
 
 // ---------------------------------------------------------------------------

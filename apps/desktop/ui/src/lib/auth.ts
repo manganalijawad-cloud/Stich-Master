@@ -291,7 +291,13 @@ export async function completeGoogleProfile(
   }
 }
 
+/** Set to true to re-enable subscription gating in the desktop app. */
+const SUBSCRIPTIONS_ENABLED = false;
+
 export async function checkSubscription(userId: string): Promise<'active' | 'inactive' | 'expired'> {
+  // Subscriptions are temporarily disabled — treat every user as active.
+  if (!SUBSCRIPTIONS_ENABLED) return 'active';
+
   try {
     const { data, error } = await supabase
       .from('subscriptions')

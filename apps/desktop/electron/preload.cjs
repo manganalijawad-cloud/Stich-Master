@@ -24,6 +24,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAutoLaunch: () => ipcRenderer.invoke('get-auto-launch'),
   setAutoLaunch: (enable) => ipcRenderer.invoke('set-auto-launch', enable),
 
+  // Print with in-app PDF preview (Electron lacks Chromium print preview)
+  print: () => ipcRenderer.invoke('print'),
+
   // Window controls (frameless)
   minimize: () => ipcRenderer.invoke('window-minimize'),
   maximize: () => ipcRenderer.invoke('window-maximize'),

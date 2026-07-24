@@ -22,6 +22,7 @@ import {
   Layers
 } from 'lucide-react';
 import { Customer, UserRole, Order, GarmentType, MeasurementProfile } from '../types';
+import { printPage } from '../lib/print';
 
 interface CustomersSectionProps {
   token: string;
@@ -561,7 +562,7 @@ export default function CustomersSection({
   const handlePrintCustomer = () => {
     setPrintProfileId(null);
     setTimeout(() => {
-      window.print();
+      printPage();
     }, 150);
   };
 

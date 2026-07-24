@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ShoppingCart, Calendar, Plus, Trash2, Printer, CheckCircle, Clock, ShieldAlert, ArrowRight, ChevronRight, Edit3, Search, UserPlus, ChevronLeft, Scissors, Info, Check, QrCode, Camera, Smartphone, Users, ChevronDown, MoreVertical } from 'lucide-react';
 import { Customer, Order, OrderItem, OrderStatus, UserRole, PipelineStage, GarmentType, StylingCategory, MeasurementProfile } from '../types';
+import { printPage } from '../lib/print';
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
 
@@ -94,8 +95,24 @@ export default function OrdersSection({
   // Payment collection dialog when advancing to Delivered
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [pendingDeliverOrder, setPendingDeliverOrder] = useState<Order | null>(null);
+  const [pendingOtherDueOrders, setPendingOtherDueOrders] = useState<Order[]>([]);
   const [collectAmount, setCollectAmount] = useState<number>(0);
   const [oldDues, setOldDues] = useState<number>(0);
+  const [collectingPayment, setCollectingPayment] = useState(false);
+
+  const getOrderRemaining = (order: Order): number => {
+    const total = (order.final_total ?? order.total_amount) || 0;
+    return Math.max(0, total - (order.paid_amount || 0));
+  };
+
+  const resetPaymentDialog = () => {
+    setShowPaymentDialog(false);
+    setPendingDeliverOrder(null);
+    setPendingOtherDueOrders([]);
+    setCollectAmount(0);
+    setOldDues(0);
+    setCollectingPayment(false);
+  };
 
   // Dynamically generate QR code whenever selectedOrder changes
   useEffect(() => {
@@ -951,24 +968,27 @@ export default function OrdersSection({
     const nextStatus = activeWorkflowStageIds[currentIndex + 1];
 
     if (nextStatus === 'Delivered') {
-      const remaining = ((order.final_total ?? order.total_amount) || 0) - (order.paid_amount || 0);
+      const remaining = getOrderRemaining(order);
 
+      let otherDueOrders: Order[] = [];
       let otherDues = 0;
       try {
         const otherRes = await fetch(`/api/customers/${order.customer_id}/orders`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (otherRes.ok) {
-          const otherOrders = await otherRes.json();
-          otherDues = (otherOrders || [])
-            .filter((o: Order) => o.id !== order.id)
-            .reduce((sum: number, o: Order) => sum + Math.max(0, (o.total_amount || 0) - (o.paid_amount || 0)), 0);
+          const otherOrders: Order[] = await otherRes.json();
+          otherDueOrders = (otherOrders || [])
+            .filter((o) => o.id !== order.id && o.status !== 'Archived' && getOrderRemaining(o) > 0)
+            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          otherDues = otherDueOrders.reduce((sum, o) => sum + getOrderRemaining(o), 0);
         }
       } catch {}
 
       if (remaining > 0 || otherDues > 0) {
         setPendingDeliverOrder(order);
-        setCollectAmount(remaining > 0 ? remaining : 0);
+        setPendingOtherDueOrders(otherDueOrders);
+        setCollectAmount(remaining + otherDues);
         setOldDues(otherDues);
         setShowPaymentDialog(true);
         return;
@@ -978,46 +998,97 @@ export default function OrdersSection({
     await updateOrderStatus(order, nextStatus);
   };
 
-  const handleDeliverCollectPayment = async () => {
-    if (!pendingDeliverOrder) return;
-    setShowPaymentDialog(false);
-    const updatedPaid = (pendingDeliverOrder.paid_amount || 0) + collectAmount;
-    try {
-      const res = await fetch(`/api/orders/${pendingDeliverOrder.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          items: pendingDeliverOrder.items,
-          total_amount: pendingDeliverOrder.total_amount,
-          discount_type: pendingDeliverOrder.discount_type,
-          discount_value: pendingDeliverOrder.discount_value,
-          discount_amount: pendingDeliverOrder.discount_amount,
-          final_total: pendingDeliverOrder.final_total,
-          paid_amount: updatedPaid,
-          due_date: pendingDeliverOrder.due_date,
-          measurement_snapshot: pendingDeliverOrder.measurement_snapshot,
-        }),
-      });
-      if (res.ok) {
-        const updatedOrder = await res.json();
-        const merged = { ...pendingDeliverOrder, ...updatedOrder, paid_amount: updatedPaid };
-        setOrders(prev => prev.map(o => o.id === merged.id ? merged : o));
-        setSelectedOrder(prev => prev?.id === merged.id ? merged : prev);
-      }
-    } catch (err) {
-      console.error('Failed to update paid amount:', err);
+  const applyPaidAmountUpdate = async (order: Order, newPaidAmount: number): Promise<Order | null> => {
+    const res = await fetch(`/api/orders/${order.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        items: order.items,
+        total_amount: order.total_amount,
+        discount_type: order.discount_type,
+        discount_value: order.discount_value,
+        discount_amount: order.discount_amount,
+        final_total: order.final_total,
+        paid_amount: newPaidAmount,
+        due_date: order.due_date,
+        measurement_snapshot: order.measurement_snapshot,
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `Failed to update payment for order ${order.order_number}.`);
     }
-    await updateOrderStatus(pendingDeliverOrder, 'Delivered');
-    setPendingDeliverOrder(null);
-    setCollectAmount(0);
+    const updatedOrder = await res.json();
+    const merged = { ...order, ...updatedOrder, paid_amount: newPaidAmount };
+    setOrders(prev => prev.map(o => o.id === merged.id ? merged : o));
+    setSelectedOrder(prev => prev?.id === merged.id ? merged : prev);
+    return merged;
+  };
+
+  const handleDeliverCollectPayment = async () => {
+    if (!pendingDeliverOrder || collectingPayment) return;
+
+    const amountToCollect = Math.max(0, Number(collectAmount) || 0);
+    if (amountToCollect <= 0) {
+      await handleDeliverSkipPayment();
+      return;
+    }
+
+    setCollectingPayment(true);
+    try {
+      let remainingPool = amountToCollect;
+      const paymentUpdates: { order: Order; newPaid: number }[] = [];
+
+      // 1) Apply to the order being delivered first
+      const currentDue = getOrderRemaining(pendingDeliverOrder);
+      const toCurrent = Math.min(remainingPool, currentDue);
+      remainingPool -= toCurrent;
+      let currentNewPaid = (pendingDeliverOrder.paid_amount || 0) + toCurrent;
+
+      // 2) Apply leftover to other unpaid orders (oldest first)
+      for (const other of pendingOtherDueOrders) {
+        if (remainingPool <= 0) break;
+        const due = getOrderRemaining(other);
+        if (due <= 0) continue;
+        const apply = Math.min(remainingPool, due);
+        paymentUpdates.push({ order: other, newPaid: (other.paid_amount || 0) + apply });
+        remainingPool -= apply;
+      }
+
+      // 3) Any amount beyond total outstanding stays on the current order
+      if (remainingPool > 0) {
+        currentNewPaid += remainingPool;
+      }
+
+      if (currentNewPaid !== (pendingDeliverOrder.paid_amount || 0)) {
+        await applyPaidAmountUpdate(pendingDeliverOrder, currentNewPaid);
+      }
+      for (const update of paymentUpdates) {
+        await applyPaidAmountUpdate(update.order, update.newPaid);
+      }
+
+      const delivered = await updateOrderStatus(pendingDeliverOrder, 'Delivered');
+      if (delivered) {
+        resetPaymentDialog();
+      } else {
+        setCollectingPayment(false);
+      }
+    } catch (err: any) {
+      console.error('Failed to collect payment:', err);
+      alert(err?.message || 'Failed to collect payment. Order was not marked as delivered.');
+      setCollectingPayment(false);
+    }
   };
 
   const handleDeliverSkipPayment = async () => {
-    if (!pendingDeliverOrder) return;
-    setShowPaymentDialog(false);
-    await updateOrderStatus(pendingDeliverOrder, 'Delivered');
-    setPendingDeliverOrder(null);
-    setCollectAmount(0);
+    if (!pendingDeliverOrder || collectingPayment) return;
+    setCollectingPayment(true);
+    const delivered = await updateOrderStatus(pendingDeliverOrder, 'Delivered');
+    if (delivered) {
+      resetPaymentDialog();
+    } else {
+      setCollectingPayment(false);
+    }
   };
 
   // Edit Order Submission (Owner Only)
@@ -1126,7 +1197,7 @@ export default function OrdersSection({
   const triggerPrintReceipt = () => {
     setPrintOptions({ receipt: true, measure: false });
     setTimeout(() => {
-      window.print();
+      printPage();
     }, 100);
   };
 
@@ -1310,7 +1381,7 @@ export default function OrdersSection({
     setSelectedOrder(order);
     setPrintOptions({ receipt: true, measure: true });
     setTimeout(() => {
-      window.print();
+      printPage();
     }, 200);
   };
 
@@ -3010,7 +3081,7 @@ export default function OrdersSection({
               <button
                 onClick={() => {
                   setPrintOptions({ receipt: true, measure: false });
-                  setTimeout(() => window.print(), 100);
+                  setTimeout(() => printPage(), 100);
                 }}
                 className="w-full py-3 px-4 bg-white border-2 border-slate-200 hover:border-slate-300 text-slate-800 font-semibold rounded-xl text-sm uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-[border-color]"
               >
@@ -3020,7 +3091,7 @@ export default function OrdersSection({
               <button
                 onClick={() => {
                   setPrintOptions({ receipt: false, measure: true });
-                  setTimeout(() => window.print(), 100);
+                  setTimeout(() => printPage(), 100);
                 }}
                 className="w-full py-3 px-4 bg-white border-2 border-slate-200 hover:border-slate-300 text-slate-800 font-semibold rounded-xl text-sm uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-[border-color]"
               >
@@ -3030,7 +3101,7 @@ export default function OrdersSection({
               <button
                 onClick={() => {
                   setPrintOptions({ receipt: true, measure: true });
-                  setTimeout(() => window.print(), 100);
+                  setTimeout(() => printPage(), 100);
                 }}
                 className="w-full py-3 px-4 bg-brand-sidebar hover:bg-brand-active text-white font-semibold rounded-xl text-sm uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-[background-color]"
               >
@@ -3438,17 +3509,17 @@ export default function OrdersSection({
               </div>
               <div className="flex justify-between text-xs font-semibold">
                 <span className="text-slate-500">This Order Remaining</span>
-                <span className="text-red-500 font-bold">{currency}{Math.round(((pendingDeliverOrder.final_total ?? pendingDeliverOrder.total_amount) || 0) - (pendingDeliverOrder.paid_amount || 0))}</span>
+                <span className="text-red-500 font-bold">{currency}{Math.round(getOrderRemaining(pendingDeliverOrder))}</span>
               </div>
               {oldDues > 0 && (
                 <div className="flex justify-between text-xs font-semibold border-t border-amber-200 pt-2">
-                  <span className="text-amber-700">Old Dues (Other Orders)</span>
-                  <span className="text-amber-700 font-bold">{currency}{oldDues}</span>
+                  <span className="text-amber-700">Old Dues ({pendingOtherDueOrders.length} Other Order{pendingOtherDueOrders.length === 1 ? '' : 's'})</span>
+                  <span className="text-amber-700 font-bold">{currency}{Math.round(oldDues)}</span>
                 </div>
               )}
               <div className="flex justify-between text-xs font-bold border-t border-slate-200 pt-2">
                 <span className="text-slate-700">Total Outstanding</span>
-                <span className="text-red-600 font-black">{currency}{Math.round(((pendingDeliverOrder.final_total ?? pendingDeliverOrder.total_amount) || 0) - (pendingDeliverOrder.paid_amount || 0) + oldDues)}</span>
+                <span className="text-red-600 font-black">{currency}{Math.round(getOrderRemaining(pendingDeliverOrder) + oldDues)}</span>
               </div>
             </div>
 
@@ -3457,27 +3528,37 @@ export default function OrdersSection({
               <input
                 type="number"
                 min="0"
+                disabled={collectingPayment}
                 value={collectAmount || ''}
                 onChange={(e) => {
                   const raw = e.target.value;
                   if (raw === '') { setCollectAmount(0); return; }
                   const num = Number(raw);
-                  if (!isNaN(num)) setCollectAmount(num);
+                  if (!isNaN(num) && num >= 0) setCollectAmount(num);
                 }}
-                className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl font-semibold text-slate-800 text-sm focus-visible:outline-none focus:border-brand-sky"
+                className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl font-semibold text-slate-800 text-sm focus-visible:outline-none focus:border-brand-sky disabled:opacity-60"
               />
+              {oldDues > 0 && (
+                <p className="text-3xs text-slate-400 font-medium pt-1">
+                  Payment is applied to this order first, then to older unpaid orders.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
               <button
+                type="button"
+                disabled={collectingPayment}
                 onClick={handleDeliverCollectPayment}
-                className="btn-success w-full"
+                className="btn-success w-full disabled:opacity-60"
               >
-                Collect {currency}{collectAmount} & Deliver
+                {collectingPayment ? 'Collecting...' : `Collect ${currency}${collectAmount} & Deliver`}
               </button>
               <button
+                type="button"
+                disabled={collectingPayment}
                 onClick={handleDeliverSkipPayment}
-                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-xl text-xs uppercase tracking-wider cursor-pointer transition-[background-color]"
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-xl text-xs uppercase tracking-wider cursor-pointer transition-[background-color] disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 Deliver Without Collecting
               </button>

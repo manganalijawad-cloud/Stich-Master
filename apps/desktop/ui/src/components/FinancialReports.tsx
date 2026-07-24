@@ -4,6 +4,7 @@ import {
   ShoppingBag, Search, Phone, AlertCircle, RefreshCw
 } from 'lucide-react';
 import type { Order, PipelineStage } from '../types';
+import { printPage } from '../lib/print';
 
 interface FinancialReportsProps {
   token: string;
@@ -265,7 +266,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
               className={`btn-secondary py-1.5 px-2 ${!filteredOrders.length ? 'opacity-50 cursor-not-allowed' : ''}`}>
               <ArrowDownToLine className="icon-xs" />
             </button>
-            <button onClick={() => window.print()} disabled={!filteredOrders.length} title="Print"
+            <button onClick={() => printPage()} disabled={!filteredOrders.length} title="Print"
               className={`btn-primary py-1.5 px-2 ${!filteredOrders.length ? 'opacity-50 cursor-not-allowed' : ''}`}>
               <Printer className="icon-xs" />
             </button>
