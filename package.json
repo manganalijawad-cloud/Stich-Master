@@ -14,7 +14,7 @@
   "scripts": {
     "dev": "npm run dev:server",
     "dev:server": "tsx server.ts",
-    "dev:desktop": "concurrently -k \"npm run dev:server\" \"wait-on http://localhost:3000 && npm run start:desktop\"",
+    "dev:desktop": "concurrently -k \"npm run dev:server\" \"node scripts/wait-and-start-desktop.mjs\"",
     "start:desktop": "electron apps/desktop/electron/main.cjs",
     "build:ui": "vite build",
     "build:server": "esbuild packages/server/src/index.ts --bundle --platform=node --format=cjs --sourcemap --outfile=dist/server.cjs --external:better-sqlite3",

@@ -221,6 +221,10 @@ export default function OrdersSection({
     })));
   };
 
+  const rawTotal = useMemo(() =>
+    bookingItems.reduce((sum, item) => sum + (Number(item.price) || 0) * (item.quantity || 1), 0),
+  [bookingItems]);
+
   const calculateDiscount = useCallback(() => {
     if (!applyDiscount || !discountValue) return { discountAmount: 0, finalTotal: rawTotal };
     const val = Number(discountValue);
@@ -229,10 +233,6 @@ export default function OrdersSection({
     amount = Math.max(0, Math.min(amount, rawTotal));
     return { discountAmount: amount, finalTotal: Math.max(0, rawTotal - amount) };
   }, [applyDiscount, discountType, discountValue, rawTotal]);
-
-  const rawTotal = useMemo(() =>
-    bookingItems.reduce((sum, item) => sum + (Number(item.price) || 0) * (item.quantity || 1), 0),
-  [bookingItems]);
 
   const { discountAmount, finalTotal } = useMemo(() => calculateDiscount(), [calculateDiscount]);
   const maxPaid = finalTotal;

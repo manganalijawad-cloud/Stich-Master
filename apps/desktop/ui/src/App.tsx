@@ -25,11 +25,13 @@ type AuthPage = 'login' | 'signup' | 'forgot-password' | 'reset-password' | 'goo
 
 const originalFetch = window.fetch;
 const customFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
-
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : '';
-  if (url.startsWith('/api/') || url.includes('/api/')) {
+  // Only attach auth for local API calls. Never call getSession() for other URLs —
+  // Supabase auth refresh uses fetch; awaiting getSession here deadlocks token refresh
+  // and leaves the app stuck on "Initializing Workspace...".
+  if (url.startsWith('/api/') || (url.startsWith('http') && url.includes('/api/'))) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
     const newInit = { ...init };
     const headers = new Headers(newInit.headers || {});
     if (token && !headers.has('Authorization')) {
