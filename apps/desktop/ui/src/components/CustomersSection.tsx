@@ -63,7 +63,6 @@ export default function CustomersSection({
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [isNameDuplicate, setIsNameDuplicate] = useState(false);
-  const [newWhatsapp, setNewWhatsapp] = useState('');
   const [newAddress, setNewAddress] = useState('');
 
   
@@ -378,7 +377,6 @@ export default function CustomersSection({
         body: JSON.stringify({
           name: newName.trim(),
           phone: newPhone.trim(),
-          whatsapp: newWhatsapp.trim(),
           address: newAddress.trim(),
           measurements: payloadMeasurements,
         }),
@@ -396,7 +394,6 @@ export default function CustomersSection({
         // Clear form
         setNewName('');
         setNewPhone('');
-        setNewWhatsapp('');
         setNewAddress('');
         setInitialMeasurements({});
         onBookOrder(data.customer);
@@ -407,7 +404,6 @@ export default function CustomersSection({
       // Reset form
       setNewName('');
       setNewPhone('');
-      setNewWhatsapp('');
       setNewAddress('');
       setInitialMeasurements({});
       
@@ -1044,9 +1040,9 @@ export default function CustomersSection({
                           <span className="text-base font-black text-slate-800 block font-display">
                             {currency}{order.total_amount}
                           </span>
-                          {order.total_amount - order.paid_amount > 0 ? (
+                          {(order.final_total ?? order.total_amount) - order.paid_amount > 0 ? (
                             <span className="text-xs bg-red-50 text-red-700 font-semibold px-2 py-1 rounded border border-red-100">
-                              Due: {currency}{order.total_amount - order.paid_amount}
+                              Due: {currency}{(order.final_total ?? order.total_amount) - order.paid_amount}
                             </span>
                           ) : (
                             <span className="text-xs bg-emerald-50 text-emerald-700 font-semibold px-2 py-1 rounded border border-emerald-100">

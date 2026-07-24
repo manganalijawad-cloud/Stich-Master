@@ -12,9 +12,15 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS owner_name TEXT NOT NULL DE
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS mobile_number TEXT NOT NULL DEFAULT '';
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS shop_id UUID;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS created_by UUID;
 
 CREATE INDEX IF NOT EXISTS profiles_shop_id_idx ON public.profiles (shop_id);
 CREATE INDEX IF NOT EXISTS shops_created_by_idx ON public.shops (created_by);
+
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS discount_type TEXT;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS discount_value REAL DEFAULT 0;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS discount_amount REAL DEFAULT 0;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS final_total REAL;
 
 CREATE OR REPLACE FUNCTION public.exec_sql(query text)
 RETURNS void
@@ -58,6 +64,7 @@ const COLUMN_CHECKS = [
   ["shops", "mobile_number"],
   ["profiles", "owner_name"],
   ["profiles", "updated_at"],
+  ["profiles", "created_by"],
 ] as const;
 
 async function checkViaSupabase(supabaseAdmin: any): Promise<string[]> {

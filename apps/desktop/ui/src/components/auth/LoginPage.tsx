@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { signInWithEmail, signInWithGoogle } from '../../lib/auth';
-import { validateEmail, validatePassword } from '../../lib/validation';
+import { validateEmail } from '../../lib/validation';
 import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../lib/supabase';
 import GoogleSignInButton from './GoogleSignInButton';
+import VersionInfo from '../VersionInfo';
 
 interface LoginPageProps {
   onNavigateSignUp: () => void;
@@ -25,9 +25,8 @@ export default function LoginPage({ onNavigateSignUp, onNavigateForgotPassword }
   const validate = (): boolean => {
     const errs: { email?: string; password?: string } = {};
     const emailErr = validateEmail(email);
-    const passErr = validatePassword(password);
     if (emailErr) errs.email = emailErr;
-    if (passErr) errs.password = passErr;
+    if (!password || password.length === 0) errs.password = 'Password is required';
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -44,8 +43,7 @@ export default function LoginPage({ onNavigateSignUp, onNavigateForgotPassword }
     if (result.error) {
       setError(result.error);
     } else if (result.user) {
-      const { data: { session } } = await supabase.auth.getSession();
-      setSession(result.user, session?.access_token || '');
+      setSession(result.user, result.token || '');
     }
   };
 
@@ -171,6 +169,9 @@ export default function LoginPage({ onNavigateSignUp, onNavigateForgotPassword }
             </button>
           </form>
 
+          {/* MVP: Google Sign-In hidden — re-enable for production */}
+          {false && (
+            <>
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-slate-700/50" />
@@ -187,7 +188,11 @@ export default function LoginPage({ onNavigateSignUp, onNavigateForgotPassword }
             isLoading={isGoogleLoading}
             disabled={isLoading}
           />
+            </>
+          )}
 
+          {/* MVP: Create Account link hidden — re-enable for production */}
+          {false && (
           <p className="mt-6 text-center text-sm text-slate-500">
             Don&apos;t have an account?{' '}
             <button
@@ -198,8 +203,10 @@ export default function LoginPage({ onNavigateSignUp, onNavigateForgotPassword }
               Create one
             </button>
           </p>
+          )}
         </div>
       </div>
+      <VersionInfo position="bottom-right" />
     </div>
   );
 }

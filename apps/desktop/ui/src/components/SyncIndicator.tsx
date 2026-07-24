@@ -36,7 +36,7 @@ export default function SyncIndicator({ token, collapsed }: { token?: string | n
           setState({
             status: data.status || 'idle',
             lastSync: data.lastSyncAt || null,
-            pendingChanges: data.pendingChanges || 0,
+            pendingChanges: data.pendingCount || 0,
             error: data.lastError || null
           });
         }

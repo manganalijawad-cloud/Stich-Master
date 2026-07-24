@@ -18,7 +18,7 @@ interface SignUpPageProps {
 
 export default function SignUpPage({ onNavigateLogin, googleProfile = false }: SignUpPageProps) {
   const { setSession } = useAuth();
-  const [step, setStep] = useState(googleProfile ? 2 : 1);
+  const [step, setStep] = useState(googleProfile ? 1 : 1);
 
   const [shopName, setShopName] = useState('');
   const [ownerName, setOwnerName] = useState('');
@@ -71,15 +71,23 @@ export default function SignUpPage({ onNavigateLogin, googleProfile = false }: S
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!validateStep2()) return;
+
+    if (googleProfile) {
+      if (!validateStep1()) return;
+    } else {
+      if (!validateStep2()) return;
+    }
 
     setIsLoading(true);
 
     if (googleProfile) {
       const result = await completeGoogleProfile(shopName, mobileNumber, shopAddress);
+      setIsLoading(false);
       if (result.error) {
         setError(result.error);
-      } else if (result.user) {
+      } else if (result.user && result.token) {
+        setSession(result.user, result.token);
+      } else {
         const { data: { session } } = await supabase.auth.getSession();
         setSession(result.user, session?.access_token || '');
       }
@@ -88,15 +96,16 @@ export default function SignUpPage({ onNavigateLogin, googleProfile = false }: S
         { shopName, ownerName, mobileNumber, shopAddress },
         { email, password, confirmPassword }
       );
+      setIsLoading(false);
       if (result.error) {
         setError(result.error);
-      } else if (result.user) {
+      } else if (result.user && result.token) {
+        setSession(result.user, result.token);
+      } else {
         const { data: { session } } = await supabase.auth.getSession();
         setSession(result.user, session?.access_token || '');
       }
     }
-
-    setIsLoading(false);
   };
 
   return (
@@ -132,7 +141,7 @@ export default function SignUpPage({ onNavigateLogin, googleProfile = false }: S
               </div>
             )}
 
-            {step === 1 && (
+            {googleProfile ? (
               <>
                 <div>
                   <div className="relative">
@@ -150,23 +159,6 @@ export default function SignUpPage({ onNavigateLogin, googleProfile = false }: S
                     />
                   </div>
                   {fieldErrors.shopName && <p className="mt-1.5 text-xs text-red-400 font-medium">{fieldErrors.shopName}</p>}
-                </div>
-
-                <div>
-                  <div className="relative">
-                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 icon-sm text-slate-500 pointer-events-none" />
-                    <input
-                      type="text"
-                      value={ownerName}
-                      onChange={(e) => { setOwnerName(e.target.value); setFieldErrors((p) => ({ ...p, ownerName: undefined })); }}
-                      placeholder="Owner Name"
-                      autoComplete="name"
-                      className={`w-full h-11 pl-10 pr-4 bg-slate-800/50 border rounded-xl text-sm text-white placeholder-slate-500 outline-none transition-all duration-200
-                        ${fieldErrors.ownerName ? 'border-red-500/50 focus:border-red-500 focus:ring-2 focus:ring-red-500/20' : 'border-slate-700/50 focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20'}`}
-                      disabled={isLoading}
-                    />
-                  </div>
-                  {fieldErrors.ownerName && <p className="mt-1.5 text-xs text-red-400 font-medium">{fieldErrors.ownerName}</p>}
                 </div>
 
                 <div>
@@ -203,19 +195,98 @@ export default function SignUpPage({ onNavigateLogin, googleProfile = false }: S
                 </div>
 
                 <button
-                  type="button"
-                  onClick={handleNextStep}
-                  className="w-full h-11 bg-brand-sky hover:bg-sky-400 text-[#0F172A] font-semibold text-sm rounded-xl transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer"
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full h-11 bg-brand-sky hover:bg-sky-400 disabled:bg-sky-800/50 text-[#0F172A] font-semibold text-sm rounded-xl transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
                 >
-                  Continue
-                  <ArrowRight className="icon-sm" />
+                  {isLoading ? <Loader2 className="icon-sm animate-spin" /> : null}
+                  {isLoading ? 'Completing setup...' : 'Complete Setup'}
                 </button>
               </>
-            )}
-
-            {(step === 2 || googleProfile) && (
+            ) : (
               <>
-                {!googleProfile && (
+                {step === 1 && (
+                  <>
+                    <div>
+                      <div className="relative">
+                        <Store className="absolute left-3.5 top-1/2 -translate-y-1/2 icon-sm text-slate-500 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={shopName}
+                          onChange={(e) => { setShopName(e.target.value); setFieldErrors((p) => ({ ...p, shopName: undefined })); }}
+                          placeholder="Shop Name"
+                          autoComplete="organization"
+                          autoFocus
+                          className={`w-full h-11 pl-10 pr-4 bg-slate-800/50 border rounded-xl text-sm text-white placeholder-slate-500 outline-none transition-all duration-200
+                            ${fieldErrors.shopName ? 'border-red-500/50 focus:border-red-500 focus:ring-2 focus:ring-red-500/20' : 'border-slate-700/50 focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20'}`}
+                          disabled={isLoading}
+                        />
+                      </div>
+                      {fieldErrors.shopName && <p className="mt-1.5 text-xs text-red-400 font-medium">{fieldErrors.shopName}</p>}
+                    </div>
+
+                    <div>
+                      <div className="relative">
+                        <User className="absolute left-3.5 top-1/2 -translate-y-1/2 icon-sm text-slate-500 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={ownerName}
+                          onChange={(e) => { setOwnerName(e.target.value); setFieldErrors((p) => ({ ...p, ownerName: undefined })); }}
+                          placeholder="Owner Name"
+                          autoComplete="name"
+                          className={`w-full h-11 pl-10 pr-4 bg-slate-800/50 border rounded-xl text-sm text-white placeholder-slate-500 outline-none transition-all duration-200
+                            ${fieldErrors.ownerName ? 'border-red-500/50 focus:border-red-500 focus:ring-2 focus:ring-red-500/20' : 'border-slate-700/50 focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20'}`}
+                          disabled={isLoading}
+                        />
+                      </div>
+                      {fieldErrors.ownerName && <p className="mt-1.5 text-xs text-red-400 font-medium">{fieldErrors.ownerName}</p>}
+                    </div>
+
+                    <div>
+                      <div className="relative">
+                        <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 icon-sm text-slate-500 pointer-events-none" />
+                        <input
+                          type="tel"
+                          value={mobileNumber}
+                          onChange={(e) => { setMobileNumber(e.target.value); setFieldErrors((p) => ({ ...p, mobileNumber: undefined })); }}
+                          placeholder="Mobile Number"
+                          autoComplete="tel"
+                          className={`w-full h-11 pl-10 pr-4 bg-slate-800/50 border rounded-xl text-sm text-white placeholder-slate-500 outline-none transition-all duration-200
+                            ${fieldErrors.mobileNumber ? 'border-red-500/50 focus:border-red-500 focus:ring-2 focus:ring-red-500/20' : 'border-slate-700/50 focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20'}`}
+                          disabled={isLoading}
+                        />
+                      </div>
+                      {fieldErrors.mobileNumber && <p className="mt-1.5 text-xs text-red-400 font-medium">{fieldErrors.mobileNumber}</p>}
+                    </div>
+
+                    <div>
+                      <div className="relative">
+                        <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 icon-sm text-slate-500 pointer-events-none" />
+                        <textarea
+                          value={shopAddress}
+                          onChange={(e) => { setShopAddress(e.target.value); setFieldErrors((p) => ({ ...p, shopAddress: undefined })); }}
+                          placeholder="Shop Address"
+                          rows={2}
+                          className={`w-full pl-10 pr-4 py-3 bg-slate-800/50 border rounded-xl text-sm text-white placeholder-slate-500 outline-none transition-all duration-200 resize-none
+                            ${fieldErrors.shopAddress ? 'border-red-500/50 focus:border-red-500 focus:ring-2 focus:ring-red-500/20' : 'border-slate-700/50 focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20'}`}
+                          disabled={isLoading}
+                        />
+                      </div>
+                      {fieldErrors.shopAddress && <p className="mt-1.5 text-xs text-red-400 font-medium">{fieldErrors.shopAddress}</p>}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleNextStep}
+                      className="w-full h-11 bg-brand-sky hover:bg-sky-400 text-[#0F172A] font-semibold text-sm rounded-xl transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      Continue
+                      <ArrowRight className="icon-sm" />
+                    </button>
+                  </>
+                )}
+
+                {step === 2 && (
                   <>
                     <div>
                       <div className="relative">
@@ -284,34 +355,26 @@ export default function SignUpPage({ onNavigateLogin, googleProfile = false }: S
                       </div>
                       {fieldErrors.confirmPassword && <p className="mt-1.5 text-xs text-red-400 font-medium">{fieldErrors.confirmPassword}</p>}
                     </div>
+
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="w-full h-11 bg-brand-sky hover:bg-sky-400 disabled:bg-sky-800/50 text-[#0F172A] font-semibold text-sm rounded-xl transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      {isLoading ? <Loader2 className="icon-sm animate-spin" /> : null}
+                      {isLoading ? 'Creating account...' : 'Create account'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setStep(1)}
+                      className="w-full flex items-center justify-center gap-2 text-sm text-slate-400 hover:text-slate-300 transition-colors py-2 cursor-pointer bg-transparent border-none"
+                      disabled={isLoading}
+                    >
+                      <ArrowLeft className="icon-sm" />
+                      Back to shop details
+                    </button>
                   </>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full h-11 bg-brand-sky hover:bg-sky-400 disabled:bg-sky-800/50 text-[#0F172A] font-semibold text-sm rounded-xl transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
-                >
-                  {isLoading ? (
-                    <Loader2 className="icon-sm animate-spin" />
-                  ) : null}
-                  {isLoading
-                    ? 'Creating account...'
-                    : googleProfile
-                    ? 'Complete Setup'
-                    : 'Create account'}
-                </button>
-
-                {!googleProfile && (
-                  <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    className="w-full flex items-center justify-center gap-2 text-sm text-slate-400 hover:text-slate-300 transition-colors py-2 cursor-pointer bg-transparent border-none"
-                    disabled={isLoading}
-                  >
-                    <ArrowLeft className="icon-sm" />
-                    Back to shop details
-                  </button>
                 )}
               </>
             )}

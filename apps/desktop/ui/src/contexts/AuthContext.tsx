@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import type { ExtendedUserProfile } from '../lib/auth';
-import { signOut as authSignOut } from '../lib/auth';
+import { signOut as authSignOut, checkSubscription } from '../lib/auth';
 import { useOnlineStatus } from '../lib/useOnlineStatus';
 
 interface AuthContextValue {
@@ -9,6 +9,7 @@ interface AuthContextValue {
   token: string | null;
   isLoading: boolean;
   isOnline: boolean;
+  subscriptionStatus: 'active' | 'inactive' | 'expired' | null;
   signOut: () => Promise<void>;
   setSession: (user: ExtendedUserProfile, token: string) => void;
   clearSession: () => void;
@@ -17,16 +18,9 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<ExtendedUserProfile | null>(() => {
-    try {
-      const saved = localStorage.getItem('tailor_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('tailor_token'));
+  const [user, setUser] = useState<ExtendedUserProfile | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<'active' | 'inactive' | 'expired' | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const isOnline = useOnlineStatus();
   const mountedRef = useRef(true);
@@ -34,22 +28,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clearSession = useCallback(() => {
     setUser(null);
     setToken(null);
-    localStorage.removeItem('tailor_token');
-    localStorage.removeItem('tailor_user');
-    localStorage.removeItem('hellodarzi-auth');
+    setSubscriptionStatus(null);
   }, []);
 
   const setSession = useCallback((newUser: ExtendedUserProfile, newToken: string) => {
     setUser(newUser);
     setToken(newToken);
-    localStorage.setItem('tailor_token', newToken);
-    localStorage.setItem('tailor_user', JSON.stringify(newUser));
+    if (newUser.subscription_status) {
+      setSubscriptionStatus(newUser.subscription_status);
+    }
   }, []);
 
   const handleSignOut = useCallback(async () => {
     await authSignOut();
     clearSession();
   }, [clearSession]);
+
+  const wasOffline = useRef(false);
+  useEffect(() => {
+    if (!isOnline && user && token) {
+      wasOffline.current = true;
+    }
+    if (isOnline && wasOffline.current && user && token) {
+      wasOffline.current = false;
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session && session.access_token !== token) {
+          setToken(session.access_token);
+        }
+      }).catch(() => {});
+    }
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -61,7 +69,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (session && mounted) {
           setToken(session.access_token);
-          localStorage.setItem('tailor_token', session.access_token);
 
           const { data: { user: authUser } } = await supabase.auth.getUser();
           if (authUser && mounted) {
@@ -72,6 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               .single();
 
             if (profile) {
+              const subStatus = await checkSubscription(authUser.id);
               const extProfile: ExtendedUserProfile = {
                 id: profile.id,
                 email: profile.email,
@@ -84,8 +92,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 address: profile.shops?.address || '',
                 created_at: profile.created_at,
                 updated_at: profile.updated_at,
+                subscription_status: subStatus,
               };
-              setSession(extProfile, session.access_token);
+              setSubscriptionStatus(subStatus);
+              setUser(extProfile);
             } else {
               const fallback: ExtendedUserProfile = {
                 id: authUser.id,
@@ -95,33 +105,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
               };
-              setSession(fallback, session.access_token);
-            }
-          }
-        } else if (mounted) {
-          const cachedToken = localStorage.getItem('tailor_token');
-          const cachedUser = localStorage.getItem('tailor_user');
-          if (cachedToken && cachedUser) {
-            try {
-              const parsed = JSON.parse(cachedUser) as ExtendedUserProfile;
-              setToken(cachedToken);
-              setUser(parsed);
-            } catch {
-              clearSession();
+              setUser(fallback);
             }
           }
         }
       } catch {
-        const cachedToken = localStorage.getItem('tailor_token');
-        const cachedUser = localStorage.getItem('tailor_user');
-        if (cachedToken && cachedUser && mounted) {
-          try {
-            setToken(cachedToken);
-            setUser(JSON.parse(cachedUser));
-          } catch {
-            clearSession();
-          }
-        }
+        // Session restore failed silently
       } finally {
         if (mounted) setIsLoading(false);
       }
@@ -139,9 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           if (session) {
             setToken(session.access_token);
-            localStorage.setItem('tailor_token', session.access_token);
 
-            // Fetch the user profile for SIGNED_IN events (e.g., from Google OAuth)
             if (event === 'SIGNED_IN') {
               try {
                 const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -153,6 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     .single();
 
                   if (profile) {
+                    const subStatus = await checkSubscription(authUser.id);
                     const extProfile: ExtendedUserProfile = {
                       id: profile.id,
                       email: profile.email,
@@ -165,10 +153,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                       address: profile.shops?.address || '',
                       created_at: profile.created_at,
                       updated_at: profile.updated_at,
+                      subscription_status: subStatus,
                     };
-                    setSession(extProfile, session.access_token);
+                    setSubscriptionStatus(subStatus);
+                    setUser(extProfile);
                   } else {
-                    // No shop yet — user needs to complete profile
                     const fallback: ExtendedUserProfile = {
                       id: authUser.id,
                       email: authUser.email || '',
@@ -177,7 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                       created_at: new Date().toISOString(),
                       updated_at: new Date().toISOString(),
                     };
-                    setSession(fallback, session.access_token);
+                    setUser(fallback);
                   }
                 }
               } catch (err) {
@@ -194,7 +183,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mountedRef.current = false;
       subscription.unsubscribe();
     };
-  }, [clearSession, setSession]);
+  }, [clearSession]);
 
   return (
     <AuthContext.Provider
@@ -203,6 +192,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         token,
         isLoading,
         isOnline,
+        subscriptionStatus,
         signOut: handleSignOut,
         setSession,
         clearSession,

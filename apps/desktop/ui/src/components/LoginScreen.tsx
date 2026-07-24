@@ -28,7 +28,6 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     setError(null);
 
     try {
-      // Try Supabase login first
       const { data, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -64,30 +63,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       onLoginSuccess(resData.user, data.session.access_token);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      // Offline fallback: try local auth
-      if (message.includes('fetch') || message.includes('Failed to fetch') || message.includes('NetworkError') || message.includes('ERR_INTERNET_DISCONNECTED') || message.includes('AuthRetryableFetchError') || message.includes('network')) {
-        try {
-          const localRes = await fetch('/api/auth/local-verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password }),
-          });
-          const localData = await localRes.json();
-          if (localData.offline && localData.user && localData.token) {
-            onLoginSuccess(localData.user, localData.token);
-            return;
-          }
-          if (localData.online) {
-            setError('Internet connection detected but Supabase login failed. Please try again.');
-            return;
-          }
-          setError(localData.error || 'Local authentication failed.');
-        } catch {
-          setError('Unable to connect. Please check your internet connection and try again.');
-        }
-      } else {
-        setError(message || 'Something went wrong during login.');
-      }
+      setError(message || 'Something went wrong during login.');
     } finally {
       if (isMounted.current) setLoading(false);
     }

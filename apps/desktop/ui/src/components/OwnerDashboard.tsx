@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Database, Calendar, Upload, Shield, Printer, Smartphone, ListTodo, Sliders, ArrowUp } from 'lucide-react';
+import { Database, Calendar, Upload, Shield, Printer, ListTodo, Sliders, ArrowUp } from 'lucide-react';
 import { GarmentType } from '../types';
 import GarmentConfiguration from './GarmentConfiguration';
 import DataImport from './DataImport';
 import ShopProfile from './admin/ShopProfile';
 import PrintSettings from './admin/PrintSettings';
-import NotificationSettings from './admin/NotificationSettings';
 import PipelineSettings from './admin/PipelineSettings';
 
 interface OwnerDashboardProps {
@@ -123,7 +122,7 @@ export default function OwnerDashboard({ token, onSettingsUpdated }: OwnerDashbo
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      setArchiveSuccess('Orders archived successfully!' + (data.count !== undefined ? ' ' + data.count + ' orders cleared.' : ''));
+      setArchiveSuccess('Orders archived successfully!');
     } catch (err: any) {
       alert('Archiving failed: ' + err.message);
     }
@@ -132,7 +131,6 @@ export default function OwnerDashboard({ token, onSettingsUpdated }: OwnerDashbo
   const tabs = [
     { id: 'ShopProfile' as const, label: 'Shop Profile', icon: Shield },
     { id: 'Documents' as const, label: 'Documents', icon: Printer },
-    { id: 'Notifications' as const, label: 'Notifications', icon: Smartphone },
     { id: 'Pipeline' as const, label: 'Order Pipeline', icon: ListTodo },
     { id: 'GarmentTypes' as const, label: 'Garment Types', icon: Sliders },
     { id: 'Backup' as const, label: 'Backup & Restore', icon: Database },
@@ -173,10 +171,6 @@ export default function OwnerDashboard({ token, onSettingsUpdated }: OwnerDashbo
 
         {activeTab === 'Documents' && (
           <PrintSettings token={token} onSettingsUpdated={onSettingsUpdated} />
-        )}
-
-        {activeTab === 'Notifications' && (
-          <NotificationSettings token={token} onSettingsUpdated={onSettingsUpdated} />
         )}
 
         {activeTab === 'Pipeline' && (

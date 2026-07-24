@@ -25,7 +25,8 @@ type AuthPage = 'login' | 'signup' | 'forgot-password' | 'reset-password' | 'goo
 
 const originalFetch = window.fetch;
 const customFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-  const token = localStorage.getItem('tailor_token');
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
 
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : '';
   if (url.startsWith('/api/') || url.includes('/api/')) {
@@ -52,8 +53,10 @@ try {
 
 function AuthPage({ page, onNavigate }: { page: AuthPage; onNavigate: (p: AuthPage) => void }) {
   switch (page) {
+    /* MVP: SignUp page hidden — re-enable by uncommenting:
     case 'signup':
       return <SignUpPage onNavigateLogin={() => onNavigate('login')} />;
+    */
     case 'forgot-password':
       return <ForgotPasswordPage onNavigateLogin={() => onNavigate('login')} />;
     case 'reset-password':
@@ -71,7 +74,7 @@ function AuthPage({ page, onNavigate }: { page: AuthPage; onNavigate: (p: AuthPa
 }
 
 function AuthWrapper() {
-  const { user, token, isLoading, isOnline, signOut, setSession } = useAuth();
+  const { user, token, isLoading, isOnline, subscriptionStatus, signOut, setSession } = useAuth();
   const [authPage, setAuthPage] = useState<AuthPage>('login');
 
   useEffect(() => { ensureSupabase(); }, []);
@@ -171,8 +174,6 @@ function AuthWrapper() {
   const [receiptFooterText, setReceiptFooterText] = useState('');
   const [defaultPrintReceipt, setDefaultPrintReceipt] = useState(true);
   const [defaultPrintMeasure, setDefaultPrintMeasure] = useState(true);
-  const [whatsappMessageTemplate, setWhatsappMessageTemplate] = useState('');
-  const [whatsappNotifyOnReady, setWhatsappNotifyOnReady] = useState(false);
   const [activeOrderId, setActiveOrderId] = useState<string | undefined>(undefined);
   const [activeItemIdx, setActiveItemIdx] = useState<number | undefined>(undefined);
 
@@ -211,8 +212,6 @@ function AuthWrapper() {
         setReceiptFooterText(settingsData.receipt_footer_text ?? '');
         setDefaultPrintReceipt(settingsData.default_print_receipt !== false);
         setDefaultPrintMeasure(settingsData.default_print_measure !== false);
-        setWhatsappMessageTemplate(settingsData.whatsapp_message_template ?? '');
-        setWhatsappNotifyOnReady(settingsData.whatsapp_notify_on_ready === true);
         setCurrency(settingsData.currency || '$');
         setMeasurementFields(settingsData.measurement_fields || []);
         setMeasurementUnit(settingsData.measurement_unit || 'Inches');
@@ -236,6 +235,9 @@ function AuthWrapper() {
     await signOut();
     localStorage.removeItem('tailor_active_role');
     localStorage.removeItem('tailor_intentional_worker_mode');
+    localStorage.removeItem('tailor_token');
+    localStorage.removeItem('tailor_user');
+    localStorage.removeItem('hellodarzi-auth');
   };
 
   const handleSettingsUpdated = () => {
@@ -260,6 +262,55 @@ function AuthWrapper() {
         <div className="flex-1 relative">
           {!isOnline && <OfflineBanner />}
           <AuthPage page={authPage} onNavigate={setAuthPage} />
+        </div>
+      </div>
+    );
+  }
+
+  if (subscriptionStatus === 'inactive' || subscriptionStatus === 'expired') {
+    return (
+      <div className="h-screen flex flex-col bg-[#0F172A]">
+        {isElectron && <TitleBar />}
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="w-full max-w-md text-center animate-fade-in">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-500/10 mb-6">
+              <svg className="w-8 h-8 text-amber-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold text-white font-display tracking-tight mb-2">
+              Subscription {subscriptionStatus === 'expired' ? 'Expired' : 'Required'}
+            </h1>
+            <p className="text-slate-400 mb-2">
+              {subscriptionStatus === 'expired'
+                ? 'Your subscription has expired. Please renew it to continue using Hello Darzi.'
+                : 'You need an active subscription to use Hello Darzi on desktop.'}
+            </p>
+            <p className="text-sm text-slate-500 mb-8">
+              Please visit the website to manage your subscription.
+            </p>
+            <div className="flex flex-col gap-3 items-center">
+              <button
+                onClick={() => {
+                  const url = `https://${window.location.hostname}/auth.html`;
+                  if (isElectron) {
+                    (window as any).electronAPI?.openExternal(url);
+                  } else {
+                    window.open(url, '_blank');
+                  }
+                }}
+                className="inline-flex items-center justify-center px-6 py-3 bg-brand-sky text-[#0F172A] font-semibold text-sm rounded-xl hover:bg-sky-400 transition-all duration-200 cursor-pointer"
+              >
+                Manage Subscription
+              </button>
+              <button
+                onClick={handleLogout}
+                className="text-sm text-slate-400 hover:text-slate-300 font-medium transition-colors cursor-pointer bg-transparent border-none"
+              >
+                Sign out
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -575,8 +626,6 @@ function AuthWrapper() {
                 defaultPrintReceipt={defaultPrintReceipt}
                 defaultPrintMeasure={defaultPrintMeasure}
                 isOwnerMode={activeMode === 'Owner'}
-                whatsappMessageTemplate={whatsappMessageTemplate}
-                whatsappNotifyOnReady={whatsappNotifyOnReady}
               />
             )}
 

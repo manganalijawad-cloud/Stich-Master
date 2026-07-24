@@ -393,83 +393,33 @@ async function createWindow() {
   const MAX_LOAD_RETRIES = 5;
 
   // ---------------------------------------------------------------------------
-  // IPC: Start OAuth flow using an embedded BrowserWindow
+  // IPC: Start OAuth flow by opening the system browser
   // ---------------------------------------------------------------------------
   ipcMain.handle('oauth-start', async (_event, authUrl) => {
-    return new Promise((resolve) => {
-      let resolved = false;
+    // Set up a promise that will resolve when the deep link callback arrives
+    return new Promise((resolve, reject) => {
+      // Clear any previous pending resolver
+      pendingOAuthResolve = null;
+
+      // Set a timeout (2 minutes)
       const timeout = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          if (authWindow && !authWindow.isDestroyed()) authWindow.close();
+        if (pendingOAuthResolve === resolve) {
+          pendingOAuthResolve = null;
           resolve({ error: 'Authentication timed out. Please try again.' });
         }
       }, 120000);
 
-      const authWindow = new BrowserWindow({
-        width: 800,
-        height: 700,
-        title: 'Sign in with Google',
-        parent: mainWindow,
-        modal: true,
-        show: false,
-        webPreferences: {
-          preload: path.join(__dirname, 'preload.cjs'),
-          nodeIntegration: false,
-          contextIsolation: true,
-          sandbox: false,
-        },
-      });
+      pendingOAuthResolve = (result) => {
+        clearTimeout(timeout);
+        resolve(result);
+      };
 
-      authWindow.once('ready-to-show', () => {
-        authWindow.show();
-      });
-
-      authWindow.webContents.on('will-redirect', (_event, url) => {
-        if (resolved) return;
-        if (url.includes('access_token') || url.includes('error=') || url.includes('code=')) {
-          resolved = true;
-          clearTimeout(timeout);
-          authWindow.close();
-          resolve({ url });
-        }
-      });
-
-      authWindow.webContents.on('will-navigate', (_event, url) => {
-        if (resolved) return;
-        if (url.includes('access_token') || url.includes('error=') || url.includes('code=')) {
-          resolved = true;
-          clearTimeout(timeout);
-          authWindow.close();
-          resolve({ url });
-        }
-      });
-
-      authWindow.webContents.on('did-finish-load', () => {
-        if (resolved) return;
-        const currentUrl = authWindow.webContents.getURL();
-        if (currentUrl.includes('access_token') || currentUrl.includes('error=') || currentUrl.includes('code=')) {
-          resolved = true;
-          clearTimeout(timeout);
-          authWindow.close();
-          resolve({ url: currentUrl });
-        }
-      });
-
-      authWindow.loadURL(authUrl).catch((err) => {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timeout);
-          if (authWindow && !authWindow.isDestroyed()) authWindow.close();
-          resolve({ error: `Failed to load auth page: ${err.message}` });
-        }
-      });
-
-      authWindow.on('closed', () => {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timeout);
-          resolve({ error: 'Authentication window was closed.' });
+      // Open the auth URL in the user's default system browser
+      shell.openExternal(authUrl).catch((err) => {
+        clearTimeout(timeout);
+        if (pendingOAuthResolve === resolve) {
+          pendingOAuthResolve = null;
+          resolve({ error: `Failed to open browser: ${err.message}` });
         }
       });
     });
@@ -492,6 +442,7 @@ async function createWindow() {
   ipcMain.handle('oauth-parse-callback', async (_event, url) => {
     try {
       const parsed = new URL(url);
+      // Support both hash fragment (implicit flow) and query params (PKCE code flow)
       let params;
       if (parsed.hash) {
         params = new URLSearchParams(parsed.hash.replace('#', '?'));
@@ -503,7 +454,6 @@ async function createWindow() {
       const refreshToken = params.get('refresh_token');
       const expiresIn = params.get('expires_in');
       const tokenType = params.get('token_type');
-      const code = params.get('code');
       const error = params.get('error');
       const errorDescription = params.get('error_description');
 
@@ -520,15 +470,7 @@ async function createWindow() {
         };
       }
 
-      if (code) {
-        // PKCE code flow: return the code so the renderer can exchange it
-        return {
-          code,
-          redirect_to: parsed.origin + parsed.pathname,
-        };
-      }
-
-      return { error: 'No access token or authorization code found in callback URL.' };
+      return { error: 'No access token found in callback URL.' };
     } catch {
       return { error: 'Invalid callback URL.' };
     }

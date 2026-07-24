@@ -110,9 +110,9 @@
           var type = params.get('type');
 
           if (type === 'recovery') {
-            // Password reset flow — Supabase handles the session internally
-            // The user needs to set a new password, redirect to auth page
-            showSuccess('Password reset link valid', 'Redirecting you to set a new password...', '/auth.html?action=forgot');
+            // Password reset flow — redirect to auth page with the hash intact
+            // so auth.js can detect it and show the reset password form
+            window.location.href = '/auth.html' + window.location.hash;
             return;
           }
 

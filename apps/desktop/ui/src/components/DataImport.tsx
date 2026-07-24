@@ -19,7 +19,6 @@ const CORE_FIELDS = [
 ];
 
 const EXTRA_FIELDS = [
-  { id: 'whatsapp', label: 'WhatsApp', group: 'extra' },
   { id: 'email', label: 'Email', group: 'extra' },
   { id: 'notes', label: 'Notes', group: 'extra' },
 ];

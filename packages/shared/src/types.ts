@@ -22,7 +22,6 @@ export interface Customer {
   shop_id?: string;
   name: string;
   phone?: string;
-  whatsapp?: string;
   address?: string;
   email?: string;
   notes?: string;
@@ -64,11 +63,14 @@ export interface Order {
   customer_id: string;
   customer_name?: string; // joined
   customer_phone?: string; // joined
-  customer_whatsapp?: string; // joined
   customer_address?: string; // joined
   status: OrderStatus;
   items: OrderItem[];
   total_amount: number;
+  discount_type?: 'fixed' | 'percentage';
+  discount_value?: number;
+  discount_amount?: number;
+  final_total?: number;
   paid_amount: number;
   due_date: string;
   measurement_snapshot: Record<string, string | number>;
@@ -126,7 +128,6 @@ export interface ShopSettings {
   pipeline_stages?: PipelineStage[]; // customizable pipeline stages
   auto_archive_days?: number; // default: 30 days
   measurement_unit?: 'Inches' | 'Centimeters' | 'Feet';
-  whatsapp_message_template?: string;
   updated_at: string;
   updated_by: string;
 }

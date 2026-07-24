@@ -66,6 +66,11 @@
     forgotForm: documentId('forgot-form'),
     forgotEmail: documentId('forgot-email'),
     forgotBtn: documentId('forgot-btn'),
+
+    resetWrapper: documentId('reset-form-wrapper'),
+    resetForm: documentId('reset-form'),
+    resetPassword: documentId('reset-password'),
+    resetBtn: documentId('reset-btn'),
   };
 
   function documentId(id) { return document.getElementById(id); }
@@ -134,6 +139,7 @@
     hideEl(els.signinWrapper);
     hideEl(els.signupWrapper);
     hideEl(els.forgotWrapper);
+    hideEl(els.resetWrapper);
 
     if (action === 'signup') {
       showEl(els.signupWrapper);
@@ -147,6 +153,12 @@
       els.pageSubtitle.textContent = "We'll send you a reset link";
       els.googleBtnText.textContent = 'Continue with Google';
       if (els.forgotEmail) els.forgotEmail.focus();
+    } else if (action === 'reset') {
+      showEl(els.resetWrapper);
+      els.pageTitle.textContent = 'Set new password';
+      els.pageSubtitle.textContent = 'Enter your new password below';
+      els.googleBtnText.textContent = 'Continue with Google';
+      if (els.resetPassword) els.resetPassword.focus();
     } else {
       showEl(els.signinWrapper);
       els.pageTitle.textContent = 'Welcome back';
@@ -159,7 +171,7 @@
   // Read action from URL
   var urlParams = new URLSearchParams(window.location.search);
   var actionParam = urlParams.get('action');
-  if (actionParam === 'signup' || actionParam === 'forgot') {
+  if (actionParam === 'signup' || actionParam === 'forgot' || actionParam === 'reset') {
     switchMode(actionParam);
   }
 
@@ -269,6 +281,27 @@
     }
   }
 
+  // ── Reset Password ──
+  async function handleResetPassword(e) {
+    e.preventDefault();
+    hideError();
+    hideSuccess();
+
+    var password = els.resetPassword.value || '';
+    if (password.length < 8) { showError('Password must be at least 8 characters.'); return; }
+
+    setFormLoading(els.resetBtn, true, 'Resetting...');
+    try {
+      var { error } = await supabase.auth.updateUser({ password: password });
+      if (error) { showError(error.message); setFormLoading(els.resetBtn, false, 'Reset password'); return; }
+      showSuccess('Password updated successfully! You can now sign in with your new password.');
+      setTimeout(function() { switchMode('signin'); }, 2000);
+    } catch (err) {
+      showError('Connection failed. Please try again.');
+    }
+    setFormLoading(els.resetBtn, false, 'Reset password');
+  }
+
   // ── Sign Out ──
   async function handleSignOut() {
     hideError();
@@ -298,16 +331,42 @@
     }
   });
 
+  // ── Password toggle ──
+  function setupPasswordToggle(toggleId, inputId, eyeId, eyeOffId) {
+    var toggle = document.getElementById(toggleId);
+    var input = document.getElementById(inputId);
+    var eye = document.getElementById(eyeId);
+    var eyeOff = document.getElementById(eyeOffId);
+    if (!toggle || !input || !eye || !eyeOff) return;
+    toggle.addEventListener('click', function() {
+      var isPassword = input.type === 'password';
+      input.type = isPassword ? 'text' : 'password';
+      eye.classList.toggle('hidden', !isPassword);
+      eyeOff.classList.toggle('hidden', isPassword);
+    });
+  }
+  setupPasswordToggle('toggle-signin-password', 'signin-password', 'signin-password-eye', 'signin-password-eye-off');
+  setupPasswordToggle('toggle-signup-password', 'signup-password', 'signup-password-eye', 'signup-password-eye-off');
+  setupPasswordToggle('toggle-reset-password', 'reset-password', 'reset-password-eye', 'reset-password-eye-off');
+
   // ── Wire events ──
   els.googleBtn.addEventListener('click', handleGoogleSignIn);
   els.signinForm.addEventListener('submit', handleEmailSignIn);
   els.signupForm.addEventListener('submit', handleEmailSignUp);
   els.forgotForm.addEventListener('submit', handleForgotPassword);
+  els.resetForm.addEventListener('submit', handleResetPassword);
   els.signOutBtn.addEventListener('click', handleSignOut);
 
   // ── Init ──
   (async function init() {
     var hash = window.location.hash;
+    if (hash && hash.includes('type=recovery')) {
+      // Password recovery flow — show reset form
+      showSignedOut();
+      switchMode('reset');
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      return;
+    }
     if (hash && (hash.includes('access_token') || hash.includes('error'))) {
       var { data: { session } } = await supabase.auth.getSession();
       if (session) {

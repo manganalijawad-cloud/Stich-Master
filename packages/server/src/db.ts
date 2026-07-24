@@ -39,7 +39,6 @@ CREATE TABLE IF NOT EXISTS customers (
   shop_id TEXT REFERENCES shops(id),
   name TEXT NOT NULL,
   phone TEXT DEFAULT '',
-  whatsapp TEXT DEFAULT '',
   address TEXT DEFAULT '',
   email TEXT DEFAULT '',
   notes TEXT DEFAULT '',
@@ -68,6 +67,10 @@ CREATE TABLE IF NOT EXISTS orders (
   status TEXT NOT NULL DEFAULT 'Pending' CHECK(status IN ('Pending','Cutting','Stitching','Fitting','Ready','Ready to Deliver','Delivered','Archived')),
   items TEXT NOT NULL DEFAULT '[]',
   total_amount REAL NOT NULL DEFAULT 0,
+  discount_type TEXT CHECK(discount_type IN ('fixed','percentage')),
+  discount_value REAL DEFAULT 0,
+  discount_amount REAL DEFAULT 0,
+  final_total REAL,
   paid_amount REAL NOT NULL DEFAULT 0,
   due_date TEXT,
   measurement_snapshot TEXT DEFAULT '{}',
@@ -85,7 +88,8 @@ CREATE TABLE IF NOT EXISTS shop_settings (
   value TEXT NOT NULL DEFAULT '',
   user_id TEXT,
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_by TEXT
+  updated_by TEXT,
+  UNIQUE(key, user_id)
 );
 
 CREATE TABLE IF NOT EXISTS audit_logs (
@@ -178,18 +182,6 @@ CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status);
 CREATE INDEX IF NOT EXISTS idx_customers_updated_at ON customers(updated_at);
 CREATE INDEX IF NOT EXISTS idx_orders_updated_at ON orders(updated_at);
 
--- Offline auth cache
-CREATE TABLE IF NOT EXISTS local_auth (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id TEXT NOT NULL UNIQUE,
-  email TEXT NOT NULL,
-  name TEXT DEFAULT '',
-  role TEXT NOT NULL DEFAULT 'Owner',
-  shop_id TEXT DEFAULT '',
-  token_hash TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
 `;
 
 export function initDatabase(dbPath?: string): void {
@@ -212,6 +204,7 @@ export function initDatabase(dbPath?: string): void {
   db.exec(SCHEMA);
 
   migrateAuditLogsSchema();
+  migrateOrdersSchema();
 
   seedSyncMetadata();
 }
@@ -235,47 +228,6 @@ export function closeDatabase(): void {
   }
 }
 
-// ---------------------------------------------------------------------------
-// LOCAL AUTH HELPERS (offline support)
-// ---------------------------------------------------------------------------
-export function cacheLocalAuth(userId: string, email: string, name: string, role: string, shopId: string, tokenHash: string): void {
-  const now = nowISO();
-  db.prepare(`
-    INSERT INTO local_auth (user_id, email, name, role, shop_id, token_hash, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(user_id) DO UPDATE SET
-      email = excluded.email,
-      name = excluded.name,
-      role = excluded.role,
-      shop_id = excluded.shop_id,
-      token_hash = excluded.token_hash,
-      updated_at = excluded.updated_at
-  `).run(userId, email, name, role, shopId, tokenHash, now, now);
-}
-
-export function getLocalAuthByToken(tokenHash: string): { user_id: string; email: string; name: string; role: string; shop_id: string } | undefined {
-  return db.prepare("SELECT user_id, email, name, role, shop_id FROM local_auth WHERE token_hash = ?").get(tokenHash) as any | undefined;
-}
-
-export function getLocalAuthByEmail(email: string): { user_id: string; email: string; name: string; role: string; shop_id: string; token_hash: string } | undefined {
-  return db.prepare("SELECT * FROM local_auth WHERE email = ?").get(email) as any | undefined;
-}
-
-export function clearLocalAuth(): void {
-  db.prepare("DELETE FROM local_auth").run();
-}
-
-// Simple token hash (not cryptographic - just for local verification)
-export function hashToken(token: string): string {
-  let hash = 0;
-  for (let i = 0; i < token.length; i++) {
-    const char = token.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(36);
-}
-
 export function nowISO(): string {
   return new Date().toISOString();
 }
@@ -285,7 +237,7 @@ export function nowISO(): string {
 // ---------------------------------------------------------------------------
 export interface DbCustomer {
   id: string; shop_id?: string; name: string; phone?: string;
-  whatsapp?: string; address?: string; email?: string; notes?: string;
+  address?: string; email?: string; notes?: string;
   created_by: string; updated_by?: string;
   created_at: string; updated_at: string;
 }
@@ -294,7 +246,7 @@ export function getCustomers(createdBy: string, search?: string, shopId?: string
   let sql = "SELECT * FROM customers WHERE created_by = ?";
   const params: any[] = [createdBy];
   if (search) {
-    sql += " AND (name LIKE ? OR phone LIKE ? OR whatsapp LIKE ?)";
+    sql += " AND (name LIKE ? OR phone LIKE ?)";
     const q = `%${search}%`;
     params.push(q, q, q);
   }
@@ -312,17 +264,17 @@ export function getCustomerById(id: string, createdBy: string): DbCustomer | und
 
 export function createCustomer(data: {
   id?: string; shop_id?: string; name: string; phone?: string;
-  whatsapp?: string; address?: string; email?: string; notes?: string;
+  address?: string; email?: string; notes?: string;
   created_by: string; updated_by?: string;
 }): DbCustomer {
   const id = data.id || uuidv4();
   const now = nowISO();
   db.prepare(`
-    INSERT INTO customers (id, shop_id, name, phone, whatsapp, address, email, notes, created_by, updated_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO customers (id, shop_id, name, phone, address, email, notes, created_by, updated_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, data.shop_id || null, data.name, data.phone || null,
-    data.whatsapp || null, data.address || null, data.email || null,
+    data.address || null, data.email || null,
     data.notes || null, data.created_by, data.updated_by || data.created_by, now, now
   );
   return db.prepare("SELECT * FROM customers WHERE id = ?").get(id) as DbCustomer;
@@ -331,7 +283,7 @@ export function createCustomer(data: {
 export function updateCustomer(id: string, createdBy: string, data: Partial<DbCustomer>): DbCustomer | undefined {
   const sets: string[] = [];
   const params: any[] = [];
-  const allowed = ["name", "phone", "whatsapp", "address", "email", "notes", "shop_id", "updated_by"];
+  const allowed = ["name", "phone", "address", "email", "notes", "shop_id", "updated_by"];
   for (const key of allowed) {
     if (data[key as keyof typeof data] !== undefined) {
       sets.push(`${key} = ?`);
@@ -396,7 +348,9 @@ export function upsertMeasurement(customerId: string, createdBy: string, measure
 export interface DbOrder {
   id: string; shop_id?: string; order_number: string;
   customer_id: string; status: string;
-  items: string; total_amount: number; paid_amount: number;
+  items: string; total_amount: number;
+  discount_type?: string; discount_value?: number; discount_amount?: number; final_total?: number;
+  paid_amount: number;
   due_date?: string; measurement_snapshot?: string;
   delivered_at?: string; created_by: string; updated_by?: string;
   created_at: string; updated_at: string;
@@ -456,18 +410,22 @@ export function getNextOrderNumber(createdBy: string): number {
 export function createOrder(data: {
   id?: string; shop_id?: string; order_number: string;
   customer_id: string; status?: string; items?: any[];
-  total_amount?: number; paid_amount?: number; due_date?: string;
+  total_amount?: number; discount_type?: string; discount_value?: number;
+  discount_amount?: number; final_total?: number;
+  paid_amount?: number; due_date?: string;
   measurement_snapshot?: any; created_by: string; updated_by?: string;
 }): DbOrder {
   const id = data.id || uuidv4();
   const now = nowISO();
   db.prepare(`
-    INSERT INTO orders (id, shop_id, order_number, customer_id, status, items, total_amount, paid_amount, due_date, measurement_snapshot, created_by, updated_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO orders (id, shop_id, order_number, customer_id, status, items, total_amount, discount_type, discount_value, discount_amount, final_total, paid_amount, due_date, measurement_snapshot, created_by, updated_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, data.shop_id || null, data.order_number, data.customer_id,
     data.status || "Pending", JSON.stringify(data.items || []),
-    data.total_amount || 0, data.paid_amount || 0,
+    data.total_amount || 0, data.discount_type || null, data.discount_value || 0,
+    data.discount_amount || 0, data.final_total ?? data.total_amount ?? 0,
+    data.paid_amount || 0,
     data.due_date || null, JSON.stringify(data.measurement_snapshot || {}),
     data.created_by, data.updated_by || data.created_by, now, now
   );
@@ -477,7 +435,7 @@ export function createOrder(data: {
 export function updateOrder(id: string, createdBy: string, data: Partial<DbOrder>): DbOrder | undefined {
   const sets: string[] = [];
   const params: any[] = [];
-  const allowed = ["status", "items", "total_amount", "paid_amount", "due_date", "measurement_snapshot", "delivered_at", "updated_by", "shop_id", "order_number", "customer_id"];
+  const allowed = ["status", "items", "total_amount", "discount_type", "discount_value", "discount_amount", "final_total", "paid_amount", "due_date", "measurement_snapshot", "delivered_at", "updated_by", "shop_id", "order_number", "customer_id"];
   for (const key of allowed) {
     if (data[key as keyof typeof data] !== undefined) {
       let val = data[key as keyof typeof data];
@@ -502,15 +460,17 @@ export function deleteOrder(id: string, createdBy: string): boolean {
 }
 
 export function archiveOrders(createdBy: string, beforeDate?: string, status?: string): number {
-  let sql = "UPDATE orders SET status = 'Archived', updated_at = ? WHERE created_by = ? AND status NOT IN ('Archived','Delivered')";
+  let sql = "UPDATE orders SET status = 'Archived', updated_at = ? WHERE created_by = ?";
   const params: any[] = [nowISO(), createdBy];
-  if (beforeDate) {
-    sql += " AND created_at < ?";
-    params.push(beforeDate);
-  }
   if (status) {
     sql += " AND status = ?";
     params.push(status);
+  } else {
+    sql += " AND status NOT IN ('Archived','Delivered')";
+  }
+  if (beforeDate) {
+    sql += " AND created_at < ?";
+    params.push(beforeDate);
   }
   const result = db.prepare(sql).run(...params);
   return result.changes;
@@ -795,6 +755,21 @@ function migrateAuditLogsSchema(): void {
   for (const [col, def] of newColumns) {
     try {
       db.exec(`ALTER TABLE audit_logs ADD COLUMN ${col} ${def}`);
+    } catch {
+    }
+  }
+}
+
+function migrateOrdersSchema(): void {
+  const newColumns: [string, string][] = [
+    ["discount_type", "TEXT"],
+    ["discount_value", "REAL DEFAULT 0"],
+    ["discount_amount", "REAL DEFAULT 0"],
+    ["final_total", "REAL"],
+  ];
+  for (const [col, def] of newColumns) {
+    try {
+      db.exec(`ALTER TABLE orders ADD COLUMN ${col} ${def}`);
     } catch {
     }
   }

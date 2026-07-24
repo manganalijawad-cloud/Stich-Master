@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import {
   DollarSign, ArrowDownToLine, Printer, TrendingUp, TrendingDown,
-  ShoppingBag, Search, MessageSquare, Phone, AlertCircle, RefreshCw
+  ShoppingBag, Search, Phone, AlertCircle, RefreshCw
 } from 'lucide-react';
 import type { Order, PipelineStage } from '../types';
 
@@ -532,11 +532,6 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                             <a href={`tel:${cust.phone}`} className="p-1.5 bg-slate-50 hover:bg-slate-100 text-slate-500 border border-slate-200 rounded-lg transition-colors" title="Call">
                               <Phone className="icon-xs" />
                             </a>
-                            <a href={`https://wa.me/${cust.phone.replace(/[^0-9]/g,'')}?text=${encodeURIComponent(`Hi ${cust.name}, this is a reminder about your pending balance of ${currency}${cust.outstanding}. Thank you!`)}`}
-                              target="_blank" rel="noreferrer"
-                              className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-100 rounded-lg transition-colors" title="WhatsApp">
-                              <MessageSquare className="icon-xs" />
-                            </a>
                           </div>
                         )}
                       </div>
@@ -570,7 +565,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                 <tr><td colSpan={7} className="py-4 text-center text-slate-400 font-semibold text-3xs uppercase">No records.</td></tr>
               ) : (
                 filteredOrders.map(o => {
-                  const bal = (Number(o.total_amount) || 0) - (Number(o.paid_amount) || 0);
+                  const bal = (Number(o.final_total ?? o.total_amount) || 0) - (Number(o.paid_amount) || 0);
                   return (
                     <tr key={o.id} className="hover:bg-slate-50 transition-colors">
                       <td className="py-2 px-3 font-bold text-slate-900 uppercase text-3xs">{o.order_number}</td>

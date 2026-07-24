@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ShoppingCart, Calendar, Plus, Trash2, Printer, CheckCircle, Clock, ShieldAlert, ArrowRight, ChevronRight, Edit3, Search, UserPlus, ChevronLeft, Scissors, Info, Check, QrCode, Camera, Smartphone, Users, ChevronDown, MoreVertical } from 'lucide-react';
 import { Customer, Order, OrderItem, OrderStatus, UserRole, PipelineStage, GarmentType, StylingCategory, MeasurementProfile } from '../types';
 import QRCode from 'qrcode';
@@ -30,8 +30,6 @@ interface OrdersSectionProps {
   defaultPrintReceipt?: boolean;
   defaultPrintMeasure?: boolean;
   isOwnerMode?: boolean;
-  whatsappMessageTemplate?: string;
-  whatsappNotifyOnReady?: boolean;
 }
 
 export default function OrdersSection({
@@ -55,8 +53,6 @@ export default function OrdersSection({
   defaultPrintReceipt = true,
   defaultPrintMeasure = true,
   isOwnerMode = false,
-  whatsappMessageTemplate,
-  whatsappNotifyOnReady = false,
 }: OrdersSectionProps) {
   // Dynamic Pipeline Stages
   const stagesList = pipelineStages && pipelineStages.length > 0 ? pipelineStages : [
@@ -77,6 +73,11 @@ export default function OrdersSection({
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
 
+  // Customer order history
+  const [showCustomerHistory, setShowCustomerHistory] = useState(false);
+  const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
+  const [loadingCustomerHistory, setLoadingCustomerHistory] = useState(false);
+
   // Selected order details
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
@@ -89,10 +90,6 @@ export default function OrdersSection({
   } | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [updateSuccessState, setUpdateSuccessState] = useState(false);
-
-  // WhatsApp ready-to-deliver confirmation dialog
-  const [showWhatsAppConfirm, setShowWhatsAppConfirm] = useState(false);
-  const [pendingWhatsAppOrder, setPendingWhatsAppOrder] = useState<Order | null>(null);
 
   // Payment collection dialog when advancing to Delivered
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
@@ -166,7 +163,7 @@ export default function OrdersSection({
   // Create Order Form State
   const [isCreating, setIsCreating] = useState(false);
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [paidAmount, setPaidAmount] = useState<string | number>('');
+  const [paidAmount, setPaidAmount] = useState<string>('');
   const [createError, setCreateError] = useState<string | null>(null);
   const [createSuccess, setCreateSuccess] = useState(false);
 
@@ -210,6 +207,10 @@ export default function OrdersSection({
     return d.toLocaleDateString('en-CA');
   });
 
+  const [applyDiscount, setApplyDiscount] = useState(false);
+  const [discountType, setDiscountType] = useState<'fixed' | 'percentage'>('fixed');
+  const [discountValue, setDiscountValue] = useState('');
+
   const [printOptions, setPrintOptions] = useState({ receipt: defaultPrintReceipt, measure: defaultPrintMeasure });
 
   const updateSharedDeliveryDate = (newDate: string) => {
@@ -219,6 +220,22 @@ export default function OrdersSection({
       delivery_date: newDate
     })));
   };
+
+  const calculateDiscount = useCallback(() => {
+    if (!applyDiscount || !discountValue) return { discountAmount: 0, finalTotal: rawTotal };
+    const val = Number(discountValue);
+    if (val <= 0) return { discountAmount: 0, finalTotal: rawTotal };
+    let amount = discountType === 'percentage' ? (rawTotal * val) / 100 : val;
+    amount = Math.max(0, Math.min(amount, rawTotal));
+    return { discountAmount: amount, finalTotal: Math.max(0, rawTotal - amount) };
+  }, [applyDiscount, discountType, discountValue, rawTotal]);
+
+  const rawTotal = useMemo(() =>
+    bookingItems.reduce((sum, item) => sum + (Number(item.price) || 0) * (item.quantity || 1), 0),
+  [bookingItems]);
+
+  const { discountAmount, finalTotal } = useMemo(() => calculateDiscount(), [calculateDiscount]);
+  const maxPaid = finalTotal;
 
   // Collapse states for secondary sections
   const [showMeasurements, setShowMeasurements] = useState(false);
@@ -233,6 +250,7 @@ export default function OrdersSection({
   const [editedDueDate, setEditedDueDate] = useState('');
   const [editedSnapshot, setEditedSnapshot] = useState<Record<string, string | number>>({});
   const [editError, setEditError] = useState<string | null>(null);
+  const [editedDiscount, setEditedDiscount] = useState<{ apply: boolean; type: 'fixed' | 'percentage'; value: string }>({ apply: false, type: 'fixed', value: '' });
 
   // Archive & View Vault States
   const [viewMode, setViewMode] = useState<'Active' | 'Archived'>('Active');
@@ -286,89 +304,6 @@ export default function OrdersSection({
     }
   };
 
-  const DEFAULT_WHATSAPP_TEMPLATE = `{ShopName}
-
-Assalam-o-Alaikum Sir {CustomerName},
-
-Your order is ready.
-
-Order:
-{OrderSummary}
-
-Remaining Amount: Rs. {RemainingBalance}
-
-Please visit our shop to collect your order.
-
-Note: This is an automated message. Please do not reply.`;
-
-  const getCustomerMobile = (order: Order) => {
-    const whatsapp = order.customer_whatsapp?.trim();
-    if (whatsapp) return whatsapp;
-    const phone = order.customer_phone;
-    if (phone && !phone.startsWith('NO-PHONE-')) return phone;
-    return '';
-  };
-
-  const buildWhatsAppMessage = (order: Order) => {
-    const template = whatsappMessageTemplate || DEFAULT_WHATSAPP_TEMPLATE;
-    const remaining = order.total_amount - order.paid_amount;
-    const orderSummary = (order.items || []).map((item, i) =>
-      `  ${i + 1}. ${item.type}${item.color ? ` (${item.color})` : ''} - ${currency}${item.price}`
-    ).join('\n');
-
-    let message = template
-      .replace(/{ShopName}/g, shopName)
-      .replace(/{CustomerName}/g, order.customer_name || 'Valued Customer')
-      .replace(/{OrderSummary}/g, orderSummary);
-
-    if (remaining > 0) {
-      message = message.replace(/{RemainingBalance}/g, String(Math.round(remaining)));
-    } else {
-      message = message
-        .split('\n')
-        .filter(line => !line.includes('{RemainingBalance}'))
-        .join('\n');
-    }
-
-    return message.replace(/\n{3,}/g, '\n\n').trim();
-  };
-
-  const sendWhatsApp = (order: Order) => {
-    const phone = getCustomerMobile(order);
-    if (!phone) {
-      alert('No mobile number saved for this customer.');
-      return;
-    }
-    const cleanedPhone = phone.replace(/[^0-9]/g, '');
-    if (!cleanedPhone) {
-      alert('Invalid mobile number.');
-      return;
-    }
-    const message = buildWhatsAppMessage(order);
-    const url = `https://wa.me/${cleanedPhone}?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
-  };
-
-  const maybeSendReadyToDeliverWhatsApp = (order: Order, newStatus: string) => {
-    if (newStatus === 'Ready to Deliver' && whatsappNotifyOnReady) {
-      setPendingWhatsAppOrder(order);
-      setShowWhatsAppConfirm(true);
-    }
-  };
-
-  const handleWhatsAppConfirmContinue = () => {
-    if (pendingWhatsAppOrder) {
-      sendWhatsApp(pendingWhatsAppOrder);
-    }
-    setShowWhatsAppConfirm(false);
-    setPendingWhatsAppOrder(null);
-  };
-
-  const handleWhatsAppConfirmNotNow = () => {
-    setShowWhatsAppConfirm(false);
-    setPendingWhatsAppOrder(null);
-  };
-
   const updateOrderStatus = async (order: Order, newStatus: string): Promise<Order | null> => {
     try {
       const res = await fetch(`/api/orders/${order.id}/status`, {
@@ -388,7 +323,6 @@ Note: This is an automated message. Please do not reply.`;
       const mergedOrder: Order = { ...order, ...data, status: newStatus as OrderStatus };
       setOrders(prev => prev.map(o => o.id === order.id ? mergedOrder : o));
       setSelectedOrder(prev => prev?.id === order.id ? mergedOrder : prev);
-      maybeSendReadyToDeliverWhatsApp(mergedOrder, newStatus);
       return mergedOrder;
     } catch (err) {
       console.error(err);
@@ -461,6 +395,31 @@ Note: This is an automated message. Please do not reply.`;
       console.error('Error fetching full order details:', err);
     }
   };
+
+  // Fetch customer order history
+  const fetchCustomerOrders = async (customerId: string) => {
+    setLoadingCustomerHistory(true);
+    try {
+      const res = await fetch(`/api/customers/${customerId}/orders`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCustomerOrders(data);
+      }
+    } catch (err) {
+      console.error('Error fetching customer orders:', err);
+    } finally {
+      setLoadingCustomerHistory(false);
+    }
+  };
+
+  // Reload customer history when selected order changes and history is open
+  useEffect(() => {
+    if (showCustomerHistory && selectedOrder?.customer_id) {
+      fetchCustomerOrders(selectedOrder.customer_id);
+    }
+  }, [selectedOrder?.id, showCustomerHistory]);
 
   // Fetch Garment Types and Styling Categories
   useEffect(() => {
@@ -929,6 +888,11 @@ Note: This is an automated message. Please do not reply.`;
         return max;
       }, '');
 
+      const discountTypeVal = applyDiscount ? discountType : undefined;
+      const discountValueVal = applyDiscount && discountValue ? Number(discountValue) : 0;
+      const discountAmountVal = applyDiscount ? discountAmount : 0;
+      const finalTotalVal = applyDiscount ? finalTotal : totalAmountVal;
+
       // 2. Insert order
       const res = await fetch('/api/orders', {
         method: 'POST',
@@ -949,6 +913,10 @@ Note: This is an automated message. Please do not reply.`;
             styling_snapshot: item.styling_snapshot
           })),
           total_amount: totalAmountVal,
+          discount_type: discountTypeVal,
+          discount_value: discountValueVal,
+          discount_amount: discountAmountVal,
+          final_total: finalTotalVal,
           paid_amount: paidAmount === '' ? 0 : Number(paidAmount),
           due_date: overallDueDate,
         }),
@@ -983,7 +951,7 @@ Note: This is an automated message. Please do not reply.`;
     const nextStatus = activeWorkflowStageIds[currentIndex + 1];
 
     if (nextStatus === 'Delivered') {
-      const remaining = (order.total_amount || 0) - (order.paid_amount || 0);
+      const remaining = ((order.final_total ?? order.total_amount) || 0) - (order.paid_amount || 0);
 
       let otherDues = 0;
       try {
@@ -1021,6 +989,10 @@ Note: This is an automated message. Please do not reply.`;
         body: JSON.stringify({
           items: pendingDeliverOrder.items,
           total_amount: pendingDeliverOrder.total_amount,
+          discount_type: pendingDeliverOrder.discount_type,
+          discount_value: pendingDeliverOrder.discount_value,
+          discount_amount: pendingDeliverOrder.discount_amount,
+          final_total: pendingDeliverOrder.final_total,
           paid_amount: updatedPaid,
           due_date: pendingDeliverOrder.due_date,
           measurement_snapshot: pendingDeliverOrder.measurement_snapshot,
@@ -1056,6 +1028,12 @@ Note: This is an automated message. Please do not reply.`;
     setEditError(null);
 
     try {
+      const editDiscVal = editedDiscount.apply && editedDiscount.value ? Number(editedDiscount.value) : 0;
+      const editDiscAmount = editedDiscount.apply && editDiscVal > 0
+        ? (editedDiscount.type === 'percentage' ? Math.min((editedTotal * editDiscVal) / 100, editedTotal) : Math.min(editDiscVal, editedTotal))
+        : 0;
+      const editFinalTotal = editedDiscount.apply ? Math.max(0, editedTotal - editDiscAmount) : editedTotal;
+
       const res = await fetch(`/api/orders/${selectedOrder.id}`, {
         method: 'PUT',
         headers: {
@@ -1065,6 +1043,10 @@ Note: This is an automated message. Please do not reply.`;
         body: JSON.stringify({
           items: editedItems,
           total_amount: editedTotal,
+          discount_type: editedDiscount.apply ? editedDiscount.type : undefined,
+          discount_value: editDiscVal,
+          discount_amount: editDiscAmount,
+          final_total: editFinalTotal,
           paid_amount: editedPaid,
           due_date: editedDueDate,
           measurement_snapshot: editedSnapshot
@@ -1095,6 +1077,50 @@ Note: This is an automated message. Please do not reply.`;
 
   const handleEditItemChange = (index: number, key: keyof OrderItem, val: any) => {
     setEditedItems(prev => prev.map((item, i) => i === index ? { ...item, [key]: val } : item));
+  };
+
+  const handleEditStylingChange = (index: number, categoryId: string, optionId: string) => {
+    setEditedItems(prev => prev.map((item, i) => {
+      if (i !== index) return item;
+      return {
+        ...item,
+        styling_snapshot: {
+          ...(item.styling_snapshot || {}),
+          [categoryId]: optionId
+        }
+      };
+    }));
+  };
+
+  const handleEditGarmentChange = (index: number, newGarmentTypeId: string) => {
+    const selectedGarmentType = garmentTypes.find(g => g.id === newGarmentTypeId);
+    if (!selectedGarmentType) return;
+
+    setEditedItems(prev => prev.map((item, i) => {
+      if (i !== index) return item;
+
+      const measurement_snapshot: Record<string, string | number> = {};
+      selectedGarmentType.measurement_fields.forEach(f => {
+        measurement_snapshot[f.name] = '';
+      });
+
+      const styling_snapshot: Record<string, string> = {};
+      const enabledCategories = stylingCategories.filter(sc => sc.garment_type_id === selectedGarmentType.id && sc.options && sc.options.some(o => o.enabled));
+      enabledCategories.forEach(cat => {
+        const firstEnabled = cat.options.find(o => o.enabled);
+        if (firstEnabled) {
+          styling_snapshot[cat.id] = firstEnabled.id;
+        }
+      });
+
+      return {
+        ...item,
+        type: selectedGarmentType.name,
+        price: selectedGarmentType.price || 0,
+        measurement_snapshot,
+        styling_snapshot
+      };
+    }));
   };
 
   const triggerPrintReceipt = () => {
@@ -1262,8 +1288,6 @@ Note: This is an automated message. Please do not reply.`;
           setSelectedOrder(mergedOrder);
         }
 
-        maybeSendReadyToDeliverWhatsApp(mergedOrder, nextStatus);
-        
         setUpdateSuccessState(true);
         setTimeout(() => {
           setUpdateSuccessState(false);
@@ -1428,9 +1452,9 @@ Note: This is an automated message. Please do not reply.`;
                       <span className="text-sm font-black text-slate-900 block font-display leading-tight">
                         {currency}{o.total_amount}
                       </span>
-                      {o.total_amount - o.paid_amount > 0 ? (
+                      {(o.final_total ?? o.total_amount) - o.paid_amount > 0 ? (
                         <span className="inline-block text-3xs bg-red-50 text-red-700 font-semibold px-1.5 py-0.5 rounded border border-red-100">
-                          Due {currency}{o.total_amount - o.paid_amount}
+                          Due {currency}{(o.final_total ?? o.total_amount) - o.paid_amount}
                         </span>
                       ) : (
                         <span className="inline-block text-3xs bg-emerald-50 text-emerald-700 font-semibold px-1.5 py-0.5 rounded border border-emerald-100">Paid</span>
@@ -1850,16 +1874,6 @@ Note: This is an automated message. Please do not reply.`;
                   <span className="font-semibold text-sm text-slate-500 uppercase tracking-wider">
                     Garments ({bookingItems.length})
                   </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[13px] font-semibold text-slate-500 uppercase">Delivery:</span>
-                    <input
-                      type="date"
-                      required
-                      value={sharedDeliveryDate}
-                      onChange={(e) => updateSharedDeliveryDate(e.target.value)}
-                      className="px-2 py-1 bg-white border border-slate-200 rounded-lg font-semibold text-slate-700 text-xs focus-visible:outline-none focus:border-brand-sky"
-                    />
-                  </div>
                 </div>
 
                 {/* Garment cards */}
@@ -1903,26 +1917,173 @@ Note: This is an automated message. Please do not reply.`;
                   ))}
                 </div>
 
+                {/* Delivery Date - prominent card */}
+                <div className="p-4 bg-white border-2 border-brand-sky/30 rounded-xl shadow-sm">
+                  <div className="flex items-center gap-3 sm:gap-4">
+                    <div className="p-2.5 bg-sky-50 rounded-lg shrink-0">
+                      <Calendar className="w-5 h-5 text-brand-sky" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block leading-tight">Delivery Date</span>
+                      <input
+                        type="date"
+                        required
+                        value={sharedDeliveryDate}
+                        onChange={(e) => updateSharedDeliveryDate(e.target.value)}
+                        className="mt-0.5 block w-full bg-transparent border-0 p-0 font-display text-xl font-black text-slate-800 focus-visible:outline-none focus-visible:ring-0"
+                        style={{ colorScheme: 'light' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 {/* Financials */}
-                <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr] gap-3">
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Total</span>
-                    <span className="text-2xl font-black text-slate-800 font-display">
-                      {currency}{bookingItems.reduce((sum, item) => sum + (Number(item.price) || 0) * (item.quantity || 1), 0)}
-                    </span>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                      <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Total</span>
+                      <span className="text-2xl font-black text-slate-800 font-display">
+                        {currency}{rawTotal}
+                      </span>
+                    </div>
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Paid Amount ({currency})</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max={maxPaid}
+                        value={paidAmount}
+                        onFocus={() => {
+                          if (paidAmount === '' || paidAmount === '0') {
+                            setPaidAmount('');
+                          }
+                        }}
+                        onBlur={(e) => {
+                          const val = e.target.value;
+                          if (val === '' || val === '-' || val === '0') {
+                            setPaidAmount('0');
+                          }
+                        }}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === '') {
+                            setPaidAmount('');
+                            return;
+                          }
+                          if (raw === '-') {
+                            setPaidAmount(raw);
+                            return;
+                          }
+                          const num = Number(raw);
+                          if (!isNaN(num) && num >= 0) {
+                            if (num <= maxPaid) {
+                              setPaidAmount(raw);
+                            }
+                          }
+                        }}
+                        className="input-base font-semibold text-base"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                      <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Remaining</span>
+                      <span className="text-2xl font-black text-slate-800 font-display">
+                        {currency}{Math.max(0, finalTotal - (paidAmount === '' ? 0 : Number(paidAmount)))}
+                      </span>
+                    </div>
                   </div>
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Paid Amount ({currency})</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max={bookingItems.reduce((sum, item) => sum + (Number(item.price) || 0) * (item.quantity || 1), 0)}
-                      value={paidAmount ?? ''}
-                      onChange={(e) => setPaidAmount(Number(e.target.value))}
-                      className="input-base font-semibold text-base"
-                      placeholder="0"
-                    />
+
+                  {/* Discount Toggle */}
+                  <div className="p-2 flex items-center gap-2">
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={applyDiscount}
+                        onChange={(e) => {
+                          setApplyDiscount(e.target.checked);
+                          if (!e.target.checked) {
+                            setDiscountValue('');
+                            setDiscountType('fixed');
+                          }
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-sky-500" />
+                    </label>
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider select-none">Apply Discount</span>
                   </div>
+
+                  {/* Discount Fields (visible when toggled) */}
+                  {applyDiscount && (
+                    <div className="animate-fade-in grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="p-3 bg-sky-50/40 border border-sky-200 rounded-xl">
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1">Discount Type</label>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setDiscountType('fixed')}
+                            className={`flex-1 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg border transition-all cursor-pointer ${
+                              discountType === 'fixed'
+                                ? 'bg-sky-500 text-white border-sky-500'
+                                : 'bg-white text-slate-600 border-slate-200 hover:border-sky-300'
+                            }`}
+                          >
+                            Fixed ({currency})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDiscountType('percentage')}
+                            className={`flex-1 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg border transition-all cursor-pointer ${
+                              discountType === 'percentage'
+                                ? 'bg-sky-500 text-white border-sky-500'
+                                : 'bg-white text-slate-600 border-slate-200 hover:border-sky-300'
+                            }`}
+                          >
+                            Percentage (%)
+                          </button>
+                        </div>
+                      </div>
+                      <div className="p-3 bg-sky-50/40 border border-sky-200 rounded-xl">
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1">
+                          Discount Value {discountType === 'percentage' ? '(%)' : `(${currency})`}
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max={discountType === 'percentage' ? 100 : rawTotal}
+                          value={discountValue}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === '') { setDiscountValue(''); return; }
+                            if (raw === '-') return;
+                            const num = Number(raw);
+                            if (!isNaN(num) && num >= 0) {
+                              if (discountType === 'percentage' && num > 100) return;
+                              setDiscountValue(raw);
+                            }
+                          }}
+                          className="input-base font-semibold text-base"
+                          placeholder={discountType === 'percentage' ? '0%' : `0`}
+                        />
+                        {discountValue && Number(discountValue) > 0 && (
+                          <div className="mt-1.5 space-y-0.5">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-slate-500 font-medium">Original Total:</span>
+                              <span className="font-semibold text-slate-700">{currency}{rawTotal}</span>
+                            </div>
+                            <div className="flex justify-between text-xs">
+                              <span className="text-red-500 font-medium">Discount:</span>
+                              <span className="font-semibold text-red-600">-{currency}{Math.round(discountAmount)}</span>
+                            </div>
+                            <div className="flex justify-between text-xs font-bold border-t border-sky-200 pt-0.5">
+                              <span className="text-slate-700">Final Total:</span>
+                              <span className="text-sky-700">{currency}{Math.round(finalTotal)}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Actions */}
@@ -1985,59 +2146,98 @@ Note: This is an automated message. Please do not reply.`;
 
                   <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
                     {editedItems.map((item, index) => (
-                      <div key={index} className="grid grid-cols-12 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200/60 items-start">
-                        <div className="col-span-3 space-y-1">
-                          <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Garment Type</label>
-                          <input
-                            type="text"
-                            value={item.type}
-                            onChange={(e) => handleEditItemChange(index, 'type', e.target.value)}
-                            className="input-base font-semibold text-xs"
-                          />
+                      <div key={index} className="p-3 bg-slate-50 rounded-xl border border-slate-200/60 space-y-3">
+                        <div className="grid grid-cols-12 gap-3 items-start">
+                          <div className="col-span-4 space-y-1">
+                            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Garment Type</label>
+                            <select
+                              value={(() => {
+                                const gt = garmentTypes.find(g => g.name === item.type);
+                                return gt ? gt.id : '';
+                              })()}
+                              onChange={(e) => handleEditGarmentChange(index, e.target.value)}
+                              className="input-base font-semibold text-xs"
+                            >
+                              {garmentTypes.map(g => (
+                                <option key={g.id} value={g.id} disabled={!g.enabled}>{g.name}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="col-span-3 space-y-1">
+                            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Price ({currency})</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={item.price || ''}
+                              onChange={(e) => handleEditItemChange(index, 'price', Number(e.target.value))}
+                              className="input-base font-semibold text-xs"
+                            />
+                          </div>
+
+                          <div className="col-span-4 space-y-1">
+                            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Color</label>
+                            <input
+                              type="text"
+                              value={item.color || ''}
+                              onChange={(e) => handleEditItemChange(index, 'color', e.target.value)}
+                              className="w-full px-2.5 py-1.5 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-xs focus-visible:outline-none focus:border-brand-sky"
+                              placeholder="Color"
+                            />
+                          </div>
+
+                          <div className="col-span-1 pt-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleEditRemoveItem(index)}
+                              disabled={editedItems.length <= 1}
+                              className="text-red-500 hover:text-red-700 disabled:opacity-30 cursor-pointer"
+                            >
+                              <Trash2 className="icon-xs" />
+                            </button>
+                          </div>
                         </div>
 
-                        <div className="col-span-2 space-y-1">
-                          <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Price ({currency})</label>
-                          <input
-                            type="number"
-                            min="0"
-                            value={item.price || ''}
-                            onChange={(e) => handleEditItemChange(index, 'price', Number(e.target.value))}
-                            className="input-base font-semibold text-xs"
-                          />
-                        </div>
-
-                        <div className="col-span-3 space-y-1">
-                          <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Color</label>
-                          <input
-                            type="text"
-                            value={item.color || ''}
-                            onChange={(e) => handleEditItemChange(index, 'color', e.target.value)}
-                            className="w-full px-2.5 py-1.5 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-xs focus-visible:outline-none focus:border-brand-sky"
-                            placeholder="Color"
-                          />
-                        </div>
-
-                        <div className="col-span-3 space-y-1">
-                          <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Styling / Cut Details</label>
-                          <input
-                            type="text"
-                            value={item.notes || ''}
-                            onChange={(e) => handleEditItemChange(index, 'notes', e.target.value)}
-                            className="w-full px-2.5 py-1.5 bg-white border-2 border-slate-200 rounded-lg text-slate-800 text-xs focus-visible:outline-none focus:border-brand-sky"
-                          />
-                        </div>
-
-                        <div className="col-span-1 pt-4 text-right">
-                          <button
-                            type="button"
-                            onClick={() => handleEditRemoveItem(index)}
-                            disabled={editedItems.length <= 1}
-                            className="text-red-500 hover:text-red-700 disabled:opacity-30 cursor-pointer"
-                          >
-                            <Trash2 className="icon-xs" />
-                          </button>
-                        </div>
+                        {(() => {
+                          const gt = garmentTypes.find(g => g.name === item.type);
+                          if (!gt) return null;
+                          const hasStyling = stylingCategories.some(cat => cat.garment_type_id === gt.id && cat.options && cat.options.some(o => o.enabled));
+                          if (!hasStyling) return null;
+                          return (
+                            <div className="pt-1.5 border-t border-slate-100">
+                              {stylingCategories
+                                .filter(cat => cat.garment_type_id === gt.id && cat.options && cat.options.some(o => o.enabled))
+                                .map(cat => {
+                                  const selectedOptionId = (item.styling_snapshot && item.styling_snapshot[cat.id]) || '';
+                                  const activeOptions = cat.options.filter(o => o.enabled);
+                                  return (
+                                    <div key={cat.id} className="flex items-center gap-1.5 mb-0.5 last:mb-0">
+                                      <span className="text-sm font-semibold text-slate-400 uppercase tracking-wider shrink-0 min-w-[40px]">{cat.name}</span>
+                                      <div className="flex gap-1 flex-wrap">
+                                        {activeOptions.map(opt => {
+                                          const isSelected = selectedOptionId === opt.id;
+                                          return (
+                                            <button
+                                              key={opt.id}
+                                              type="button"
+                                              onClick={() => handleEditStylingChange(index, cat.id, opt.id)}
+                                              className={`text-xs font-semibold px-2 py-1 rounded-md border transition-[background-color,border-color,color] cursor-pointer leading-tight ${
+                                                isSelected
+                                                  ? 'bg-brand-sky/10 border-brand-sky text-sky-600'
+                                                  : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-500'
+                                              }`}
+                                            >
+                                              {opt.name}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          );
+                        })()}
                       </div>
                     ))}
                   </div>
@@ -2070,6 +2270,72 @@ Note: This is an automated message. Please do not reply.`;
                       className="input-base font-semibold text-xs"
                     />
                   </div>
+                </div>
+
+                {/* Edit Discount */}
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60 space-y-2">
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editedDiscount.apply}
+                      onChange={(e) => setEditedDiscount(prev => ({ ...prev, apply: e.target.checked, value: e.target.checked ? prev.value : '' }))}
+                      className="sr-only peer"
+                    />
+                    <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-sky-500" />
+                    <span className="ml-2 text-xs font-semibold text-slate-600 uppercase tracking-wider select-none">Apply Discount</span>
+                  </label>
+                  {editedDiscount.apply && (
+                    <div className="grid grid-cols-2 gap-2 animate-fade-in">
+                      <div>
+                        <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">Type</label>
+                        <div className="flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setEditedDiscount(prev => ({ ...prev, type: 'fixed', value: '' }))}
+                            className={`flex-1 py-1 text-xs font-bold uppercase tracking-wider rounded-lg border cursor-pointer transition-all ${
+                              editedDiscount.type === 'fixed'
+                                ? 'bg-sky-500 text-white border-sky-500'
+                                : 'bg-white text-slate-600 border-slate-200'
+                            }`}
+                          >
+                            Fixed ({currency})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditedDiscount(prev => ({ ...prev, type: 'percentage', value: '' }))}
+                            className={`flex-1 py-1 text-xs font-bold uppercase tracking-wider rounded-lg border cursor-pointer transition-all ${
+                              editedDiscount.type === 'percentage'
+                                ? 'bg-sky-500 text-white border-sky-500'
+                                : 'bg-white text-slate-600 border-slate-200'
+                            }`}
+                          >
+                            %
+                          </button>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">Value</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max={editedDiscount.type === 'percentage' ? 100 : editedTotal}
+                          value={editedDiscount.value}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === '') { setEditedDiscount(prev => ({ ...prev, value: '' })); return; }
+                            if (raw === '-') return;
+                            const num = Number(raw);
+                            if (!isNaN(num) && num >= 0) {
+                              if (editedDiscount.type === 'percentage' && num > 100) return;
+                              setEditedDiscount(prev => ({ ...prev, value: raw }));
+                            }
+                          }}
+                          className="input-base font-semibold text-xs"
+                          placeholder={editedDiscount.type === 'percentage' ? '0%' : '0'}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Edit Snapshot measurements */}
@@ -2116,6 +2382,23 @@ Note: This is an automated message. Please do not reply.`;
                     <p className="font-semibold text-base text-slate-800">{selectedOrder.customer_name}</p>
                     <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">
                       Contact: <span className="text-slate-700 font-semibold">{selectedOrder.customer_phone && !selectedOrder.customer_phone.startsWith('NO-PHONE-') ? selectedOrder.customer_phone : 'Not Provided'}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!showCustomerHistory && selectedOrder.customer_id) {
+                            fetchCustomerOrders(selectedOrder.customer_id);
+                          }
+                          setShowCustomerHistory(!showCustomerHistory);
+                        }}
+                        className="ml-2 px-1.5 py-0.5 rounded text-3xs font-semibold uppercase tracking-wider border cursor-pointer transition-[background-color,border-color]"
+                        style={{
+                          backgroundColor: showCustomerHistory ? 'rgb(14 165 233)' : 'rgb(248 250 252)',
+                          color: showCustomerHistory ? 'white' : 'rgb(14 165 233)',
+                          borderColor: showCustomerHistory ? 'rgb(14 165 233)' : 'rgb(14 165 233)',
+                        }}
+                      >
+                        {showCustomerHistory ? 'Hide History' : 'Order History'}
+                      </button>
                     </p>
                   </div>
 
@@ -2128,16 +2411,6 @@ Note: This is an automated message. Please do not reply.`;
                       Print
                     </button>
 
-                    {selectedOrder.status === 'Ready to Deliver' && (
-                      <button
-                        onClick={() => sendWhatsApp(selectedOrder)}
-                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-semibold rounded-lg text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-[background-color]"
-                      >
-                        <Smartphone className="w-3.5 h-3.5 text-emerald-600" />
-                        WhatsApp
-                      </button>
-                    )}
-
                     {selectedOrder.status !== 'Delivered' && selectedOrder.status !== 'Archived' && (
                       <button
                         onClick={() => {
@@ -2145,6 +2418,11 @@ Note: This is an automated message. Please do not reply.`;
                           setEditedPaid(selectedOrder.paid_amount);
                           setEditedDueDate(selectedOrder.due_date.split('T')[0]);
                           setEditedSnapshot({ ...selectedOrder.measurement_snapshot });
+                          setEditedDiscount({
+                            apply: !!selectedOrder.discount_type && Number(selectedOrder.discount_amount) > 0,
+                            type: selectedOrder.discount_type || 'fixed',
+                            value: selectedOrder.discount_value ? String(selectedOrder.discount_value) : '',
+                          });
                           setIsEditing(true);
                         }}
                         className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-[background-color]"
@@ -2182,6 +2460,65 @@ Note: This is an automated message. Please do not reply.`;
                     </div>
                   </div>
                 </div>
+
+                {/* Customer Order History Panel */}
+                {showCustomerHistory && (
+                  <div className="border border-slate-200 rounded-lg overflow-hidden print:hidden">
+                    <div className="bg-slate-50 px-3 py-2 border-b border-slate-200 flex items-center justify-between">
+                      <span className="text-3xs font-extrabold text-slate-600 uppercase tracking-wider">Customer Order History</span>
+                      {loadingCustomerHistory && (
+                        <span className="text-3xs text-slate-400 font-semibold">Loading...</span>
+                      )}
+                      {!loadingCustomerHistory && (
+                        <span className="text-3xs text-slate-400 font-semibold">{customerOrders.length} order{customerOrders.length !== 1 ? 's' : ''}</span>
+                      )}
+                    </div>
+                    <div className="max-h-[40vh] overflow-y-auto divide-y divide-slate-100 bg-white">
+                      {loadingCustomerHistory && customerOrders.length === 0 && (
+                        <div className="p-4 text-center text-slate-400 text-xs font-semibold uppercase tracking-wider">Loading history...</div>
+                      )}
+                      {!loadingCustomerHistory && customerOrders.length === 0 && (
+                        <div className="p-4 text-center text-slate-400 text-xs font-semibold uppercase tracking-wider">No previous orders for this customer.</div>
+                      )}
+                      {customerOrders.map((o) => {
+                        const isCurrentOrder = selectedOrder?.id === o.id;
+                        return (
+                          <button
+                            key={o.id}
+                            onClick={() => selectOrderWithDetails(o)}
+                            className={`w-full p-2.5 text-left border-0 transition-[background-color] flex items-center justify-between cursor-pointer ${
+                              isCurrentOrder
+                                ? 'bg-sky-50/70'
+                                : 'bg-white hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="space-y-0.5 min-w-0 flex-1 mr-2">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-3xs font-semibold text-slate-400 font-mono tracking-wide">{o.order_number}</span>
+                                <span className={`px-1.5 py-0.5 rounded text-3xs font-semibold uppercase leading-tight ${getStatusBadgeStyle(o.status)}`}>
+                                  {stagesList.find(s => s.id === o.status)?.name || o.status}
+                                </span>
+                              </div>
+                              <p className="text-3xs text-slate-400 font-semibold uppercase tracking-wider">Due: {new Date(o.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p>
+                            </div>
+                            <div className="text-right space-y-0.5 shrink-0">
+                              <span className="text-xs font-black text-slate-900 block font-display leading-tight">
+                                {currency}{o.total_amount}
+                              </span>
+                              {(o.final_total ?? o.total_amount) - o.paid_amount > 0 ? (
+                                <span className="inline-block text-3xs bg-red-50 text-red-700 font-semibold px-1.5 py-0.5 rounded border border-red-100">
+                                  Due {currency}{(o.final_total ?? o.total_amount) - o.paid_amount}
+                                </span>
+                              ) : (
+                                <span className="inline-block text-3xs bg-emerald-50 text-emerald-700 font-semibold px-1.5 py-0.5 rounded border border-emerald-100">Paid</span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Progress bar state machine - styled perfectly with sky-blue pipeline */}
                 <div className="bg-slate-50 p-4 rounded-lg border border-slate-200/60 space-y-3 print:hidden">
@@ -2359,6 +2696,12 @@ Note: This is an automated message. Please do not reply.`;
                     <div>
                       <span className="text-xs text-slate-400 font-semibold block uppercase tracking-wider">Total</span>
                       <span className="text-xl font-black block mt-0.5">{currency}{selectedOrder.total_amount}</span>
+                      {selectedOrder.discount_type && Number(selectedOrder.discount_amount) > 0 && (
+                        <div className="mt-1 text-[10px] text-red-400 font-semibold leading-tight">
+                          <span>Discount: -{currency}{Number(selectedOrder.discount_amount).toLocaleString()}</span>
+                          <span className="block text-sky-300">Final: {currency}{Number(selectedOrder.final_total ?? selectedOrder.total_amount).toLocaleString()}</span>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <span className="text-xs text-slate-400 font-semibold block uppercase tracking-wider">Paid Amount</span>
@@ -2366,8 +2709,8 @@ Note: This is an automated message. Please do not reply.`;
                     </div>
                     <div>
                       <span className="text-xs text-slate-400 font-semibold block uppercase tracking-wider">Remaining</span>
-                      <span className={`text-xl font-black block mt-0.5 ${selectedOrder.total_amount - selectedOrder.paid_amount > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                        {currency}{selectedOrder.total_amount - selectedOrder.paid_amount}
+                      <span className={`text-xl font-black block mt-0.5 ${(selectedOrder.final_total ?? selectedOrder.total_amount) - selectedOrder.paid_amount > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                        {currency}{(selectedOrder.final_total ?? selectedOrder.total_amount) - selectedOrder.paid_amount}
                       </span>
                     </div>
                     <div>
@@ -2513,14 +2856,26 @@ Note: This is an automated message. Please do not reply.`;
                     <span className="font-semibold text-gray-600">Total</span>
                     <span className="font-bold text-gray-900">{currency}{Number(selectedOrder.total_amount).toLocaleString()}</span>
                   </div>
+                  {selectedOrder.discount_type && Number(selectedOrder.discount_amount) > 0 && (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="font-semibold text-gray-500 text-[8pt]">Discount {selectedOrder.discount_type === 'percentage' ? `(${selectedOrder.discount_value}%)` : ''}</span>
+                        <span className="font-bold text-red-600">-{currency}{Number(selectedOrder.discount_amount).toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between border-t border-gray-300 pt-0.5">
+                        <span className="font-bold text-gray-800">Final Total</span>
+                        <span className="font-bold text-gray-900">{currency}{Number(selectedOrder.final_total ?? selectedOrder.total_amount).toLocaleString()}</span>
+                      </div>
+                    </>
+                  )}
                   <div className="flex justify-between">
                     <span className="font-semibold text-gray-600">Paid</span>
                     <span className="font-bold text-emerald-700">{currency}{Number(selectedOrder.paid_amount).toLocaleString()}</span>
                   </div>
-                  {(Number(selectedOrder.total_amount) - Number(selectedOrder.paid_amount)) > 0 && (
+                  {(Number(selectedOrder.final_total ?? selectedOrder.total_amount) - Number(selectedOrder.paid_amount)) > 0 && (
                     <div className="flex justify-between pt-1 border-t-2 border-gray-800 text-[11pt]">
                       <span className="font-black text-gray-800">Balance Due</span>
-                      <span className="font-black text-red-700">{currency}{Math.max(0, Number(selectedOrder.total_amount) - Number(selectedOrder.paid_amount)).toLocaleString()}</span>
+                      <span className="font-black text-red-700">{currency}{Math.max(0, Number(selectedOrder.final_total ?? selectedOrder.total_amount) - Number(selectedOrder.paid_amount)).toLocaleString()}</span>
                     </div>
                   )}
                 </div>
@@ -3064,8 +3419,18 @@ Note: This is an automated message. Please do not reply.`;
 
             <div className="bg-slate-50 rounded-xl p-3 space-y-2">
               <div className="flex justify-between text-xs font-semibold">
-                <span className="text-slate-500">This Order Total</span>
+                <span className="text-slate-500">Original Total</span>
                 <span className="text-slate-800">{currency}{pendingDeliverOrder.total_amount}</span>
+              </div>
+              {pendingDeliverOrder.discount_type && Number(pendingDeliverOrder.discount_amount) > 0 && (
+                <div className="flex justify-between text-xs font-semibold">
+                  <span className="text-slate-500">Discount</span>
+                  <span className="text-red-500">-{currency}{Number(pendingDeliverOrder.discount_amount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-xs font-semibold">
+                <span className="text-slate-500">Final Total</span>
+                <span className="text-slate-800 font-bold">{currency}{(pendingDeliverOrder.final_total ?? pendingDeliverOrder.total_amount)}</span>
               </div>
               <div className="flex justify-between text-xs font-semibold">
                 <span className="text-slate-500">Already Paid</span>
@@ -3073,7 +3438,7 @@ Note: This is an automated message. Please do not reply.`;
               </div>
               <div className="flex justify-between text-xs font-semibold">
                 <span className="text-slate-500">This Order Remaining</span>
-                <span className="text-red-500 font-bold">{currency}{Math.round((pendingDeliverOrder.total_amount || 0) - (pendingDeliverOrder.paid_amount || 0))}</span>
+                <span className="text-red-500 font-bold">{currency}{Math.round(((pendingDeliverOrder.final_total ?? pendingDeliverOrder.total_amount) || 0) - (pendingDeliverOrder.paid_amount || 0))}</span>
               </div>
               {oldDues > 0 && (
                 <div className="flex justify-between text-xs font-semibold border-t border-amber-200 pt-2">
@@ -3083,7 +3448,7 @@ Note: This is an automated message. Please do not reply.`;
               )}
               <div className="flex justify-between text-xs font-bold border-t border-slate-200 pt-2">
                 <span className="text-slate-700">Total Outstanding</span>
-                <span className="text-red-600 font-black">{currency}{Math.round((pendingDeliverOrder.total_amount || 0) - (pendingDeliverOrder.paid_amount || 0) + oldDues)}</span>
+                <span className="text-red-600 font-black">{currency}{Math.round(((pendingDeliverOrder.final_total ?? pendingDeliverOrder.total_amount) || 0) - (pendingDeliverOrder.paid_amount || 0) + oldDues)}</span>
               </div>
             </div>
 
@@ -3115,57 +3480,6 @@ Note: This is an automated message. Please do not reply.`;
                 className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-xl text-xs uppercase tracking-wider cursor-pointer transition-[background-color]"
               >
                 Deliver Without Collecting
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* WHATSAPP READY TO DELIVER CONFIRMATION DIALOG */}
-      {showWhatsAppConfirm && pendingWhatsAppOrder && (
-        <div className="modal-overlay">
-          <div className="modal-content text-center">
-            <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center mx-auto">
-              <Smartphone className="w-7 h-7 text-emerald-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-black text-slate-900 uppercase tracking-wider">Notify Customer</h3>
-              <p className="text-xs text-slate-500 mt-1 font-semibold leading-relaxed">
-                Order <strong className="text-slate-800">{pendingWhatsAppOrder.order_number}</strong> for <strong className="text-slate-800">{pendingWhatsAppOrder.customer_name}</strong> is ready to deliver.
-              </p>
-            </div>
-
-            {(() => {
-              const remaining = pendingWhatsAppOrder.total_amount - pendingWhatsAppOrder.paid_amount;
-              if (remaining > 0) {
-                return (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                    <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">
-                      Remaining Amount: {currency}{Math.round(remaining)}
-                    </p>
-                  </div>
-                );
-              }
-              return null;
-            })()}
-
-            <p className="text-xs text-slate-500 font-semibold leading-relaxed">
-              Send a WhatsApp notification to the customer so they can collect their order.
-            </p>
-
-            <div className="space-y-2">
-              <button
-                onClick={handleWhatsAppConfirmContinue}
-                className="btn-success w-full"
-              >
-                <Smartphone className="icon-xs" />
-                Continue to WhatsApp
-              </button>
-              <button
-                onClick={handleWhatsAppConfirmNotNow}
-                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-xl text-xs uppercase tracking-wider cursor-pointer transition-[background-color]"
-              >
-                Not Now
               </button>
             </div>
           </div>
