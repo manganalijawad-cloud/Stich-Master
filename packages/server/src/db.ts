@@ -248,7 +248,7 @@ export function getCustomers(createdBy: string, search?: string, shopId?: string
   if (search) {
     sql += " AND (name LIKE ? OR phone LIKE ?)";
     const q = `%${search}%`;
-    params.push(q, q, q);
+    params.push(q, q);
   }
   if (shopId) {
     sql += " AND shop_id = ?";
