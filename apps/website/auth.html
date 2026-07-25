@@ -64,37 +64,6 @@
             <p id="auth-error-text" class="text-sm font-medium text-red-600"></p>
           </div>
 
-          <button
-            id="google-signin-btn"
-            type="button"
-            class="google-btn w-full flex items-center justify-center gap-3 px-6 py-3 bg-white hover:bg-slate-50 text-slate-700 font-medium text-sm rounded-xl border border-slate-300 shadow-sm hover:shadow-md hover:border-slate-400 transition-all duration-200 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:shadow-sm"
-          >
-            <span id="google-btn-content" class="flex items-center gap-3">
-              <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-              </svg>
-              <span id="google-btn-text">Continue with Google</span>
-            </span>
-            <span id="google-btn-loader" class="hidden">
-              <svg class="w-5 h-5 animate-spin" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-              </svg>
-              <span>Connecting...</span>
-            </span>
-          </button>
-
-          <div class="relative my-6">
-            <div class="absolute inset-0 flex items-center">
-              <div class="w-full border-t border-slate-200"></div>
-            </div>
-            <div class="relative flex justify-center">
-              <span class="px-3 text-xs font-medium text-slate-400 bg-brand-bg">OR</span>
-            </div>
-          </div>
-
           <!-- Sign In Form -->
           <div id="signin-form-wrapper">
             <form id="email-signin-form" class="space-y-4">
@@ -146,62 +115,7 @@
               </button>
             </form>
             <p class="mt-6 text-center text-sm text-slate-500">
-              Don&apos;t have an account?
-              <a href="/auth.html?action=signup" class="text-brand-sky hover:text-sky-600 font-medium transition-colors">Create one</a>
-            </p>
-          </div>
-
-          <!-- Sign Up Form -->
-          <div id="signup-form-wrapper" class="hidden">
-            <form id="email-signup-form" class="space-y-4">
-              <div>
-                <input
-                  type="text"
-                  id="signup-name"
-                  placeholder="Full name"
-                  autocomplete="name"
-                  class="w-full h-11 px-4 bg-white border border-slate-300 rounded-xl text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20 transition-all duration-200"
-                />
-              </div>
-              <div>
-                <input
-                  type="email"
-                  id="signup-email"
-                  placeholder="Email address"
-                  autocomplete="email"
-                  class="w-full h-11 px-4 bg-white border border-slate-300 rounded-xl text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20 transition-all duration-200"
-                />
-              </div>
-              <div class="relative">
-                <input
-                  type="password"
-                  id="signup-password"
-                  placeholder="Password (min 8 characters)"
-                  autocomplete="new-password"
-                  class="w-full h-11 pl-4 pr-11 bg-white border border-slate-300 rounded-xl text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20 transition-all duration-200"
-                />
-                <button
-                  type="button"
-                  id="toggle-signup-password"
-                  class="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                  tabindex="-1"
-                  aria-label="Toggle password visibility"
-                >
-                  <svg id="signup-password-eye" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                  <svg id="signup-password-eye-off" class="w-5 h-5 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                </button>
-              </div>
-              <button
-                type="submit"
-                id="signup-btn"
-                class="w-full h-11 bg-brand-sidebar hover:bg-brand-active text-white font-semibold text-sm rounded-xl transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Create account
-              </button>
-            </form>
-            <p class="mt-6 text-center text-sm text-slate-500">
-              Already have an account?
-              <a href="/auth.html" class="text-brand-sky hover:text-sky-600 font-medium transition-colors">Sign in</a>
+              Accounts are provisioned by Hello Darzi. Contact support if you need access.
             </p>
           </div>
 

@@ -1713,7 +1713,15 @@ app.post("/api/orders", requireAuth, async (req: AuthenticatedRequest, res: Resp
         paid_amount, due_date, measurement_snapshot: snapshot,
         shop_id: req.user!.shop_id, created_by: req.user!.id, updated_by: req.user!.id,
       });
-      db.logAction("CREATE_ORDER", req.user!.id, req.user!.email, req.user!.shop_id, { order_id: order.id, order_number: orderNumber });
+      db.logAction("CREATE_ORDER", req.user!.id, req.user!.email, req.user!.shop_id,
+        { order_id: order.id, order_number: orderNumber, status: defaultStatus },
+        {
+          userName: req.user!.name, userRole: req.user!.role,
+          module: "Orders", recordId: order.id,
+          newValue: { status: defaultStatus },
+          notes: "Order created",
+        }
+      );
       sync.syncAfterMutation("orders", order.id, "insert", order, req.token);
       const c = db.getCustomerById(order.customer_id, req.user!.id);
       return res.status(201).json({
@@ -1818,7 +1826,11 @@ app.post("/api/orders", requireAuth, async (req: AuthenticatedRequest, res: Resp
       .eq("id", customer_id)
       .maybeSingle();
 
-    await logAction(req.user!, "CREATE_ORDER", { order_id: order.id, order_number: orderNumber }, req.token);
+    await logAction(req.user!, "CREATE_ORDER", { order_id: order.id, order_number: orderNumber, status: defaultStatus }, req.token, {
+      module: "Orders", recordId: order.id,
+      newValue: { status: defaultStatus },
+      notes: "Order created",
+    });
     return res.status(201).json({
       ...order,
       customer_name: cust?.name || "Unknown Customer",
@@ -2219,6 +2231,10 @@ app.put("/api/settings", requireAuth, requireRole(["Owner"]), requireOwnerMode, 
 // -------------------------------------------------------------------------
 // GARMENT TYPES HELPERS & ENDPOINTS (Owner Only)
 // -------------------------------------------------------------------------
+// Dual storage (documented in PROJECT.md §7):
+//   Canonical: garment_types table (local SQLite always; Supabase when present)
+//   Fallback:  shop_settings key `${userId}:garment_types` (JSON) — cloud only
+// Prefer the table. Do not rewrite or dual-write both paths without a migration plan.
 
 async function getGarmentTypes(userSupabase: any, userId: string, shopId: string): Promise<any[]> {
   try {
@@ -2628,6 +2644,10 @@ app.delete("/api/garment-types/:id", requireAuth, requireRole(["Owner"]), requir
 // -------------------------------------------------------------------------
 // STYLING CATEGORIES HELPERS & ENDPOINTS (Owner Only)
 // -------------------------------------------------------------------------
+// Dual storage (documented in PROJECT.md §8):
+//   Canonical: styling_categories table
+//   Fallback:  shop_settings key `${userId}:styling_categories` (JSON)
+// Same policy as garment types — table first; keep fallback until migrated.
 
 async function getStylingCategories(userSupabase: any, userId: string, shopId: string, garmentTypeId?: string): Promise<any[]> {
   try {

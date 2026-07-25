@@ -947,10 +947,10 @@ Do you absolutely want to proceed with deletion?`;
       <div>
         <h3 className="text-lg font-semibold text-slate-900 uppercase tracking-wider font-display flex items-center gap-2">
           <Sliders className="icon-sm text-brand-sky" />
-          Garment Configuration
+          Clothes types
         </h3>
         <p className="text-xs text-slate-500 mt-1 leading-relaxed max-w-3xl">
-          Unified command center for administrating your shop's catalog. Configure unique garment types, construct custom measurement forms for each category, and maintain matching design choices in the styling library.
+          Add the kinds of clothes you stitch (shirt, suit, shalwar kameez). For each type, set the measurements you take and the style choices customers can pick.
         </p>
       </div>
 
@@ -977,10 +977,10 @@ Do you absolutely want to proceed with deletion?`;
           
           {/* Create Form */}
           <div className="card">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Add New Catalog Garment</span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Add clothing type</span>
             <form onSubmit={handleAddGarmentType} className="space-y-2.5">
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest block">Garment Name</label>
+                <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest block">Name</label>
                 <input
                   type="text"
                   required
@@ -1015,8 +1015,8 @@ Do you absolutely want to proceed with deletion?`;
           {/* List of Garment Types */}
           <div className="card">
             <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-              <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Garment Catalog List</span>
-              <span className="text-3xs font-semibold text-slate-400 uppercase tracking-widest">{garmentTypes.length} registered</span>
+              <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Your clothing types</span>
+              <span className="text-3xs font-semibold text-slate-400 uppercase tracking-widest">{garmentTypes.length} types</span>
             </div>
 
             <div className="divide-y divide-slate-150 max-h-[60vh] overflow-y-auto bg-white">
@@ -1129,7 +1129,7 @@ Do you absolutely want to proceed with deletion?`;
                                 ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' 
                                 : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                             }`}
-                            title={type.enabled ? 'Disable Garment Type' : 'Enable Garment Type'}
+                            title={type.enabled ? 'Turn off' : 'Turn on'}
                           >
                             {type.enabled ? 'Active' : 'Muted'}
                           </button>
@@ -1153,7 +1153,7 @@ Do you absolutely want to proceed with deletion?`;
                             type="button"
                             onClick={(e) => { e.stopPropagation(); handleDeleteGarmentType(type); }}
                             className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded cursor-pointer transition-colors"
-                            title="Delete Garment Type & All Configs"
+                            title="Delete this clothing type"
                           >
                             <Trash2 className="icon-xs" />
                           </button>
@@ -1175,7 +1175,7 @@ Do you absolutely want to proceed with deletion?`;
               {/* Garment Type General Settings / Price */}
               <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex flex-col">
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Garment Category</span>
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Clothing type</span>
                   <span className="text-body font-extrabold text-slate-800 font-display">{selectedType.name}</span>
                 </div>
                 <div className="flex items-center gap-3">
@@ -1219,7 +1219,7 @@ Do you absolutely want to proceed with deletion?`;
                   }`}
                 >
                   <Ruler className="icon-sm text-brand-sky" />
-                  Measurement Form Builder
+                  Measurements
                 </button>
                 <button
                   type="button"
@@ -1231,7 +1231,7 @@ Do you absolutely want to proceed with deletion?`;
                   }`}
                 >
                   <Sparkles className="icon-sm text-brand-sky" />
-                  Styling Library options
+                  Style choices
                 </button>
               </div>
 
@@ -1243,17 +1243,17 @@ Do you absolutely want to proceed with deletion?`;
                   <div className="space-y-4">
                     <div>
                       <h4 className="text-body font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 font-display">
-                        Form Layout Builder: {selectedType.name}
+                        Measurements for {selectedType.name}
                       </h4>
                       <p className="text-caption text-slate-400 leading-normal mt-0.5">
-                        Define which measurements are required from customers when they order a {selectedType.name}. Add parameters (e.g. Chest, Inseam, Collar), rearrange their order, or mandate specific entries.
+                        Choose which measurements to take when a customer orders a {selectedType.name}. Add fields like Chest or Sleeve, set the order, and mark which ones are required.
                       </p>
                     </div>
 
                     {/* New Field Creator Form */}
                     <form onSubmit={handleAddField} className="card flex flex-wrap gap-3 items-end">
                       <div className="flex-1 min-w-[160px] sm:min-w-[200px] space-y-1">
-                        <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest block">Parameter Name</label>
+                        <label className="text-xs font-semibold text-slate-400 uppercase tracking-widest block">Measurement name</label>
                         <input
                           type="text"
                           required
@@ -1275,7 +1275,7 @@ Do you absolutely want to proceed with deletion?`;
                           ) : (
                             <Square className="icon-xs text-slate-300 shrink-0" />
                           )}
-                          <span>Required Entry</span>
+                          <span>Required</span>
                         </button>
                       </div>
 
@@ -1290,7 +1290,7 @@ Do you absolutely want to proceed with deletion?`;
 
                     {/* Draggable fields layout */}
                     <div className="space-y-2">
-                      <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest block">Fields Layout & Preview</span>
+                      <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest block">Measurement list</span>
                       
                       {builderFields.length === 0 ? (
                         <div className="p-8 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400 text-xs font-semibold uppercase tracking-wider">
@@ -1447,10 +1447,10 @@ Do you absolutely want to proceed with deletion?`;
                   <div className="space-y-4">
                     <div>
                       <h4 className="text-body font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 font-display">
-                        Styling Library options: {selectedType.name}
+                        Style choices for {selectedType.name}
                       </h4>
                       <p className="text-caption text-slate-400 leading-normal mt-0.5">
-                        Define custom style categories (e.g. Collars, Cuffs, Sleeves, Pockets) specifically for {selectedType.name}s. Within each style category, register specific style design configurations.
+                        Add style groups (collar, cuff, pocket) for {selectedType.name}, then add the options customers can choose.
                       </p>
                     </div>
 
@@ -1460,7 +1460,7 @@ Do you absolutely want to proceed with deletion?`;
                       {/* Left: Styling categories inside the selected garment */}
                       <div className="md:col-span-5 space-y-3">
                         <div className="space-y-2">
-                          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">1. Style Categories</span>
+                          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">1. Style groups</span>
                           
                           {/* New category name creator */}
                           <form onSubmit={handleAddStylingCategory} className="flex gap-1.5">
@@ -1484,7 +1484,7 @@ Do you absolutely want to proceed with deletion?`;
                           {/* List of styling categories */}
                           <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden bg-white max-h-[45vh] overflow-y-auto">
                             {stylingCategories.length === 0 ? (
-                              <p className="p-4 text-center text-slate-400 text-3xs font-extrabold uppercase tracking-wider">No categories built.</p>
+                              <p className="p-4 text-center text-slate-400 text-3xs font-extrabold uppercase tracking-wider">No style groups yet.</p>
                             ) : (
                               stylingCategories.map((category, idx) => {
                                 const isCategorySelected = selectedStylingCategory?.id === category.id;

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Completing Sign In — Hello Darzi</title>
+  <title>Password Reset — Hello Darzi</title>
   <meta name="robots" content="noindex, nofollow" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <script src="https://cdn.tailwindcss.com"></script>
@@ -16,23 +16,13 @@
   </style>
 </head>
 <body class="bg-[#0F172A] text-white min-h-screen flex flex-col items-center justify-center px-4">
-  <div class="text-center animate-fade-in">
+  <div class="text-center">
     <div id="loading-state">
       <svg class="w-10 h-10 text-cyan-400 animate-spin mx-auto mb-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
       </svg>
-      <h1 class="font-display text-xl font-bold mb-2">Completing sign in...</h1>
-      <p class="text-sm text-slate-400">Please wait while we verify your credentials</p>
-    </div>
-
-    <div id="success-state" class="hidden">
-      <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-green-500/10 flex items-center justify-center">
-        <svg class="w-8 h-8 text-green-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <polyline points="20 6 9 17 4 12"/>
-        </svg>
-      </div>
-      <h1 class="font-display text-xl font-bold mb-2" id="success-title">Signed in</h1>
-      <p class="text-sm text-slate-400 mb-6" id="success-text">Redirecting you back...</p>
+      <h1 class="font-display text-xl font-bold mb-2">Redirecting...</h1>
+      <p class="text-sm text-slate-400">Please wait</p>
     </div>
 
     <div id="error-state" class="hidden">
@@ -42,104 +32,30 @@
         </svg>
       </div>
       <h1 class="font-display text-xl font-bold mb-2">Something went wrong</h1>
-      <p id="error-message" class="text-sm text-slate-400 mb-6">Authentication failed.</p>
+      <p id="error-message" class="text-sm text-slate-400 mb-6">Could not continue.</p>
       <a href="/auth.html" class="inline-flex items-center px-6 py-3 bg-cyan-400 text-slate-900 font-semibold text-sm rounded-xl hover:bg-cyan-300 transition-all duration-200">
-        Try again
+        Back to sign in
       </a>
     </div>
   </div>
 
-  <script src="/env.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
   <script>
     (function() {
-      var loadingEl = document.getElementById('loading-state');
-      var successEl = document.getElementById('success-state');
-      var successTitle = document.getElementById('success-title');
-      var successText = document.getElementById('success-text');
-      var errorEl = document.getElementById('error-state');
-      var errorMsg = document.getElementById('error-message');
+      var hash = window.location.hash || '';
+      var params = new URLSearchParams(hash.replace('#', '?'));
+      var type = params.get('type');
 
-      function showLoading() {
-        loadingEl.classList.remove('hidden');
-        successEl.classList.add('hidden');
-        errorEl.classList.add('hidden');
-      }
-
-      function showSuccess(title, text, redirectUrl) {
-        loadingEl.classList.add('hidden');
-        errorEl.classList.add('hidden');
-        successEl.classList.remove('hidden');
-        successTitle.textContent = title || 'Signed in';
-        successText.textContent = text || 'Redirecting you back...';
-        if (redirectUrl) {
-          setTimeout(function() { window.location.href = redirectUrl; }, 1500);
-        }
-      }
-
-      function showError(msg) {
-        loadingEl.classList.add('hidden');
-        successEl.classList.add('hidden');
-        errorEl.classList.remove('hidden');
-        errorMsg.textContent = msg || 'Something went wrong. Please try again.';
-      }
-
-      var env = window.ENV || {};
-      var supabaseUrl = env.VITE_SUPABASE_URL || env.SUPABASE_URL || '';
-      var supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY || '';
-
-      if (!supabaseUrl || !supabaseAnonKey) {
-        showError('Authentication is not configured.');
+      // Password recovery links may still point here — forward to auth.html with hash intact
+      if (type === 'recovery' || hash.includes('type=recovery')) {
+        window.location.href = '/auth.html' + hash;
         return;
       }
 
-      var supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey, {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-          detectSessionInUrl: true,
-          storageKey: 'hellodarzi-auth',
-        },
-      });
-
-      (async function() {
-        try {
-          // Check for password recovery type
-          var hash = window.location.hash;
-          var params = new URLSearchParams(hash.replace('#', '?'));
-          var type = params.get('type');
-
-          if (type === 'recovery') {
-            // Password reset flow — redirect to auth page with the hash intact
-            // so auth.js can detect it and show the reset password form
-            window.location.href = '/auth.html' + window.location.hash;
-            return;
-          }
-
-          var { data: { session }, error } = await supabaseClient.auth.getSession();
-
-          if (error) { showError(error.message); return; }
-
-          if (session) {
-            showSuccess('Signed in successfully', 'Redirecting you back...', '/auth.html?success=true');
-          } else if (hash && hash.includes('access_token')) {
-            await new Promise(function(r) { setTimeout(r, 1000); });
-            var { data: { session: retrySession } } = await supabaseClient.auth.getSession();
-            if (retrySession) {
-              showSuccess('Signed in successfully', 'Redirecting you back...', '/auth.html?success=true');
-            } else {
-              showError('Could not complete sign in. Please try again.');
-            }
-          } else if (hash && hash.includes('error')) {
-            showError(params.get('error_description') || params.get('error') || 'Authentication denied.');
-          } else {
-            showError('No session returned. Please try signing in again.');
-          }
-        } catch (err) {
-          showError('Failed to complete authentication.');
-          console.error('Auth callback error:', err);
-        }
-      })();
+      // OAuth/Google signup callbacks are no longer supported (PROJECT.md §3)
+      document.getElementById('loading-state').classList.add('hidden');
+      document.getElementById('error-state').classList.remove('hidden');
+      document.getElementById('error-message').textContent =
+        'Sign-in with Google is no longer available. Please sign in with email and password.';
     })();
   </script>
 </body>

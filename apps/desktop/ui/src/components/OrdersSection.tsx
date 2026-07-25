@@ -5,9 +5,11 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ShoppingCart, Calendar, Plus, Trash2, Printer, CheckCircle, Clock, ShieldAlert, ArrowRight, ChevronRight, Edit3, Search, UserPlus, ChevronLeft, Scissors, Info, Check, QrCode, Camera, Smartphone, Users, ChevronDown, MoreVertical } from 'lucide-react';
-import { Customer, Order, OrderItem, OrderStatus, UserRole, PipelineStage, GarmentType, StylingCategory, MeasurementProfile } from '../types';
+import { Customer, Order, OrderItem, OrderStatus, PipelineStage, GarmentType, StylingCategory, MeasurementProfile } from '../types';
 import { printPage } from '../lib/print';
-import { validateGarmentMeasurementsCompleted, validateMobileNumber } from '../lib/validation';
+import { validateGarmentMeasurementsCompleted } from '../lib/validation';
+import { createCustomerWithMeasurements } from '../lib/createCustomer';
+import { buildOrderQrPayload, parseOrderQrPayload } from '../lib/orderQr';
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
 
@@ -18,7 +20,6 @@ function profileHasSavedMeasurements(profile: MeasurementProfile): boolean {
 
 interface OrdersSectionProps {
   token: string;
-  userRole: UserRole;
   currency: string;
   measurementFields: string[];
   pipelineStages?: PipelineStage[];
@@ -41,7 +42,6 @@ interface OrdersSectionProps {
 
 export default function OrdersSection({
   token,
-  userRole,
   currency,
   measurementFields,
   pipelineStages,
@@ -87,7 +87,8 @@ export default function OrdersSection({
 
   // Selected order details
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
+  const [qrCodeByKey, setQrCodeByKey] = useState<Record<string, string>>({});
+  const qrCodeUrl = qrCodeByKey.order || '';
 
   // Scanner and Compact Action Screen States
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -120,27 +121,44 @@ export default function OrdersSection({
     setCollectingPayment(false);
   };
 
-  // Dynamically generate QR code whenever selectedOrder changes
+  // Generate stable QR payloads for invoice + each garment item slip
   useEffect(() => {
-    if (selectedOrder) {
-      const orderUrl = `${window.location.origin}${window.location.pathname}?orderId=${selectedOrder.id}`;
-      QRCode.toDataURL(orderUrl, {
-        width: 150,
-        margin: 1,
-        color: {
-          dark: '#000000',
-          light: '#ffffff',
-        },
-      })
-        .then((url) => {
-          setQrCodeUrl(url);
-        })
-        .catch((err) => {
-          console.error('Failed to generate QR Code data URL:', err);
-        });
-    } else {
-      setQrCodeUrl('');
+    let cancelled = false;
+
+    if (!selectedOrder) {
+      setQrCodeByKey({});
+      return;
     }
+
+    const qrOpts = {
+      width: 150,
+      margin: 1,
+      color: { dark: '#000000', light: '#ffffff' },
+    };
+
+    (async () => {
+      const next: Record<string, string> = {};
+      try {
+        next.order = await QRCode.toDataURL(
+          buildOrderQrPayload(selectedOrder.id),
+          qrOpts
+        );
+        const items = selectedOrder.items || [];
+        for (let i = 0; i < items.length; i++) {
+          next[`item-${i}`] = await QRCode.toDataURL(
+            buildOrderQrPayload(selectedOrder.id, i),
+            qrOpts
+          );
+        }
+        if (!cancelled) setQrCodeByKey(next);
+      } catch (err) {
+        console.error('Failed to generate QR Code data URL:', err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedOrder]);
 
   // Load active order if passed from URL query param (e.g. from scanning QR code)
@@ -661,77 +679,46 @@ export default function OrdersSection({
 
   const handleInlineCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCustName.trim()) return;
-
-    const phoneRequired = isNameDuplicate;
-    if (phoneRequired && (!newCustPhone || !newCustPhone.trim())) {
-      setCreateError('A customer with this name already exists. A Phone Number is required to save a duplicate name.');
-      return;
-    }
-
-    const phoneError = validateMobileNumber(newCustPhone, phoneRequired);
-    if (phoneError) {
-      setCreateError(phoneError);
-      return;
-    }
+    setCreateError(null);
 
     const selectedGarment = newCustGarmentTypeId
       ? garmentTypes.find(g => g.id === newCustGarmentTypeId)
       : null;
-    const measError = validateGarmentMeasurementsCompleted(selectedGarment, newCustMeasurements);
-    if (measError || !selectedGarment) {
-      setCreateError(measError || 'Please select a garment type and enter measurements.');
+
+    const result = await createCustomerWithMeasurements({
+      token,
+      name: newCustName,
+      phone: newCustPhone,
+      address: newCustAddress,
+      isNameDuplicate,
+      garment: selectedGarment,
+      measurements: newCustMeasurements,
+    });
+
+    if (!result.ok) {
+      setCreateError(result.error);
       return;
     }
 
-    setCreateError(null);
-    try {
-      const firstProfile: MeasurementProfile = {
-        id: Math.random().toString(36).substring(2, 11),
-        garment_type_id: selectedGarment.id,
-        garment_name: selectedGarment.name,
-        values: newCustMeasurements,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
+    setCustomer(result.customer);
+    setCustomerProfiles(
+      result.alreadyExists
+        ? result.firstProfile
+          ? [result.firstProfile]
+          : []
+        : [result.firstProfile]
+    );
 
-      const res = await fetch('/api/customers', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          name: newCustName,
-          phone: newCustPhone,
-          address: newCustAddress,
-          measurements: { profiles: [firstProfile] }
-        })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        const createdCustomer = data.customer || data;
-        setCustomer(createdCustomer);
-        setCustomerProfiles([firstProfile]);
+    setNewCustName('');
+    setNewCustPhone('');
+    setNewCustAddress('');
+    setNewCustGarmentTypeId('');
+    setNewCustMeasurements({});
+    setShowCreateCustomer(false);
 
-        // Reset customer form
-        setNewCustName('');
-        setNewCustPhone('');
-        setNewCustAddress('');
-        setNewCustGarmentTypeId('');
-        setNewCustMeasurements({});
-        setShowCreateCustomer(false);
-
-        setBookingStep('garments');
-        setBookingItems([]);
-        setManuallyEditedPriceIds(new Set());
-      } else {
-        setCreateError(data.error || 'Failed to create customer');
-      }
-    } catch (err) {
-      console.error('Error creating customer:', err);
-      setCreateError('Error creating customer record.');
-    }
+    setBookingStep('garments');
+    setBookingItems([]);
+    setManuallyEditedPriceIds(new Set());
   };
 
   const handleAddBookingItem = () => {
@@ -797,38 +784,6 @@ export default function OrdersSection({
       if (item.id !== itemId) return item;
       return { ...item, [field]: value };
     }));
-  };
-
-  const handleUpdateBookingItemMeasurement = (itemId: string, fieldName: string, value: string | number) => {
-    // Measurements are shared per garment type (PROJECT.md §8) — keep all items of that type in sync
-    setBookingItems(prev => {
-      const source = prev.find(item => item.id === itemId);
-      if (!source) return prev;
-      const garmentTypeId = source.garment_type_id;
-
-      setCustomerProfiles(profiles => {
-        const idx = profiles.findIndex(p => p.garment_type_id === garmentTypeId);
-        if (idx === -1) return profiles;
-        const next = [...profiles];
-        next[idx] = {
-          ...next[idx],
-          values: { ...next[idx].values, [fieldName]: value },
-          updated_at: new Date().toISOString(),
-        };
-        return next;
-      });
-
-      return prev.map(item => {
-        if (item.garment_type_id !== garmentTypeId) return item;
-        return {
-          ...item,
-          measurement_snapshot: {
-            ...item.measurement_snapshot,
-            [fieldName]: value,
-          },
-        };
-      });
-    });
   };
 
   const handleUpdateBookingItemStyling = (itemId: string, categoryId: string, optionId: string) => {
@@ -1247,25 +1202,16 @@ export default function OrdersSection({
   const [cameraPermissionError, setCameraPermissionError] = useState<string | null>(null);
   const [scannerActiveTab, setScannerActiveTab] = useState<'camera' | 'simulator'>('camera');
 
-  // Handle scanned value (parsed from QR code URL or simulated selection)
+  // Handle scanned value (stable hellodarzi:// payload or legacy ?orderId= URL)
   const handleScannedValue = async (value: string) => {
     try {
-      // Parse the scanned URL
-      let urlObj: URL;
-      try {
-        urlObj = new URL(value);
-      } catch (e) {
-        // Fallback in case it's just raw parameters or a relative URL
-        urlObj = new URL(value, window.location.origin);
-      }
-      
-      const orderId = urlObj.searchParams.get('orderId');
-      const itemIdxStr = urlObj.searchParams.get('itemIdx');
-      
-      if (!orderId) {
+      const parsed = parseOrderQrPayload(value);
+      if (!parsed?.orderId) {
         alert('Invalid QR code scanned. It does not contain an Order ID.');
         return;
       }
+
+      const { orderId, itemIdx: parsedItemIdx } = parsed;
 
       // Close scanner modal
       setIsScannerOpen(false);
@@ -1281,8 +1227,8 @@ export default function OrdersSection({
       });
       if (res.ok) {
         const fullOrder = await res.json();
-        const itemIdx = itemIdxStr !== null ? parseInt(itemIdxStr, 10) : 0;
-        
+        const itemIdx = parsedItemIdx !== undefined ? parsedItemIdx : 0;
+
         setScannedGarmentItem({
           order: fullOrder,
           itemIdx: itemIdx,
@@ -1343,7 +1289,7 @@ export default function OrdersSection({
         })
         .catch((err) => {
           console.error('Error accessing camera:', err);
-          setCameraPermissionError('Could not access device camera. Please grant permissions, or use the Simulator tab.');
+          setCameraPermissionError('Could not use the camera. Check permissions, or try Test mode.');
           setScannerActiveTab('simulator');
         });
     }
@@ -1416,7 +1362,7 @@ export default function OrdersSection({
         <div className="lg:col-span-5 card space-y-2 overflow-y-auto">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-black text-slate-900 tracking-tight font-display uppercase">
-              {viewMode === 'Active' ? 'Active Queue' : 'Archived Vault'}
+              {viewMode === 'Active' ? 'Open orders' : 'Finished orders'}
             </h2>
             {!isCreating && (
               <button
@@ -1443,7 +1389,7 @@ export default function OrdersSection({
                   : 'text-slate-500 hover:text-slate-800'
               }`}
             >
-              Active Pipeline
+              Open orders
             </button>
             <button
               type="button"
@@ -1457,7 +1403,7 @@ export default function OrdersSection({
                   : 'text-slate-500 hover:text-slate-800'
               }`}
             >
-              Archived Vault
+              Finished orders
             </button>
           </div>
 
@@ -1486,7 +1432,7 @@ export default function OrdersSection({
             </div>
           ) : (
             <div className="p-2 bg-purple-50 rounded-lg border border-purple-100 text-center text-purple-700 text-xs font-semibold uppercase tracking-wider">
-              Displaying Archived Vault Records
+              Showing finished orders
             </div>
           )}
 
@@ -1713,7 +1659,7 @@ export default function OrdersSection({
                         autoFocus
                         value={newCustName}
                         onChange={(e) => setNewCustName(e.target.value)}
-                        className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus-visible:outline-none focus:border-brand-sky focus:ring-1 focus:ring-[#38BDF8]/20 placeholder:text-slate-400"
+                        className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus-visible:outline-none focus:border-brand-sky focus:ring-1 focus:ring-black/10 placeholder:text-slate-400"
                         placeholder="Full Name *"
                       />
                       <input
@@ -1721,7 +1667,7 @@ export default function OrdersSection({
                         required={isNameDuplicate}
                         value={newCustPhone}
                         onChange={(e) => setNewCustPhone(e.target.value)}
-                        className={`w-full px-3 py-2.5 bg-white border rounded-lg text-sm text-slate-800 focus-visible:outline-none placeholder:text-slate-400 ${isNameDuplicate ? 'border-amber-300 focus:border-amber-500' : 'border-slate-200 focus:border-brand-sky focus:ring-1 focus:ring-[#38BDF8]/20'}`}
+                        className={`w-full px-3 py-2.5 bg-white border rounded-lg text-sm text-slate-800 focus-visible:outline-none placeholder:text-slate-400 ${isNameDuplicate ? 'border-amber-300 focus:border-amber-500' : 'border-slate-200 focus:border-brand-sky focus:ring-1 focus:ring-black/10'}`}
                         placeholder={`Phone${isNameDuplicate ? ' * (Required)' : ''}`}
                       />
                     </div>
@@ -1730,7 +1676,7 @@ export default function OrdersSection({
                       type="text"
                       value={newCustAddress}
                       onChange={(e) => setNewCustAddress(e.target.value)}
-                      className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus-visible:outline-none focus:border-brand-sky focus:ring-1 focus:ring-[#38BDF8]/20 placeholder:text-slate-400"
+                      className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus-visible:outline-none focus:border-brand-sky focus:ring-1 focus:ring-black/10 placeholder:text-slate-400"
                       placeholder="Address"
                     />
 
@@ -1873,7 +1819,7 @@ export default function OrdersSection({
                               type="text"
                               value={item.color || ''}
                               onChange={(e) => handleUpdateBookingItemField(item.id, 'color', e.target.value)}
-                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 text-sm focus-visible:outline-none focus:border-brand-sky focus:ring-1 focus:ring-[#38BDF8]/20 placeholder:text-slate-400"
+                              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-800 text-sm focus-visible:outline-none focus:border-brand-sky focus:ring-1 focus:ring-black/10 placeholder:text-slate-400"
                               placeholder="e.g. Navy"
                             />
                           </div>
@@ -2213,7 +2159,7 @@ export default function OrdersSection({
               /* OWNER EDITING PORTAL */
               <form onSubmit={handleEditOrder} className="space-y-3 animate-fade-in">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                  <h3 className="font-extrabold text-base text-slate-900 font-display uppercase tracking-wider">Modifying Booked Order: {selectedOrder.order_number}</h3>
+                  <h3 className="font-extrabold text-base text-slate-900 font-display uppercase tracking-wider">Edit order: {selectedOrder.order_number}</h3>
                   <button
                     type="button"
                     onClick={() => setIsEditing(false)}
@@ -2438,7 +2384,7 @@ export default function OrdersSection({
 
                 {/* Edit Snapshot measurements */}
                 <div className="pt-2">
-                  <span className="font-semibold text-xs text-slate-700 uppercase tracking-wider block mb-2">Modify Measurement Snapshot for this Order</span>
+                  <span className="font-semibold text-xs text-slate-700 uppercase tracking-wider block mb-2">Edit measurements for this order</span>
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
                     {measurementFields.map((field) => (
                       <div key={field} className="space-y-1">
@@ -2627,7 +2573,7 @@ export default function OrdersSection({
                           <div className="space-y-0.5">
                             <span className="font-semibold text-xs text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
                               <CheckCircle className="icon-xs text-emerald-500" />
-                              Delivered and Locked
+                              Delivered
                             </span>
                             <p className="text-xs text-slate-500 font-semibold">
                               Delivered on: <span className="text-slate-700 font-semibold">{selectedOrder.delivered_at ? new Date(selectedOrder.delivered_at).toLocaleString() : 'N/A'}</span>
@@ -2643,7 +2589,7 @@ export default function OrdersSection({
                           <div className="space-y-0.5">
                             <span className="font-semibold text-xs text-purple-700 uppercase tracking-wider flex items-center gap-1.5">
                               <ShieldAlert className="icon-xs text-purple-500" />
-                              Archived in Vault
+                              Finished (archived)
                             </span>
                             <p className="text-xs text-slate-500 font-semibold">
                               This order is frozen. Movements and edits are locked.
@@ -2672,7 +2618,7 @@ export default function OrdersSection({
                       <>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Pipeline</span>
+                            <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Progress</span>
                             <span className="text-3xs font-semibold text-slate-400 uppercase tracking-wider">— {activeQueueStages.map((s, i) => {
                               const isCurrent = selectedOrder.status === s.id;
                               return (
@@ -2769,7 +2715,7 @@ export default function OrdersSection({
                                 onClick={() => setShowMeasurements(!showMeasurements)}
                                 className="w-full flex items-center justify-between cursor-pointer text-3xs font-semibold text-slate-400 uppercase tracking-wider"
                               >
-                                <span>Measurements Snapshot</span>
+                                <span>Measurements</span>
                                 <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showMeasurements ? 'rotate-180' : ''}`} />
                               </button>
                               {showMeasurements && (
@@ -2790,30 +2736,30 @@ export default function OrdersSection({
                   </div>
 
                   {/* Pricing grid styled with Hello Darzi colors (#0F172A slate card) */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-brand-sidebar text-white p-4 rounded-xl border border-slate-800">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-brand-sidebar text-white p-4 rounded-xl border border-neutral-800">
                     <div>
-                      <span className="text-xs text-slate-400 font-semibold block uppercase tracking-wider">Total</span>
+                      <span className="text-xs text-neutral-400 font-semibold block uppercase tracking-wider">Total</span>
                       <span className="text-xl font-black block mt-0.5">{currency}{selectedOrder.total_amount}</span>
                       {selectedOrder.discount_type && Number(selectedOrder.discount_amount) > 0 && (
-                        <div className="mt-1 text-[10px] text-red-400 font-semibold leading-tight">
+                        <div className="mt-1 text-[10px] text-neutral-300 font-semibold leading-tight">
                           <span>Discount: -{currency}{Number(selectedOrder.discount_amount).toLocaleString()}</span>
-                          <span className="block text-sky-300">Final: {currency}{Number(selectedOrder.final_total ?? selectedOrder.total_amount).toLocaleString()}</span>
+                          <span className="block text-neutral-200">Final: {currency}{Number(selectedOrder.final_total ?? selectedOrder.total_amount).toLocaleString()}</span>
                         </div>
                       )}
                     </div>
                     <div>
-                      <span className="text-xs text-slate-400 font-semibold block uppercase tracking-wider">Paid Amount</span>
-                      <span className="text-xl font-black text-emerald-400 block mt-0.5">{currency}{selectedOrder.paid_amount}</span>
+                      <span className="text-xs text-neutral-400 font-semibold block uppercase tracking-wider">Paid Amount</span>
+                      <span className="text-xl font-black text-white block mt-0.5">{currency}{selectedOrder.paid_amount}</span>
                     </div>
                     <div>
-                      <span className="text-xs text-slate-400 font-semibold block uppercase tracking-wider">Remaining</span>
-                      <span className={`text-xl font-black block mt-0.5 ${(selectedOrder.final_total ?? selectedOrder.total_amount) - selectedOrder.paid_amount > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                      <span className="text-xs text-neutral-400 font-semibold block uppercase tracking-wider">Remaining</span>
+                      <span className="text-xl font-black text-white block mt-0.5">
                         {currency}{(selectedOrder.final_total ?? selectedOrder.total_amount) - selectedOrder.paid_amount}
                       </span>
                     </div>
                     <div>
-                      <span className="text-xs text-slate-400 font-semibold block uppercase tracking-wider">Delivery Date</span>
-                      <span className="text-sm font-black block mt-1.5 text-slate-200">{new Date(selectedOrder.due_date).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span>
+                      <span className="text-xs text-neutral-400 font-semibold block uppercase tracking-wider">Delivery Date</span>
+                      <span className="text-sm font-black block mt-1.5 text-neutral-200">{new Date(selectedOrder.due_date).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span>
                     </div>
                   </div>
                 </div>
@@ -2826,7 +2772,7 @@ export default function OrdersSection({
                       onClick={() => setShowMeasurements(!showMeasurements)}
                       className="w-full flex items-center justify-between cursor-pointer font-semibold text-xs text-slate-700 uppercase tracking-wider"
                     >
-                      <span>Locked Measurements Snapshot (Frozen)</span>
+                      <span>Saved measurements</span>
                       <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showMeasurements ? 'rotate-180' : ''}`} />
                     </button>
                     {showMeasurements && (
@@ -3005,10 +2951,12 @@ export default function OrdersSection({
           <div className={`${printOptions.measure ? '' : 'hidden'}`}>
             {(() => {
               const slips: React.ReactNode[] = [];
-              const itemsWithData = selectedOrder.items.filter(item =>
-                (item.measurement_snapshot && Object.keys(item.measurement_snapshot).length > 0) ||
-                (item.styling_snapshot && Object.keys(item.styling_snapshot).length > 0)
-              );
+              const itemsWithData = (selectedOrder.items || [])
+                .map((item, originalIdx) => ({ item, originalIdx }))
+                .filter(({ item }) =>
+                  (item.measurement_snapshot && Object.keys(item.measurement_snapshot).length > 0) ||
+                  (item.styling_snapshot && Object.keys(item.styling_snapshot).length > 0)
+                );
               if (itemsWithData.length === 0) return null;
 
               for (let page = 0; page < Math.ceil(itemsWithData.length / 2); page++) {
@@ -3016,17 +2964,36 @@ export default function OrdersSection({
                 slips.push(
                   <div key={`meas-page-${page}`} className="meas-page">
                     <div className="meas-page-inner">
-                      {pageItems.map((item, idx) => (
-                        <div key={idx} className="meas-slip">
+                      {pageItems.map(({ item, originalIdx }) => (
+                        <div key={originalIdx} className="meas-slip">
                           {/* Header */}
                           <div className="meas-slip-header">
-                            {shopLogo && (
-                              <img src={shopLogo} alt="Logo" className="meas-logo" />
-                            )}
-                            <div>
-                              <h2 className="meas-shop-name">{shopName}</h2>
-                              <div className="meas-contact">{shopPhone} | {shopAddress}</div>
+                            <div className="meas-slip-header-main">
+                              {shopLogo && (
+                                <img src={shopLogo} alt="Logo" className="meas-logo" />
+                              )}
+                              <div>
+                                <h2 className="meas-shop-name">{shopName}</h2>
+                                <div className="meas-contact">{shopPhone} | {shopAddress}</div>
+                              </div>
                             </div>
+                            {qrCodeByKey[`item-${originalIdx}`] && (
+                              <div className="meas-slip-qr">
+                                <img
+                                  src={qrCodeByKey[`item-${originalIdx}`]}
+                                  alt=""
+                                  className="meas-qr-img"
+                                  referrerPolicy="no-referrer"
+                                />
+                                <span className="meas-qr-caption">Scan to open</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Order */}
+                          <div className="meas-field-row">
+                            <span className="meas-label">Order:</span>
+                            <span className="meas-value">{selectedOrder.order_number}</span>
                           </div>
 
                           {/* Customer */}
@@ -3038,7 +3005,9 @@ export default function OrdersSection({
                           {/* Garment */}
                           <div className="meas-field-row">
                             <span className="meas-label">Garment:</span>
-                            <span className="meas-value">{item.type}{item.color ? ` (${item.color})` : ''}</span>
+                            <span className="meas-value">
+                              {item.type}{item.color ? ` (${item.color})` : ''} · Piece #{originalIdx + 1}
+                            </span>
                           </div>
 
                           {/* Measurements */}
@@ -3192,7 +3161,7 @@ export default function OrdersSection({
                 onClick={() => restoreOrder(selectedOrder, restoreStageId)}
                 className="px-4 py-2 bg-brand-sidebar hover:bg-brand-active text-white font-semibold text-xs uppercase tracking-wider rounded-lg cursor-pointer"
               >
-                Restore to Active Queue
+                Restore to open orders
               </button>
             </div>
           </div>
@@ -3231,7 +3200,7 @@ export default function OrdersSection({
                 }`}
               >
                 <Camera className="icon-xs" />
-                Live Camera
+                Camera
               </button>
               <button
                 type="button"
@@ -3243,7 +3212,7 @@ export default function OrdersSection({
                 }`}
               >
                 <Smartphone className="icon-xs" />
-                Simulate Scan
+                Test mode
               </button>
             </div>
 
@@ -3263,7 +3232,7 @@ export default function OrdersSection({
                         onClick={() => setScannerActiveTab('simulator')}
                         className="px-4 py-2 bg-slate-950 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold uppercase tracking-wider cursor-pointer transition-[background-color] border-none"
                       >
-                        Switch to Simulator Tab
+                        Switch to Test mode
                       </button>
                     </div>
                   ) : (
@@ -3276,19 +3245,15 @@ export default function OrdersSection({
                         playsInline
                         muted
                       />
-                      {/* Decorative scanning radar lines */}
-                      <div className="absolute inset-0 border-2 border-brand-sky/40 rounded-3xl pointer-events-none">
-                        <div className="absolute inset-x-0 h-0.5 bg-brand-sky" style={{
-                          animation: 'scan-line 3s ease-in-out infinite',
-                        }} />
-                      </div>
+                      {/* Scan frame guide */}
+                      <div className="absolute inset-0 border-2 border-white/40 rounded-3xl pointer-events-none" />
                       <span className="absolute bottom-3 bg-black/75 px-3 py-1 rounded-full text-xs font-semibold text-slate-300 tracking-wider uppercase border border-slate-700">
                         Align QR within frame
                       </span>
                     </div>
                   )}
                   <p className="text-center text-3xs text-slate-400 font-semibold uppercase tracking-widest leading-normal">
-                    Place a workshop printed QR code in front of your camera.
+                    Place a printed QR code in front of the camera.
                   </p>
                 </div>
               )}
@@ -3299,7 +3264,7 @@ export default function OrdersSection({
                   <div className="p-3 bg-sky-50 rounded-xl border border-sky-100 flex items-start gap-2.5">
                     <Info className="icon-xs text-brand-sky shrink-0 mt-0.5" />
                     <p className="text-3xs text-sky-800 font-medium leading-relaxed">
-                      This simulator bypasses physical hardware limits inside sandboxed environments. Click any garment piece below to instantly simulate a barcode scan.
+                      No camera needed. Tap a garment below to open that order — same as scanning its QR code.
                     </p>
                   </div>
                   
@@ -3374,8 +3339,8 @@ export default function OrdersSection({
             {/* Header / Indicator */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping" />
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Live Garment Action Screen</span>
+                <div className="w-2.5 h-2.5 bg-neutral-800 rounded-full" />
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Order actions</span>
               </div>
               <button
                 type="button"
@@ -3399,11 +3364,11 @@ export default function OrdersSection({
               <div className="space-y-4 flex-1 py-1">
                 {/* Visual Garment Avatar Row */}
                 <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200/50">
-                  <div className="w-10 h-10 bg-brand-sidebar rounded-xl flex items-center justify-center text-brand-sky shadow-inner">
+                  <div className="w-10 h-10 bg-brand-sidebar rounded-xl flex items-center justify-center text-white shadow-inner">
                     <Scissors className="w-5 h-5" />
                   </div>
                   <div className="min-w-0">
-                    <span className="text-xs font-black uppercase text-brand-sky tracking-widest bg-slate-900/5 px-2 py-0.5 rounded-full inline-block">
+                    <span className="text-xs font-black uppercase text-slate-700 tracking-widest bg-slate-900/5 px-2 py-0.5 rounded-full inline-block">
                       Piece #{scannedGarmentItem.itemIdx + 1}
                     </span>
                     <h4 className="font-black text-slate-900 text-sm uppercase break-words mt-1">
@@ -3455,7 +3420,7 @@ export default function OrdersSection({
                           <span>Updating...</span>
                         ) : (
                           <>
-                            <CheckCircle className="icon-xs text-emerald-100" />
+                            <CheckCircle className="icon-xs text-white" />
                             <span>Move to {nextStage.name}</span>
                           </>
                         )}

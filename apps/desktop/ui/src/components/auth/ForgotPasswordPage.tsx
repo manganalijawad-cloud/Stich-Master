@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { ArrowLeft, Mail, Loader2, CheckCircle2 } from 'lucide-react';
 import { sendPasswordResetEmail } from '../../lib/auth';
 import { validateEmail } from '../../lib/validation';
@@ -36,11 +36,11 @@ export default function ForgotPasswordPage({ onNavigateLogin }: ForgotPasswordPa
 
   if (sent) {
     return (
-      <div className="min-h-screen bg-[#0F172A] flex flex-col">
+      <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
         <div className="flex-1 flex items-center justify-center px-4 py-12">
           <div className="w-full max-w-sm text-center animate-fade-in">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/10 mb-6">
-              <CheckCircle2 className="icon-xl text-emerald-400" />
+              <CheckCircle2 className="icon-xl text-white" />
             </div>
             <h1 className="text-2xl font-bold text-white font-display tracking-tight mb-2">
               Check your email
@@ -52,7 +52,7 @@ export default function ForgotPasswordPage({ onNavigateLogin }: ForgotPasswordPa
             <button
               type="button"
               onClick={onNavigateLogin}
-              className="text-brand-sky hover:text-sky-300 font-medium text-sm transition-colors cursor-pointer bg-transparent border-none"
+              className="text-white hover:text-neutral-300 font-medium text-sm transition-colors cursor-pointer bg-transparent border-none"
             >
               Back to sign in
             </button>
@@ -63,7 +63,7 @@ export default function ForgotPasswordPage({ onNavigateLogin }: ForgotPasswordPa
   }
 
   return (
-    <div className="min-h-screen bg-[#0F172A] flex flex-col">
+    <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
       <div className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm animate-fade-in">
           <div className="text-center mb-8">
@@ -79,7 +79,7 @@ export default function ForgotPasswordPage({ onNavigateLogin }: ForgotPasswordPa
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
               <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3">
-                <p className="text-sm font-medium text-red-400">{error}</p>
+                <p className="text-sm font-medium text-white">{error}</p>
               </div>
             )}
 
@@ -93,7 +93,7 @@ export default function ForgotPasswordPage({ onNavigateLogin }: ForgotPasswordPa
                   placeholder="Email address"
                   autoComplete="email"
                   autoFocus
-                  className="w-full h-11 pl-10 pr-4 bg-slate-800/50 border border-slate-700/50 rounded-xl text-sm text-white placeholder-slate-500 outline-none focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20 transition-all duration-200"
+                  className="w-full h-11 pl-10 pr-4 bg-slate-800/50 border border-slate-700/50 rounded-xl text-sm text-white placeholder-slate-500 outline-none focus:border-white focus:ring-2 focus:ring-white/20 transition-colors duration-150"
                   disabled={isLoading}
                 />
               </div>
@@ -102,7 +102,7 @@ export default function ForgotPasswordPage({ onNavigateLogin }: ForgotPasswordPa
             <button
               type="submit"
               disabled={isLoading || !email}
-              className="w-full h-11 bg-brand-sky hover:bg-sky-400 disabled:bg-sky-800/50 text-[#0F172A] font-semibold text-sm rounded-xl transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+              className="w-full h-11 bg-white hover:bg-neutral-200 disabled:bg-neutral-700/50 text-[#0a0a0a] font-semibold text-sm rounded-xl transition-colors duration-150 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <Loader2 className="icon-sm animate-spin" />

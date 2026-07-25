@@ -58,29 +58,29 @@ export default function SyncIndicator({ token, collapsed }: { token?: string | n
 
   switch (state.status) {
     case 'synced':
-      icon = <Cloud className={`${iconClass} text-emerald-400`} />;
-      label = 'Synced';
-      colorClass = 'text-emerald-400';
+      icon = <Cloud className={`${iconClass} text-neutral-300`} />;
+      label = 'Up to date';
+      colorClass = 'text-neutral-300';
       break;
     case 'syncing':
-      icon = <RefreshCw className={`${iconClass} text-brand-sky animate-spin`} />;
-      label = 'Syncing…';
-      colorClass = 'text-brand-sky';
+      icon = <RefreshCw className={`${iconClass} text-white animate-spin`} />;
+      label = 'Saving…';
+      colorClass = 'text-white';
       break;
     case 'error':
-      icon = <AlertTriangle className={`${iconClass} text-amber-400`} />;
-      label = state.error ? `Error: ${state.error}` : 'Sync error';
-      colorClass = 'text-amber-400';
+      icon = <AlertTriangle className={`${iconClass} text-white`} />;
+      label = state.error ? `Problem: ${state.error}` : 'Save problem';
+      colorClass = 'text-neutral-200';
       break;
     case 'offline':
-      icon = <CloudOff className={`${iconClass} text-slate-500`} />;
+      icon = <CloudOff className={`${iconClass} text-neutral-500`} />;
       label = 'Offline';
-      colorClass = 'text-slate-500';
+      colorClass = 'text-neutral-500';
       break;
     default:
-      icon = <CloudOff className={`${iconClass} text-slate-500`} />;
-      label = 'Disconnected';
-      colorClass = 'text-slate-500';
+      icon = <CloudOff className={`${iconClass} text-neutral-500`} />;
+      label = 'Not connected';
+      colorClass = 'text-neutral-500';
   }
 
   if (state.pendingChanges > 0 && state.status !== 'syncing') {

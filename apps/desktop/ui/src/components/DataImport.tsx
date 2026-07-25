@@ -339,7 +339,7 @@ export default function DataImport({ token, garmentTypes, onComplete }: DataImpo
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
         <Database className="icon-sm text-emerald-500" />
-        <h3 className="text-lg font-semibold text-slate-900 uppercase tracking-wider font-display">Data Import</h3>
+        <h3 className="text-lg font-semibold text-slate-900 uppercase tracking-wider font-display">Import customers</h3>
         <span className="ml-auto text-xs text-slate-400 font-semibold uppercase tracking-wider">
           Step {['upload', 'mapping', 'preview', 'importing', 'done'].indexOf(step) + 1} of 5
         </span>

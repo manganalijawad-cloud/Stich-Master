@@ -104,7 +104,7 @@ export default function VersionInfo({ collapsed = false, position }: { collapsed
         {update.downloaded && (
           <button
             onClick={handleInstallUpdate}
-            className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-md shadow-sm transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 py-1 bg-white hover:bg-neutral-200 text-black text-[10px] font-bold uppercase tracking-wider rounded-md shadow-sm transition-colors cursor-pointer"
           >
             <CheckCircle className="icon-xs" />
             Install Now
@@ -112,20 +112,20 @@ export default function VersionInfo({ collapsed = false, position }: { collapsed
         )}
 
         {update.error && (
-          <div className="flex items-center gap-1.5 px-2 py-1 bg-red-900/20 text-red-400 text-[10px] rounded-md" title={update.error}>
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-white/10 text-neutral-200 text-[10px] rounded-md" title={update.error}>
             <AlertTriangle className="icon-xs" />
             Update Error
           </div>
         )}
 
         {update.downloading && update.downloadProgress !== undefined && !update.downloaded && (
-          <div className="flex items-center gap-1.5 px-2 py-1 bg-brand-sky/20 text-brand-sky text-[10px] rounded-md">
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-white/10 text-white text-[10px] rounded-md">
             <RefreshCw className="icon-xs animate-spin" />
             {update.downloadProgress}%
           </div>
         )}
 
-        <span className="text-[10px] font-mono text-slate-400 select-none">
+        <span className="text-[10px] font-mono text-neutral-400 select-none">
           {version}
         </span>
       </div>
@@ -136,14 +136,14 @@ export default function VersionInfo({ collapsed = false, position }: { collapsed
     <div className="w-full">
       <div className={`flex items-center gap-1.5 ${collapsed ? 'justify-center' : 'w-full'} relative group`}>
         {checking ? (
-          <RefreshCw className="icon-xs text-slate-400 animate-spin shrink-0" />
+          <RefreshCw className="icon-xs text-neutral-400 animate-spin shrink-0" />
         ) : update.available && !update.downloaded ? (
           <div className={`flex items-center gap-1.5 ${collapsed ? '' : 'w-full'}`}>
-            <AlertTriangle className="icon-xs text-amber-400 shrink-0" />
+            <AlertTriangle className="icon-xs text-white shrink-0" />
             {!collapsed && (
               <button
                 onClick={handleCheckForUpdates}
-                className="text-[10px] text-amber-400 font-semibold uppercase tracking-wider truncate hover:text-amber-300 cursor-pointer"
+                className="text-[10px] text-neutral-200 font-semibold uppercase tracking-wider truncate hover:text-white cursor-pointer"
               >
                 Update Available
               </button>
@@ -152,19 +152,19 @@ export default function VersionInfo({ collapsed = false, position }: { collapsed
         ) : update.downloaded ? (
           <button
             onClick={handleInstallUpdate}
-            className={`flex items-center gap-1.5 ${collapsed ? '' : 'w-full'} text-emerald-400 hover:text-emerald-300 cursor-pointer`}
+            className={`flex items-center gap-1.5 ${collapsed ? '' : 'w-full'} text-white hover:text-neutral-200 cursor-pointer`}
           >
             <CheckCircle className="icon-xs shrink-0" />
             {!collapsed && <span className="text-[10px] font-semibold uppercase tracking-wider truncate">Install Now</span>}
           </button>
         ) : (
           <div className="flex items-center gap-1.5">
-            <span className={`text-[10px] font-mono text-slate-500 ${collapsed ? 'hidden' : ''}`}>
+            <span className={`text-[10px] font-mono text-neutral-400 ${collapsed ? 'hidden' : ''}`}>
               {version}
             </span>
             <button
               onClick={handleCheckForUpdates}
-              className="text-[9px] text-slate-600 hover:text-slate-400 cursor-pointer uppercase tracking-wider"
+              className="text-[9px] text-neutral-500 hover:text-neutral-300 cursor-pointer uppercase tracking-wider"
               title="Check for updates"
             >
               <RefreshCw className="icon-xs" />

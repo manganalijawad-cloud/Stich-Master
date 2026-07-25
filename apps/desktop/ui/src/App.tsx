@@ -8,20 +8,19 @@ import FinancialReports from './components/FinancialReports';
 import SyncIndicator from './components/SyncIndicator';
 import TitleBar from './components/TitleBar';
 import VersionInfo from './components/VersionInfo';
-import { Customer, UserProfile, UserRole, PipelineStage } from './types';
+import { Customer, UserProfile, PipelineStage } from './types';
 import { supabase, ensureSupabase } from './lib/supabase';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginPage from './components/auth/LoginPage';
-import SignUpPage from './components/auth/SignUpPage';
 import ForgotPasswordPage from './components/auth/ForgotPasswordPage';
 import ResetPasswordPage from './components/auth/ResetPasswordPage';
-import GoogleAuthCallback from './components/auth/GoogleAuthCallback';
 import OfflineBanner from './components/auth/OfflineBanner';
 
 import type { ExtendedUserProfile } from './lib/auth';
+import { parseOrderQrPayload } from './lib/orderQr';
 
-type AuthPage = 'login' | 'signup' | 'forgot-password' | 'reset-password' | 'google-callback';
+type AuthPage = 'login' | 'forgot-password' | 'reset-password';
 
 const originalFetch = window.fetch;
 const customFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -55,20 +54,13 @@ try {
 
 function AuthPage({ page, onNavigate }: { page: AuthPage; onNavigate: (p: AuthPage) => void }) {
   switch (page) {
-    /* MVP: SignUp page hidden — re-enable by uncommenting:
-    case 'signup':
-      return <SignUpPage onNavigateLogin={() => onNavigate('login')} />;
-    */
     case 'forgot-password':
       return <ForgotPasswordPage onNavigateLogin={() => onNavigate('login')} />;
     case 'reset-password':
       return <ResetPasswordPage />;
-    case 'google-callback':
-      return <GoogleAuthCallback />;
     default:
       return (
         <LoginPage
-          onNavigateSignUp={() => onNavigate('signup')}
           onNavigateForgotPassword={() => onNavigate('forgot-password')}
         />
       );
@@ -83,12 +75,9 @@ function AuthWrapper() {
 
   useEffect(() => {
     const hash = window.location.hash;
-    if (hash && (hash.includes('access_token') || hash.includes('type=recovery'))) {
-      if (hash.includes('type=recovery')) {
-        setAuthPage('reset-password');
-      } else if (hash.includes('access_token')) {
-        setAuthPage('google-callback');
-      }
+    // Password recovery only — no OAuth/signup callbacks (PROJECT.md §3)
+    if (hash && hash.includes('type=recovery')) {
+      setAuthPage('reset-password');
     }
   }, []);
 
@@ -218,17 +207,42 @@ function AuthWrapper() {
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    const orderIdParam = urlParams.get('orderId');
+    let orderId = urlParams.get('orderId') || undefined;
+    let itemIdx: number | undefined;
     const itemIdxParam = urlParams.get('itemIdx');
-    if (orderIdParam) {
-      setActiveOrderId(orderIdParam);
-      if (itemIdxParam !== null) {
-        setActiveItemIdx(parseInt(itemIdxParam, 10));
+    if (itemIdxParam !== null) {
+      const n = parseInt(itemIdxParam, 10);
+      if (!Number.isNaN(n)) itemIdx = n;
+    }
+
+    if (!orderId) {
+      const parsed = parseOrderQrPayload(window.location.href);
+      if (parsed?.orderId) {
+        orderId = parsed.orderId;
+        if (parsed.itemIdx !== undefined) itemIdx = parsed.itemIdx;
+      }
+    }
+
+    if (orderId) {
+      setActiveOrderId(orderId);
+      if (itemIdx !== undefined) {
+        setActiveItemIdx(itemIdx);
       }
       setActiveTab('Orders');
-      const newUrl = window.location.pathname;
-      window.history.replaceState({}, document.title, newUrl);
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
+  }, []);
+
+  useEffect(() => {
+    const api = (window as any).electronAPI;
+    if (!api?.onDeepLink) return;
+    return api.onDeepLink((url: string) => {
+      const parsed = parseOrderQrPayload(url);
+      if (!parsed?.orderId) return;
+      setActiveOrderId(parsed.orderId);
+      if (parsed.itemIdx !== undefined) setActiveItemIdx(parsed.itemIdx);
+      setActiveTab('Orders');
+    });
   }, []);
 
   const fetchShopMetadata = async () => {
@@ -286,8 +300,8 @@ function AuthWrapper() {
     return (
       <div className="h-screen flex flex-col">
         {isElectron && <TitleBar />}
-        <div className="flex-1 bg-[#0F172A] flex flex-col items-center justify-center text-white">
-          <p className="text-lg font-semibold animate-pulse text-brand-sky">Initializing Workspace...</p>
+        <div className="flex-1 bg-[#0a0a0a] flex flex-col items-center justify-center text-white">
+          <p className="text-lg font-semibold text-white">Starting up...</p>
         </div>
       </div>
     );
@@ -307,12 +321,12 @@ function AuthWrapper() {
 
   if (subscriptionStatus === 'inactive' || subscriptionStatus === 'expired') {
     return (
-      <div className="h-screen flex flex-col bg-[#0F172A]">
+      <div className="h-screen flex flex-col bg-[#0a0a0a]">
         {isElectron && <TitleBar />}
         <div className="flex-1 flex items-center justify-center px-4">
           <div className="w-full max-w-md text-center animate-fade-in">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-500/10 mb-6">
-              <svg className="w-8 h-8 text-amber-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
@@ -337,7 +351,7 @@ function AuthWrapper() {
                     window.open(url, '_blank');
                   }
                 }}
-                className="inline-flex items-center justify-center px-6 py-3 bg-brand-sky text-[#0F172A] font-semibold text-sm rounded-xl hover:bg-sky-400 transition-all duration-200 cursor-pointer"
+                className="inline-flex items-center justify-center px-6 py-3 bg-white text-[#0a0a0a] font-semibold text-sm rounded-xl hover:bg-neutral-200 transition-colors duration-150 cursor-pointer"
               >
                 Manage Subscription
               </button>
@@ -354,13 +368,12 @@ function AuthWrapper() {
     );
   }
 
-  const activeRole = (user?.role ?? 'Owner') as UserRole;
   const displayName = user?.shop_name || user?.name || 'My Shop';
 
   const navItems = [
     {
       id: 'Customers' as const,
-      label: 'Customer Registry',
+      label: 'Customers',
       icon: Users,
     },
     {
@@ -371,12 +384,12 @@ function AuthWrapper() {
     ...(activeMode === 'Owner' ? [
       {
         id: 'Financials' as const,
-        label: 'Financial Reports',
+        label: 'Finances',
         icon: DollarSign,
       },
       {
         id: 'Owner' as const,
-        label: 'Admin Panel',
+        label: 'Settings',
         icon: Settings,
       },
     ] : []),
@@ -387,7 +400,7 @@ function AuthWrapper() {
     : activeTab === 'Orders'
     ? 'POS Order Queue'
     : activeTab === 'Financials'
-    ? 'Financial Analytics'
+    ? 'Finances'
     : 'Admin Panel';
 
   return (
@@ -413,9 +426,9 @@ function AuthWrapper() {
             )}
             {!isSidebarCollapsed && (
               <div className="overflow-hidden animate-fade-in min-w-0">
-                <span className="text-lg block text-brand-sky font-display uppercase font-bold whitespace-normal">{displayName}</span>
+                <span className="text-lg block text-white font-display uppercase font-bold whitespace-normal">{displayName}</span>
                 <span className="text-3xs font-semibold text-slate-500 block uppercase tracking-wider mt-0.5">
-                  Staff Workspace
+                  Your shop
                 </span>
               </div>
             )}
@@ -435,16 +448,16 @@ function AuthWrapper() {
                     setActiveCustomerIdForNewOrder(undefined);
                   }
                 }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-[background-color,color] duration-200 cursor-pointer text-left relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-sky/60 ${
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-[background-color,color] duration-150 cursor-pointer text-left relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${
                   isActive
                     ? 'bg-brand-active text-slate-100'
                     : 'text-slate-400 hover:text-white hover:bg-slate-800/40'
                 }`}
               >
                 {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-brand-sky rounded-full" aria-hidden="true" />
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-white rounded-full" aria-hidden="true" />
                 )}
-                <Icon className={`icon-md shrink-0 ${isActive ? 'text-brand-sky' : 'text-slate-400 group-hover:text-slate-300'}`} />
+                <Icon className={`icon-md shrink-0 ${isActive ? 'text-white' : 'text-neutral-500 group-hover:text-neutral-300'}`} />
                 {!isSidebarCollapsed && (
                   <span className="truncate">{item.label}</span>
                 )}
@@ -462,26 +475,26 @@ function AuthWrapper() {
           {activeMode === 'Manager' ? (
             <button
               onClick={switchToOwner}
-              className={`w-full ${isSidebarCollapsed ? 'flex justify-center p-2' : 'flex items-center gap-2.5 px-3 py-2'} rounded-lg text-sm font-semibold uppercase tracking-wider bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 border border-amber-800/20 cursor-pointer transition-colors relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60`}
+              className={`w-full ${isSidebarCollapsed ? 'flex justify-center p-2' : 'flex items-center gap-2.5 px-3 py-2'} rounded-lg text-sm font-semibold uppercase tracking-wider bg-white/5 hover:bg-white/10 text-neutral-200 border border-white/15 cursor-pointer transition-colors relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40`}
             >
-              <Lock className="icon-sm shrink-0" />
-              {!isSidebarCollapsed && <span className="truncate">Switch to Owner</span>}
+              <Lock className="icon-sm shrink-0 text-white" />
+              {!isSidebarCollapsed && <span className="truncate">Unlock settings</span>}
               {isSidebarCollapsed && (
                 <div className="absolute left-full ml-2 hidden group-hover:block z-50 pointer-events-none">
-                  <div className="tooltip !bg-amber-900 !border-amber-800/50 !text-amber-200">Switch to Owner</div>
+                  <div className="tooltip !bg-neutral-900 !border-neutral-700 !text-white">Unlock settings</div>
                 </div>
               )}
             </button>
           ) : (
             <button
               onClick={switchToManager}
-              className={`w-full ${isSidebarCollapsed ? 'flex justify-center p-2' : 'flex items-center gap-2.5 px-3 py-2'} rounded-lg text-sm font-semibold uppercase tracking-wider bg-emerald-900/20 hover:bg-emerald-900/40 text-emerald-400 border border-emerald-800/20 cursor-pointer transition-colors relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60`}
+              className={`w-full ${isSidebarCollapsed ? 'flex justify-center p-2' : 'flex items-center gap-2.5 px-3 py-2'} rounded-lg text-sm font-semibold uppercase tracking-wider bg-white/5 hover:bg-white/10 text-neutral-200 border border-white/15 cursor-pointer transition-colors relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40`}
             >
-              <Unlock className="icon-sm shrink-0" />
-              {!isSidebarCollapsed && <span className="truncate">Switch to Manager</span>}
+              <Unlock className="icon-sm shrink-0 text-white" />
+              {!isSidebarCollapsed && <span className="truncate">Back to daily work</span>}
               {isSidebarCollapsed && (
                 <div className="absolute left-full ml-2 hidden group-hover:block z-50 pointer-events-none">
-                  <div className="tooltip !bg-emerald-900 !border-emerald-800/50 !text-emerald-200">Switch to Manager</div>
+                  <div className="tooltip !bg-neutral-900 !border-neutral-700 !text-white">Back to daily work</div>
                 </div>
               )}
             </button>
@@ -493,13 +506,13 @@ function AuthWrapper() {
 
           <button
             onClick={handleLogout}
-            className={`w-full ${isSidebarCollapsed ? 'flex justify-center p-2' : 'flex items-center gap-2.5 px-3 py-2'} rounded-lg text-sm font-semibold uppercase tracking-wider bg-red-950/20 hover:bg-red-950/40 text-red-400 border border-red-900/20 cursor-pointer transition-colors relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60`}
+            className={`w-full ${isSidebarCollapsed ? 'flex justify-center p-2' : 'flex items-center gap-2.5 px-3 py-2'} rounded-lg text-sm font-semibold uppercase tracking-wider bg-white/5 hover:bg-white/10 text-neutral-200 border border-white/15 cursor-pointer transition-colors relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40`}
           >
-            <LogOut className="icon-sm shrink-0" />
+            <LogOut className="icon-sm shrink-0 text-white" />
             {!isSidebarCollapsed && <span className="truncate">Sign Out</span>}
             {isSidebarCollapsed && (
               <div className="absolute left-full ml-2 hidden group-hover:block z-50 pointer-events-none">
-                <div className="tooltip !bg-red-950 !border-red-900/40 !text-red-200">Sign Out</div>
+                <div className="tooltip !bg-neutral-900 !border-neutral-700 !text-white">Sign Out</div>
               </div>
             )}
           </button>
@@ -514,11 +527,11 @@ function AuthWrapper() {
           ) : (
             <img src="/favicon.svg" alt="Logo" className="w-6 h-6 object-contain shrink-0" />
           )}
-          <span className="font-bold text-base tracking-tight text-brand-sky uppercase truncate">{displayName}</span>
+          <span className="font-bold text-base tracking-tight text-white uppercase truncate">{displayName}</span>
         </div>
         <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-2 -mr-1 text-slate-400 hover:text-white cursor-pointer rounded-lg hover:bg-slate-800/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-sky/60"
+          className="p-2 -mr-1 text-slate-400 hover:text-white cursor-pointer rounded-lg hover:bg-slate-800/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
           aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
         >
           {isMobileMenuOpen ? <X className="icon-md" aria-hidden="true" /> : <Menu className="icon-md" aria-hidden="true" />}
@@ -541,13 +554,13 @@ function AuthWrapper() {
                       setActiveCustomerIdForNewOrder(undefined);
                     }
                   }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-colors cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-sky/60 ${
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-colors cursor-pointer text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${
                     isActive ? 'bg-brand-active text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800/40'
                   }`}
                 >
-                  {isActive && <span className="w-1 h-5 bg-brand-sky rounded-full shrink-0" aria-hidden="true" />}
+                  {isActive && <span className="w-1 h-5 bg-white rounded-full shrink-0" aria-hidden="true" />}
                   {!isActive && <span className="w-1 h-5 shrink-0" aria-hidden="true" />}
-                  <Icon className={`icon-md shrink-0 ${isActive ? 'text-brand-sky' : 'text-slate-400'}`} />
+                  <Icon className={`icon-md shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
                   <span>{item.label}</span>
                 </button>
               );
@@ -558,18 +571,18 @@ function AuthWrapper() {
             {activeMode === 'Manager' ? (
               <button
                 onClick={() => { setIsMobileMenuOpen(false); switchToOwner(); }}
-                className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wider bg-amber-900/20 hover:bg-amber-900/40 text-amber-400 border border-amber-800/20 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60"
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wider bg-white/5 hover:bg-white/10 text-neutral-200 border border-white/15 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
               >
-                <Lock className="icon-sm shrink-0" />
-                <span>Unlock Owner Mode</span>
+                <Lock className="icon-sm shrink-0 text-white" />
+                <span>Unlock settings</span>
               </button>
             ) : (
               <button
                 onClick={() => { setIsMobileMenuOpen(false); switchToManager(); }}
-                className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wider bg-emerald-900/20 hover:bg-emerald-900/40 text-emerald-400 border border-emerald-800/20 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
+                className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wider bg-white/5 hover:bg-white/10 text-neutral-200 border border-white/15 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
               >
-                <Unlock className="icon-sm shrink-0" />
-                <span>Switch to Manager</span>
+                <Unlock className="icon-sm shrink-0 text-white" />
+                <span>Back to daily work</span>
               </button>
             )}
             <button
@@ -577,9 +590,9 @@ function AuthWrapper() {
                 setIsMobileMenuOpen(false);
                 handleLogout();
               }}
-              className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wider bg-red-950/20 hover:bg-red-950/40 text-red-400 border border-red-900/20 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60"
+              className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wider bg-white/5 hover:bg-white/10 text-neutral-200 border border-white/15 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
             >
-              <LogOut className="icon-sm shrink-0" />
+              <LogOut className="icon-sm shrink-0 text-white" />
               <span>Sign Out</span>
             </button>
           </div>
@@ -592,7 +605,7 @@ function AuthWrapper() {
           <div className="flex items-center gap-4">
             <button
               onClick={toggleSidebar}
-              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-sky/60"
+              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
               title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
               aria-label={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
             >
@@ -609,7 +622,7 @@ function AuthWrapper() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60"
               >
                 <Lock className="icon-xs" aria-hidden="true" />
-                <span>Manager Mode</span>
+                <span>Daily work</span>
               </button>
             ) : (
               <button
@@ -617,7 +630,7 @@ function AuthWrapper() {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
               >
                 <Unlock className="icon-xs" aria-hidden="true" />
-                <span>Owner Mode</span>
+                <span>Settings unlocked</span>
               </button>
             )}
           </div>
@@ -628,8 +641,6 @@ function AuthWrapper() {
             {activeTab === 'Customers' && (
               <CustomersSection
                 token={token}
-                userRole={activeRole}
-                measurementFields={measurementFields}
                 currency={currency}
                 selectedCustomerId={activeCustomerIdForNewOrder}
                 onBookOrder={(cust: Customer) => {
@@ -646,7 +657,6 @@ function AuthWrapper() {
             {activeTab === 'Orders' && (
               <OrdersSection
                 token={token}
-                userRole={activeRole}
                 currency={currency}
                 measurementFields={measurementFields}
                 pipelineStages={pipelineStages}
@@ -693,11 +703,11 @@ function AuthWrapper() {
           <div role="presentation" className="modal-overlay" onClick={() => { setShowPasswordModal(false); setPasswordError(null); setOwnerPassword(''); }}>
             <div className="modal-content max-w-sm" onClick={(e) => e.stopPropagation()}>
               <div className="text-center mb-5">
-                <div className="inline-flex items-center justify-center p-3 bg-amber-100 rounded-xl mb-3">
-                  <Shield className="icon-lg text-amber-600" aria-hidden="true" />
+                <div className="inline-flex items-center justify-center p-3 bg-neutral-100 rounded-xl mb-3">
+                  <Shield className="icon-lg text-neutral-800" aria-hidden="true" />
                 </div>
-                <h3 className="text-lg font-semibold text-slate-900">Unlock Owner Mode</h3>
-                <p className="text-xs text-slate-500 mt-1">Enter your account password to access administrative features.</p>
+                <h3 className="text-lg font-semibold text-slate-900">Unlock settings</h3>
+                <p className="text-xs text-slate-500 mt-1">Enter your password to change shop settings and reports.</p>
               </div>
               {passwordError && (
                 <div className="alert-error mb-4">

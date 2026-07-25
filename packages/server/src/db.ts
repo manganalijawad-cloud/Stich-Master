@@ -547,45 +547,6 @@ export function getDashboardStats(createdBy: string, shopId?: string): {
   };
 }
 
-export function getFinancialReport(createdBy: string, fromDate?: string, toDate?: string, shopId?: string): {
-  revenue: number; collected: number; pending: number; orderCount: number;
-  chartData: { label: string; revenue: number; collected: number }[];
-} {
-  let params: any[] = [createdBy];
-  let dateFilter = "";
-  if (fromDate) { dateFilter += " AND o.created_at >= ?"; params.push(fromDate); }
-  if (toDate) { dateFilter += " AND o.created_at <= ?"; params.push(toDate); }
-  const shopFilter = shopId ? " AND o.shop_id = ?" : "";
-  if (shopId) params.push(shopId);
-
-  const totals = db.prepare(`
-    SELECT COALESCE(SUM(COALESCE(o.final_total, o.total_amount)), 0) as rev,
-           COALESCE(SUM(o.paid_amount), 0) as col,
-           COUNT(*) as cnt FROM orders o WHERE o.created_by = ?${dateFilter}${shopFilter}
-  `).get(...params) as { rev: number; col: number; cnt: number };
-
-  const pending = db.prepare(`
-    SELECT COALESCE(SUM(COALESCE(o.final_total, o.total_amount) - o.paid_amount), 0) as pend FROM orders o
-    WHERE o.created_by = ? AND o.status NOT IN ('Archived','Delivered')${dateFilter}${shopFilter}
-  `).get(...params) as { pend: number };
-
-  const chartRows = db.prepare(`
-    SELECT SUBSTR(o.created_at, 1, 7) as label,
-           COALESCE(SUM(COALESCE(o.final_total, o.total_amount)), 0) as revenue,
-           COALESCE(SUM(o.paid_amount), 0) as collected
-    FROM orders o WHERE o.created_by = ?${dateFilter}${shopFilter}
-    GROUP BY label ORDER BY label ASC
-  `).all(...params) as { label: string; revenue: number; collected: number }[];
-
-  return {
-    revenue: totals.rev,
-    collected: totals.col,
-    pending: pending.pend,
-    orderCount: totals.cnt,
-    chartData: chartRows,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // PROFILE HELPERS
 // ---------------------------------------------------------------------------
@@ -1024,7 +985,7 @@ export function logAction(
       userName: extra?.userName || details.user_name || '',
       userRole: extra?.userRole || details.user_role || '',
       module: extra?.module || details.module || '',
-      recordId: extra?.recordId || details.record_id || '',
+      recordId: extra?.recordId || details.record_id || details.order_id || details.id || '',
       previousValue: extra?.previousValue || details.previous_value || null,
       newValue: extra?.newValue || details.new_value || null,
       device: extra?.device || details.device || '',
@@ -1044,7 +1005,7 @@ export function logAction(
     extra?.userRole || details.user_role || '',
     action,
     extra?.module || details.module || '',
-    extra?.recordId || details.record_id || '',
+    extra?.recordId || details.record_id || details.order_id || details.id || '',
     extra?.previousValue ? JSON.stringify(extra.previousValue) : (details.previous_value ? JSON.stringify(details.previous_value) : null),
     extra?.newValue ? JSON.stringify(extra.newValue) : (details.new_value ? JSON.stringify(details.new_value) : null),
     extra?.device || details.device || '',
@@ -1057,6 +1018,7 @@ export function logAction(
 
 export function getAuditLogs(options: {
   userId?: string;
+  recordId?: string;
   search?: string;
   fromDate?: string;
   toDate?: string;
@@ -1066,13 +1028,18 @@ export function getAuditLogs(options: {
   page?: number;
   limit?: number;
 }): { data: any[]; total: number } {
-  const { userId, search, fromDate, toDate, actionFilter, moduleFilter, sort = 'newest', page = 1, limit = 50 } = options;
+  const { userId, recordId, search, fromDate, toDate, actionFilter, moduleFilter, sort = 'newest', page = 1, limit = 50 } = options;
   const conditions: string[] = [];
   const params: any[] = [];
 
   if (userId) {
     conditions.push("user_id = ?");
     params.push(userId);
+  }
+  if (recordId) {
+    // Match column or older rows that only stored order_id inside details JSON
+    conditions.push("(record_id = ? OR details LIKE ?)");
+    params.push(recordId, `%"order_id":"${recordId}"%`);
   }
   if (search) {
     conditions.push("(action LIKE ? OR user_email LIKE ? OR user_name LIKE ? OR module LIKE ? OR notes LIKE ? OR record_id LIKE ?)");

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { Lock, Eye, EyeOff, Loader2, CheckCircle2 } from 'lucide-react';
 import { updatePassword } from '../../lib/auth';
 import { validatePassword, validateConfirmPassword } from '../../lib/validation';
@@ -51,19 +51,19 @@ export default function ResetPasswordPage() {
 
   if (isVerifying) {
     return (
-      <div className="min-h-screen bg-[#0F172A] flex items-center justify-center">
-        <Loader2 className="icon-xl text-brand-sky animate-spin" />
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+        <Loader2 className="icon-xl text-white animate-spin" />
       </div>
     );
   }
 
   if (success) {
     return (
-      <div className="min-h-screen bg-[#0F172A] flex flex-col">
+      <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
         <div className="flex-1 flex items-center justify-center px-4 py-12">
           <div className="w-full max-w-sm text-center animate-fade-in">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/10 mb-6">
-              <CheckCircle2 className="icon-xl text-emerald-400" />
+              <CheckCircle2 className="icon-xl text-white" />
             </div>
             <h1 className="text-2xl font-bold text-white font-display tracking-tight mb-2">
               Password updated
@@ -74,7 +74,7 @@ export default function ResetPasswordPage() {
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="w-full h-11 bg-brand-sky hover:bg-sky-400 text-[#0F172A] font-semibold text-sm rounded-xl transition-all duration-200 cursor-pointer"
+              className="w-full h-11 bg-white hover:bg-neutral-200 text-[#0a0a0a] font-semibold text-sm rounded-xl transition-colors duration-150 cursor-pointer"
             >
               Sign in with new password
             </button>
@@ -85,7 +85,7 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0F172A] flex flex-col">
+    <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
       <div className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm animate-fade-in">
           <div className="text-center mb-8">
@@ -101,13 +101,13 @@ export default function ResetPasswordPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
               <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3">
-                <p className="text-sm font-medium text-red-400">{error}</p>
+                <p className="text-sm font-medium text-white">{error}</p>
               </div>
             )}
 
             {!isValidSession && (
               <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-3">
-                <p className="text-sm font-medium text-amber-400">
+                <p className="text-sm font-medium text-neutral-300">
                   This reset link is invalid or expired. Please request a new one.
                 </p>
               </div>
@@ -123,7 +123,7 @@ export default function ResetPasswordPage() {
                   placeholder="New password"
                   autoComplete="new-password"
                   autoFocus
-                  className="w-full h-11 pl-10 pr-11 bg-slate-800/50 border border-slate-700/50 rounded-xl text-sm text-white placeholder-slate-500 outline-none focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20 transition-all duration-200"
+                  className="w-full h-11 pl-10 pr-11 bg-slate-800/50 border border-slate-700/50 rounded-xl text-sm text-white placeholder-slate-500 outline-none focus:border-white focus:ring-2 focus:ring-white/20 transition-colors duration-150"
                   disabled={isLoading || !isValidSession}
                 />
                 <button
@@ -146,7 +146,7 @@ export default function ResetPasswordPage() {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirm new password"
                   autoComplete="new-password"
-                  className="w-full h-11 pl-10 pr-11 bg-slate-800/50 border border-slate-700/50 rounded-xl text-sm text-white placeholder-slate-500 outline-none focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20 transition-all duration-200"
+                  className="w-full h-11 pl-10 pr-11 bg-slate-800/50 border border-slate-700/50 rounded-xl text-sm text-white placeholder-slate-500 outline-none focus:border-white focus:ring-2 focus:ring-white/20 transition-colors duration-150"
                   disabled={isLoading || !isValidSession}
                 />
                 <button
@@ -163,7 +163,7 @@ export default function ResetPasswordPage() {
             <button
               type="submit"
               disabled={isLoading || !isValidSession || !password || !confirmPassword}
-              className="w-full h-11 bg-brand-sky hover:bg-sky-400 disabled:bg-sky-800/50 text-[#0F172A] font-semibold text-sm rounded-xl transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+              className="w-full h-11 bg-white hover:bg-neutral-200 disabled:bg-neutral-700/50 text-[#0a0a0a] font-semibold text-sm rounded-xl transition-colors duration-150 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <Loader2 className="icon-sm animate-spin" />

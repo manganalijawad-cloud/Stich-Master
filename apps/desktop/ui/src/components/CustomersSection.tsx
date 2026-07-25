@@ -21,14 +21,13 @@ import {
   Sparkles,
   Layers
 } from 'lucide-react';
-import { Customer, UserRole, Order, GarmentType, MeasurementProfile } from '../types';
+import { Customer, Order, GarmentType, MeasurementProfile } from '../types';
 import { printPage } from '../lib/print';
+import { createCustomerWithMeasurements } from '../lib/createCustomer';
 import { validateGarmentMeasurementsCompleted, validateMobileNumber } from '../lib/validation';
 
 interface CustomersSectionProps {
   token: string;
-  userRole: UserRole;
-  measurementFields: string[];
   currency: string;
   onBookOrder: (customer: Customer) => void;
   selectedCustomerId?: string;
@@ -40,8 +39,6 @@ interface CustomersSectionProps {
 
 export default function CustomersSection({
   token,
-  userRole,
-  measurementFields,
   currency,
   onBookOrder,
   selectedCustomerId,
@@ -329,97 +326,47 @@ export default function CustomersSection({
   // Handle Customer Creation with first Measurement Profile automatically created
   const handleCreateCustomer = async (e: React.SyntheticEvent) => {
     e.preventDefault();
-    if (!newName || newName.trim() === '') {
-      setCreateError('Customer Name is required.');
-      return;
-    }
-
-    const phoneRequired = isNameDuplicate;
-    if (phoneRequired && (!newPhone || newPhone.trim() === '')) {
-      setCreateError('A customer with this name already exists. A Phone Number is required to save a duplicate name.');
-      return;
-    }
-
-    const phoneError = validateMobileNumber(newPhone, phoneRequired);
-    if (phoneError) {
-      setCreateError(phoneError);
-      return;
-    }
-
     setCreateError(null);
     setCreateSuccess(false);
     setDuplicateAlert(null);
 
-    try {
-      const selectedGarment = garmentTypes.find(g => g.id === selectedGarmentTypeId);
-      const measError = validateGarmentMeasurementsCompleted(selectedGarment, initialMeasurements);
-      if (measError || !selectedGarment) {
-        throw new Error(measError || 'Please select a garment type and enter measurements.');
-      }
+    const selectedGarment = garmentTypes.find(g => g.id === selectedGarmentTypeId);
+    const result = await createCustomerWithMeasurements({
+      token,
+      name: newName,
+      phone: newPhone,
+      address: newAddress,
+      isNameDuplicate,
+      garment: selectedGarment,
+      measurements: initialMeasurements,
+    });
 
-      // Automatically construct first Measurement Profile
-      const firstProfile: MeasurementProfile = {
-        id: Math.random().toString(36).substring(2, 11),
-        garment_type_id: selectedGarment.id,
-        garment_name: selectedGarment.name,
-        values: initialMeasurements,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
+    if (!result.ok) {
+      setCreateError(result.error);
+      return;
+    }
 
-      const payloadMeasurements = {
-        profiles: [firstProfile]
-      };
-
-      const res = await fetch('/api/customers', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name: newName.trim(),
-          phone: newPhone.trim(),
-          address: newAddress.trim(),
-          measurements: payloadMeasurements,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to create customer.');
-      }
-
-      if (data.alreadyExists) {
-        setDuplicateAlert(`Customer "${data.customer.name}" already exists with this mobile number. Displaying existing profile instead.`);
-        setSelectedCustomer(data.customer);
-        setIsCreating(false);
-        // Clear form
-        setNewName('');
-        setNewPhone('');
-        setNewAddress('');
-        setInitialMeasurements({});
-        onBookOrder(data.customer);
-        return;
-      }
-
-      setCreateSuccess(true);
-      // Reset form
+    if (result.alreadyExists) {
+      setDuplicateAlert(`Customer "${result.customer.name}" already exists with this mobile number. Displaying existing profile instead.`);
+      setSelectedCustomer(result.customer);
+      setIsCreating(false);
       setNewName('');
       setNewPhone('');
       setNewAddress('');
       setInitialMeasurements({});
-      
-      // Auto-select newly created customer
-      setSelectedCustomer(data);
-      setIsCreating(false);
-
-      // Refresh customers list
-      setSearchQuery('');
-      fetchRecentCustomers();
-    } catch (err: any) {
-      setCreateError(err.message);
+      onBookOrder(result.customer);
+      return;
     }
+
+    setCreateSuccess(true);
+    setNewName('');
+    setNewPhone('');
+    setNewAddress('');
+    setInitialMeasurements({});
+    setSelectedCustomer(result.customer);
+    setIsCreating(false);
+    setSearchQuery('');
+    fetchRecentCustomers();
   };
 
   // Helper to persist profiles state to backend
@@ -638,9 +585,9 @@ export default function CustomersSection({
               onClick={() => setShowAllPage(false)}
               className="flex items-center gap-1 text-xs text-sky-600 hover:text-sky-800 transition-colors uppercase tracking-wider mb-1 cursor-pointer bg-transparent border-none p-0"
             >
-              ← Back to Dashboard / Profiles
+              ← Back to customers
             </button>
-            <h1 className="text-xl font-bold text-brand-sidebar font-display">Customer Database</h1>
+            <h1 className="text-xl font-bold text-brand-sidebar font-display">Customers</h1>
           </div>
           
           <button
@@ -688,7 +635,7 @@ export default function CustomersSection({
               {loading && customers.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="p-8 text-center text-slate-400 font-semibold uppercase tracking-wider">
-                    Searching Database...
+                    Searching...
                   </td>
                 </tr>
               ) : customers.length === 0 ? (
@@ -1392,7 +1339,7 @@ export default function CustomersSection({
               {!isAddingProfile && profiles.length === 0 && (
                 <div className="flex flex-col items-center justify-center p-6 text-center border-2 border-dashed border-slate-200 bg-slate-50/50 rounded-2xl">
                   <Layers className="w-10 h-10 text-slate-300 animate-pulse mb-3" />
-                  <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider">No Measurement Profiles</h4>
+                  <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider">No saved measurements</h4>
                   <p className="text-slate-400 text-3xs font-semibold uppercase tracking-widest max-w-xs mt-1 leading-relaxed">
                     Create the first profile to register tailored specifications.
                   </p>

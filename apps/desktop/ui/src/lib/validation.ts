@@ -24,11 +24,6 @@ export function validateMobileNumber(mobile: string, required = true): string | 
   return null;
 }
 
-export function validateRequired(value: string, fieldName: string): string | null {
-  if (!value || value.trim().length === 0) return `${fieldName} is required`;
-  return null;
-}
-
 export function validateConfirmPassword(password: string, confirmPassword: string): string | null {
   if (!confirmPassword) return 'Please confirm your password';
   if (password !== confirmPassword) return 'Passwords do not match';
@@ -71,17 +66,4 @@ export function validateGarmentMeasurementsCompleted(
   }
 
   return null;
-}
-
-/** Server/UI: true when measurements payload includes a profile with real values. */
-export function measurementsPayloadHasCompletedProfile(measurements: unknown): boolean {
-  if (!measurements || typeof measurements !== 'object') return false;
-  const profiles = (measurements as { profiles?: unknown }).profiles;
-  if (!Array.isArray(profiles) || profiles.length === 0) return false;
-  return profiles.some((profile: unknown) => {
-    if (!profile || typeof profile !== 'object') return false;
-    const p = profile as { garment_type_id?: string; values?: Record<string, string | number> };
-    if (!p.garment_type_id) return false;
-    return Object.values(p.values || {}).some(v => String(v ?? '').trim() !== '');
-  });
 }

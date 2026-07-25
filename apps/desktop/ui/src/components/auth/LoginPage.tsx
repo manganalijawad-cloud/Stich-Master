@@ -1,24 +1,20 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
-import { signInWithEmail, signInWithGoogle } from '../../lib/auth';
+import { signInWithEmail } from '../../lib/auth';
 import { validateEmail } from '../../lib/validation';
 import { useAuth } from '../../contexts/AuthContext';
-import GoogleSignInButton from './GoogleSignInButton';
 import VersionInfo from '../VersionInfo';
 
 interface LoginPageProps {
-  onNavigateSignUp: () => void;
   onNavigateForgotPassword: () => void;
 }
 
-export default function LoginPage({ onNavigateSignUp, onNavigateForgotPassword }: LoginPageProps) {
+export default function LoginPage({ onNavigateForgotPassword }: LoginPageProps) {
   const { setSession } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
 
@@ -47,23 +43,8 @@ export default function LoginPage({ onNavigateSignUp, onNavigateForgotPassword }
     }
   };
 
-  const handleGoogleSignIn = async () => {
-    setError(null);
-    setIsGoogleLoading(true);
-    try {
-      const result = await signInWithGoogle();
-      if (result.error) {
-        setError(result.error);
-      }
-    } catch (err) {
-      setError('An unexpected error occurred during Google sign in.');
-    } finally {
-      setIsGoogleLoading(false);
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-[#0F172A] flex flex-col">
+    <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
       <div className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm animate-fade-in">
           <div className="text-center mb-8">
@@ -78,8 +59,8 @@ export default function LoginPage({ onNavigateSignUp, onNavigateForgotPassword }
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3">
-                <p className="text-sm font-medium text-red-400">{error}</p>
+              <div className="rounded-lg bg-white/10 border border-white/20 px-4 py-3">
+                <p className="text-sm font-medium text-white">{error}</p>
               </div>
             )}
 
@@ -93,16 +74,16 @@ export default function LoginPage({ onNavigateSignUp, onNavigateForgotPassword }
                   placeholder="Email address"
                   autoComplete="email"
                   autoFocus
-                  className={`w-full h-11 pl-10 pr-4 bg-slate-800/50 border rounded-xl text-sm text-white placeholder-slate-500 outline-none transition-all duration-200
+                  className={`w-full h-11 pl-10 pr-4 bg-slate-800/50 border rounded-xl text-sm text-white placeholder-slate-500 outline-none transition-colors duration-150
                     ${fieldErrors.email
                       ? 'border-red-500/50 focus:border-red-500 focus:ring-2 focus:ring-red-500/20'
-                      : 'border-slate-700/50 focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20'
+                      : 'border-slate-700/50 focus:border-white focus:ring-2 focus:ring-white/20'
                     }`}
                   disabled={isLoading}
                 />
               </div>
               {fieldErrors.email && (
-                <p className="mt-1.5 text-xs text-red-400 font-medium">{fieldErrors.email}</p>
+                <p className="mt-1.5 text-xs text-neutral-300 font-medium">{fieldErrors.email}</p>
               )}
             </div>
 
@@ -115,10 +96,10 @@ export default function LoginPage({ onNavigateSignUp, onNavigateForgotPassword }
                   onChange={(e) => { setPassword(e.target.value); setFieldErrors((p) => ({ ...p, password: undefined })); }}
                   placeholder="Password"
                   autoComplete="current-password"
-                  className={`w-full h-11 pl-10 pr-11 bg-slate-800/50 border rounded-xl text-sm text-white placeholder-slate-500 outline-none transition-all duration-200
+                  className={`w-full h-11 pl-10 pr-11 bg-slate-800/50 border rounded-xl text-sm text-white placeholder-slate-500 outline-none transition-colors duration-150
                     ${fieldErrors.password
                       ? 'border-red-500/50 focus:border-red-500 focus:ring-2 focus:ring-red-500/20'
-                      : 'border-slate-700/50 focus:border-brand-sky focus:ring-2 focus:ring-brand-sky/20'
+                      : 'border-slate-700/50 focus:border-white focus:ring-2 focus:ring-white/20'
                     }`}
                   disabled={isLoading}
                 />
@@ -132,26 +113,15 @@ export default function LoginPage({ onNavigateSignUp, onNavigateForgotPassword }
                 </button>
               </div>
               {fieldErrors.password && (
-                <p className="mt-1.5 text-xs text-red-400 font-medium">{fieldErrors.password}</p>
+                <p className="mt-1.5 text-xs text-neutral-300 font-medium">{fieldErrors.password}</p>
               )}
             </div>
 
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-600 bg-slate-800/50 text-brand-sky focus:ring-brand-sky/30 focus:ring-2 cursor-pointer accent-brand-sky"
-                />
-                <span className="text-sm text-slate-400 group-hover:text-slate-300 transition-colors">
-                  Remember me
-                </span>
-              </label>
+            <div className="flex items-center justify-end">
               <button
                 type="button"
                 onClick={onNavigateForgotPassword}
-                className="text-sm text-brand-sky hover:text-sky-300 font-medium transition-colors cursor-pointer bg-transparent border-none"
+                className="text-sm text-white hover:text-neutral-300 font-medium transition-colors cursor-pointer bg-transparent border-none"
               >
                 Forgot password?
               </button>
@@ -160,7 +130,7 @@ export default function LoginPage({ onNavigateSignUp, onNavigateForgotPassword }
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full h-11 bg-brand-sky hover:bg-sky-400 disabled:bg-sky-800/50 text-[#0F172A] font-semibold text-sm rounded-xl transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+              className="w-full h-11 bg-white hover:bg-neutral-200 disabled:bg-neutral-700/50 text-[#0a0a0a] font-semibold text-sm rounded-xl transition-colors duration-150 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <Loader2 className="icon-sm animate-spin" />
@@ -168,42 +138,6 @@ export default function LoginPage({ onNavigateSignUp, onNavigateForgotPassword }
               {isLoading ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
-
-          {/* MVP: Google Sign-In hidden — re-enable for production */}
-          {false && (
-            <>
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-700/50" />
-            </div>
-            <div className="relative flex justify-center">
-              <span className="px-3 text-xs font-medium text-slate-500 bg-[#0F172A]">
-                OR CONTINUE WITH
-              </span>
-            </div>
-          </div>
-
-          <GoogleSignInButton
-            onClick={handleGoogleSignIn}
-            isLoading={isGoogleLoading}
-            disabled={isLoading}
-          />
-            </>
-          )}
-
-          {/* MVP: Create Account link hidden — re-enable for production */}
-          {false && (
-          <p className="mt-6 text-center text-sm text-slate-500">
-            Don&apos;t have an account?{' '}
-            <button
-              type="button"
-              onClick={onNavigateSignUp}
-              className="text-brand-sky hover:text-sky-300 font-medium transition-colors cursor-pointer bg-transparent border-none"
-            >
-              Create one
-            </button>
-          </p>
-          )}
         </div>
       </div>
       <VersionInfo position="bottom-right" />

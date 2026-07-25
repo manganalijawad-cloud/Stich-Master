@@ -115,6 +115,24 @@ Hello Darzi is an **offline-first** application. This is a core architectural co
 - **Before changing anything** related to garment configuration, the backend implementation must be verified and understood first.
 - Any change in this area must **preserve existing functionality**. Do not rewrite or restructure working garment configuration logic without a clear, verified need.
 
+### Storage (do not rewrite casually)
+
+Garment types have historically lived in **two places**. Treat this as known tech debt, not a bug to “fix” by rewriting:
+
+| Path | Where | When used |
+|------|--------|-----------|
+| **Canonical** | `garment_types` table (SQLite locally; Supabase in cloud) | Electron local DB always; cloud when the table exists |
+| **Legacy fallback** | `shop_settings` row key `{userId}:garment_types` (JSON array) | Cloud only — if the table/relation is missing or a read fails |
+
+**Rules for future work:**
+
+1. **Prefer the relational table** for all new reads/writes when it is available.
+2. Keep the `shop_settings` fallback until we confirm no cloud accounts still depend on JSON-only data (or we migrate those rows into `garment_types`).
+3. Do **not** dual-write on every mutation “for safety” — local Electron already writes only the table; cloud writes settings only on the fallback path.
+4. Sync (`sync.ts`) pushes `garment_types` as its own table; do not invent a second sync of the JSON blob unless migrating.
+
+Implementation lives in `packages/server/src/index.ts` (`getGarmentTypes`, `getGarmentTypesFromSettings`, `/api/garment-types*`) and `packages/server/src/db.ts`.
+
 ---
 
 ## 8. Styling Configuration
@@ -122,6 +140,15 @@ Hello Darzi is an **offline-first** application. This is a core architectural co
 - Users can create **reusable styling options** (e.g., collar types, cuff styles, pocket styles — whatever styling attributes the shop defines).
 - **Each garment item within an order can have its own, independent styling** — styling is per garment item, not per order.
 - **Measurements are shared** from the customer's profile and are not duplicated per garment or per order.
+
+### Storage (same dual pattern as garments)
+
+| Path | Where | When used |
+|------|--------|-----------|
+| **Canonical** | `styling_categories` table | Local SQLite always; cloud when table + `garment_type_id` column are available |
+| **Legacy fallback** | `shop_settings` key `{userId}:styling_categories` | Cloud when the table/column is missing (`IS_GARMENT_TYPE_ID_IN_STYLING_CATEGORIES_AVAILABLE` false) or relation errors |
+
+Same rules as §7: table first, keep fallback until migrated, no speculative rewrite. Handlers: `getStylingCategories*`, `/api/styling-categories*` in `packages/server/src/index.ts`.
 
 ---
 

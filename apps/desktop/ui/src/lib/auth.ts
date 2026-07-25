@@ -1,18 +1,5 @@
 import { supabase } from './supabase';
 
-export interface SignUpStepOne {
-  shopName: string;
-  ownerName: string;
-  mobileNumber: string;
-  shopAddress: string;
-}
-
-export interface SignUpStepTwo {
-  email: string;
-  password: string;
-  confirmPassword: string;
-}
-
 export interface AuthResult {
   user: ExtendedUserProfile | null;
   token: string | null;
@@ -32,75 +19,6 @@ export interface ExtendedUserProfile {
   created_at: string;
   updated_at: string;
   subscription_status?: 'active' | 'inactive' | 'expired';
-}
-
-export async function signUp(
-  stepOne: SignUpStepOne,
-  stepTwo: SignUpStepTwo
-): Promise<AuthResult> {
-  try {
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: stepTwo.email.trim().toLowerCase(),
-      password: stepTwo.password,
-      options: {
-        data: {
-          name: stepOne.ownerName.trim(),
-          shop_name: stepOne.shopName.trim(),
-        },
-      },
-    });
-
-    if (authError) return { user: null, token: null, error: authError.message };
-    if (!authData.user) return { user: null, token: null, error: 'Sign up failed. Please try again.' };
-
-    const user = authData.user;
-    const sessionToken = authData.session?.access_token || null;
-
-    const { data: shop, error: shopError } = await supabase
-      .from('shops')
-      .insert({
-        shop_name: stepOne.shopName.trim(),
-        address: stepOne.shopAddress.trim(),
-        owner_name: stepOne.ownerName.trim(),
-        mobile_number: stepOne.mobileNumber.trim(),
-        created_by: user.id,
-      })
-      .select()
-      .single();
-
-    if (shopError) return { user: null, token: null, error: shopError.message };
-
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({
-        shop_id: shop.id,
-        owner_name: stepOne.ownerName.trim(),
-        mobile_number: stepOne.mobileNumber.trim(),
-        name: stepOne.ownerName.trim(),
-      })
-      .eq('id', user.id);
-
-    if (profileError) return { user: null, token: null, error: profileError.message };
-
-    const profile: ExtendedUserProfile = {
-      id: user.id,
-      email: user.email || '',
-      name: stepOne.ownerName.trim(),
-      owner_name: stepOne.ownerName.trim(),
-      mobile_number: stepOne.mobileNumber.trim(),
-      role: 'Owner',
-      shop_id: shop.id,
-      shop_name: stepOne.shopName.trim(),
-      address: stepOne.shopAddress.trim(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    return { user: profile, token: sessionToken, error: null };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'An unexpected error occurred';
-    return { user: null, token: null, error: message };
-  }
 }
 
 export async function signInWithEmail(
@@ -125,78 +43,6 @@ export async function signInWithEmail(
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'An unexpected error occurred';
     return { user: null, token: null, error: message };
-  }
-}
-
-export async function signInWithGoogle(): Promise<{ error: string | null }> {
-  try {
-    const isElectron = !!(window as any).electronAPI?.isElectron;
-
-    if (isElectron) {
-      return signInWithGoogleDesktop();
-    }
-
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin + '/auth/callback',
-      },
-    });
-
-    if (error) return { error: error.message };
-    return { error: null };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'An unexpected error occurred';
-    return { error: message };
-  }
-}
-
-async function signInWithGoogleDesktop(): Promise<{ error: string | null }> {
-  const api = (window as any).electronAPI;
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-
-  const redirectTo = 'http://localhost/oauth/callback';
-  const authUrl = `${supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`;
-
-  try {
-    const result = await api.oauthStart(authUrl);
-
-    if (result.error) {
-      return { error: result.error };
-    }
-
-    if (result.url) {
-      const parsed = await api.oauthParseCallback(result.url);
-
-      if (parsed.access_token) {
-        const { error: setSessionError } = await supabase.auth.setSession({
-          access_token: parsed.access_token,
-          refresh_token: parsed.refresh_token || '',
-        });
-        if (setSessionError) {
-          return { error: setSessionError.message };
-        }
-        await new Promise(r => setTimeout(r, 500));
-        return { error: null };
-      } else if (parsed.code) {
-        const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(parsed.code);
-        if (exchangeError) {
-          return { error: exchangeError.message };
-        }
-        if (data.session) {
-          await new Promise(r => setTimeout(r, 500));
-          return { error: null };
-        }
-        return { error: 'Failed to exchange authorization code for session' };
-      } else {
-        return { error: parsed.error || 'No access token or authorization code in callback' };
-      }
-    }
-
-    return { error: 'No callback URL received' };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'An unexpected error occurred';
-    return { error: message };
   }
 }
 
@@ -229,65 +75,6 @@ export async function updatePassword(
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to update password';
     return { error: message };
-  }
-}
-
-export async function completeGoogleProfile(
-  shopName: string,
-  mobileNumber: string,
-  address: string
-): Promise<AuthResult> {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) return { user: null, token: null, error: 'No active session found' };
-
-    const user = session.user;
-    const token = session.access_token;
-
-    const { data: shop, error: shopError } = await supabase
-      .from('shops')
-      .insert({
-        shop_name: shopName.trim(),
-        address: address.trim(),
-        owner_name: user.user_metadata?.name || user.email?.split('@')[0] || 'Owner',
-        mobile_number: mobileNumber.trim(),
-        created_by: user.id,
-      })
-      .select()
-      .single();
-
-    if (shopError) return { user: null, token: null, error: shopError.message };
-
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({
-        shop_id: shop.id,
-        owner_name: user.user_metadata?.name || user.email?.split('@')[0] || 'Owner',
-        mobile_number: mobileNumber.trim(),
-        name: user.user_metadata?.name || user.email?.split('@')[0] || 'Owner',
-      })
-      .eq('id', user.id);
-
-    if (profileError) return { user: null, token: null, error: profileError.message };
-
-    const profile: ExtendedUserProfile = {
-      id: user.id,
-      email: user.email || '',
-      name: user.user_metadata?.name || user.email?.split('@')[0] || 'Owner',
-      owner_name: user.user_metadata?.name || user.email?.split('@')[0] || 'Owner',
-      mobile_number: mobileNumber.trim(),
-      role: 'Owner',
-      shop_id: shop.id,
-      shop_name: shopName.trim(),
-      address: address.trim(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    return { user: profile, token, error: null };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Failed to complete profile';
-    return { user: null, token: null, error: message };
   }
 }
 

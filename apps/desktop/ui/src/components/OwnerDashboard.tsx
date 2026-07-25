@@ -13,7 +13,7 @@ interface OwnerDashboardProps {
 }
 
 export default function OwnerDashboard({ token, onSettingsUpdated }: OwnerDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'ShopProfile' | 'Documents' | 'Notifications' | 'Pipeline' | 'GarmentTypes' | 'Backup' | 'Import'>('ShopProfile');
+  const [activeTab, setActiveTab] = useState<'ShopProfile' | 'Documents' | 'Pipeline' | 'GarmentTypes' | 'Backup' | 'Import'>('ShopProfile');
 
   const [archiveCutoff, setArchiveCutoff] = useState('');
   const [archiveSuccess, setArchiveSuccess] = useState<string | null>(null);
@@ -93,7 +93,7 @@ export default function OwnerDashboard({ token, onSettingsUpdated }: OwnerDashbo
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
 
-        setRestoreSuccess('System database restored successfully! Please refresh to reload state.');
+        setRestoreSuccess('Backup restored. Please refresh the app.');
       } catch (err: any) {
         setRestoreError(err.message || 'Failed to parse JSON file.');
       }
@@ -129,12 +129,12 @@ export default function OwnerDashboard({ token, onSettingsUpdated }: OwnerDashbo
   };
 
   const tabs = [
-    { id: 'ShopProfile' as const, label: 'Shop Profile', icon: Shield },
-    { id: 'Documents' as const, label: 'Documents', icon: Printer },
-    { id: 'Pipeline' as const, label: 'Order Pipeline', icon: ListTodo },
-    { id: 'GarmentTypes' as const, label: 'Garment Types', icon: Sliders },
-    { id: 'Backup' as const, label: 'Backup & Restore', icon: Database },
-    { id: 'Import' as const, label: 'Data Import', icon: Upload },
+    { id: 'ShopProfile' as const, label: 'Shop details', icon: Shield },
+    { id: 'Documents' as const, label: 'Printing', icon: Printer },
+    { id: 'Pipeline' as const, label: 'Order stages', icon: ListTodo },
+    { id: 'GarmentTypes' as const, label: 'Clothes types', icon: Sliders },
+    { id: 'Backup' as const, label: 'Backup', icon: Database },
+    { id: 'Import' as const, label: 'Import customers', icon: Upload },
   ];
 
   return (
@@ -196,7 +196,7 @@ export default function OwnerDashboard({ token, onSettingsUpdated }: OwnerDashbo
               <div className="flex items-center gap-2">
                 <ArrowUp className="icon-sm text-emerald-500 shrink-0" />
                 <div>
-                  <h3 className="text-xs font-bold text-brand-sidebar uppercase tracking-wider">Restore Backup</h3>
+                  <h3 className="text-xs font-bold text-brand-sidebar uppercase tracking-wider">Restore from backup</h3>
                   <p className="text-3xs text-slate-500">Upload a .json backup file</p>
                 </div>
               </div>
@@ -223,7 +223,7 @@ export default function OwnerDashboard({ token, onSettingsUpdated }: OwnerDashbo
 
               <div className="flex flex-wrap gap-3 items-end">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 block uppercase tracking-wider">Archive Prior To:</label>
+                  <label className="text-xs font-bold text-slate-500 block uppercase tracking-wider">Archive orders before:</label>
                   <input type="date" value={archiveCutoff} onChange={(e) => setArchiveCutoff(e.target.value)} className="input-base" />
                 </div>
                 <button onClick={handleArchiveOrders} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold rounded-lg cursor-pointer text-xs uppercase tracking-wider border border-amber-500 transition-colors">

@@ -259,7 +259,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 print:hidden">
-        <h1 className="text-base font-black text-slate-900 tracking-tight font-display uppercase">Financial Report</h1>
+        <h1 className="text-base font-black text-slate-900 tracking-tight font-display uppercase">Finances</h1>
         <div className="flex items-center gap-2">
           <div className="bg-white border border-slate-200 p-0.5 rounded-lg flex shadow-2xs">
             {filterTabs.map(tab => (
@@ -386,12 +386,12 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                   <svg className="w-full h-full" viewBox="0 0 500 180" preserveAspectRatio="none">
                     <defs>
                       <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#38BDF8" stopOpacity={0.15}/>
-                        <stop offset="95%" stopColor="#38BDF8" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#171717" stopOpacity={0.15}/>
+                        <stop offset="95%" stopColor="#171717" stopOpacity={0}/>
                       </linearGradient>
                       <linearGradient id="colGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.15}/>
-                        <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#737373" stopOpacity={0.15}/>
+                        <stop offset="95%" stopColor="#737373" stopOpacity={0}/>
                       </linearGradient>
                     </defs>
                     <line x1="0" y1="45" x2="500" y2="45" stroke="#F1F5F9" strokeWidth="1" />
@@ -410,12 +410,12 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                         <>
                           <path d={revPath} fill="url(#revGrad)" />
                           <path d={colPath} fill="url(#colGrad)" />
-                          <path d={revLine} fill="none" stroke="#38BDF8" strokeWidth="2.5" strokeLinecap="round" />
-                          <path d={colLine} fill="none" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round" />
+                          <path d={revLine} fill="none" stroke="#171717" strokeWidth="2.5" strokeLinecap="round" />
+                          <path d={colLine} fill="none" stroke="#737373" strokeWidth="2.5" strokeLinecap="round" />
                           {ptsRev.map((p, i) => (
                             <g key={i}>
-                              <circle cx={p.x} cy={p.y} r="4" fill="white" stroke="#38BDF8" strokeWidth="2.5" />
-                              <circle cx={ptsCol[i].x} cy={ptsCol[i].y} r="4" fill="white" stroke="#10B981" strokeWidth="2.5" />
+                              <circle cx={p.x} cy={p.y} r="4" fill="white" stroke="#171717" strokeWidth="2.5" />
+                              <circle cx={ptsCol[i].x} cy={ptsCol[i].y} r="4" fill="white" stroke="#737373" strokeWidth="2.5" />
                             </g>
                           ))}
                         </>
@@ -441,7 +441,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* Payment Status */}
             <div className="bg-white p-4 rounded-xl border border-slate-200">
-              <h2 className="text-xs font-black text-slate-700 uppercase tracking-wider mb-3 font-display">Payment Status</h2>
+              <h2 className="text-xs font-black text-slate-700 uppercase tracking-wider mb-3 font-display">Payments</h2>
               <div className="space-y-3">
                 <div>
                   <div className="flex items-center justify-between text-xs font-semibold mb-1">
@@ -475,7 +475,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
 
             {/* Orders by Stage */}
             <div className="lg:col-span-2 bg-white p-4 rounded-xl border border-slate-200">
-              <h2 className="text-xs font-black text-slate-700 uppercase tracking-wider mb-3 font-display">Orders by Stage</h2>
+              <h2 className="text-xs font-black text-slate-700 uppercase tracking-wider mb-3 font-display">Orders by progress</h2>
               <div className="space-y-2">
                 {pipelineFinancials.map(stage => (
                   <div key={stage.id} className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">

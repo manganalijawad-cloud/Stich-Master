@@ -74,14 +74,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('update-error', handler);
   },
 
-  // OAuth with system browser + deep link (hellodarzi://)
-  oauthStart: (authUrl) => ipcRenderer.invoke('oauth-start', authUrl),
-  oauthCancel: () => ipcRenderer.invoke('oauth-cancel'),
-  oauthParseCallback: (url) => ipcRenderer.invoke('oauth-parse-callback', url),
-  oauthIsProtocolRegistered: () => ipcRenderer.invoke('oauth-is-protocol-registered'),
-  onOAuthCallback: (callback) => {
+  // Custom protocol deep links (hellodarzi://order?...)
+  onDeepLink: (callback) => {
     const handler = (_event, url) => callback(url);
-    ipcRenderer.on('oauth-callback', handler);
-    return () => ipcRenderer.removeListener('oauth-callback', handler);
+    ipcRenderer.on('deep-link', handler);
+    return () => ipcRenderer.removeListener('deep-link', handler);
   },
 });

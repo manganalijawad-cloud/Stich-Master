@@ -104,8 +104,8 @@ export default function PipelineSettings({ token, onSettingsUpdated }: PipelineS
     <form onSubmit={handleSave} className="divide-y divide-slate-100 animate-fade-in">
       <div className="px-4 py-3 flex items-center justify-between">
         <div>
-          <h2 className="text-base font-bold text-brand-sidebar font-display">Order Pipeline</h2>
-          <p className="text-3xs text-slate-500 mt-0.5">Customize the stages an order passes through</p>
+          <h2 className="text-base font-bold text-brand-sidebar font-display">Order stages</h2>
+          <p className="text-3xs text-slate-500 mt-0.5">Set the steps an order goes through in your shop</p>
         </div>
         <button type="submit" disabled={saving} className="btn-primary py-1.5 px-3 text-xs shrink-0">
           <Save className="icon-xs text-brand-sky" />
@@ -113,13 +113,13 @@ export default function PipelineSettings({ token, onSettingsUpdated }: PipelineS
         </button>
       </div>
 
-      {success && <div className="mx-4 mb-3 alert-success py-2 text-xs">Pipeline saved.</div>}
+      {success && <div className="mx-4 mb-3 alert-success py-2 text-xs">Stages saved.</div>}
       {error && <div className="mx-4 mb-3 alert-error py-2 text-xs">{error}</div>}
 
       <section className="px-4 py-3 space-y-3">
         <div className="flex items-center gap-2">
           <ListTodo className="icon-xs text-brand-sky shrink-0" />
-          <h3 className="text-xs font-bold text-brand-sidebar uppercase tracking-wider">Pipeline Stages</h3>
+          <h3 className="text-xs font-bold text-brand-sidebar uppercase tracking-wider">Stages</h3>
         </div>
 
         <div className="flex gap-2 max-w-lg">

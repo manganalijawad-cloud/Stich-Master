@@ -51,9 +51,6 @@ if (process.defaultApp) {
   app.setAsDefaultProtocolClient(PROTOCOL);
 }
 
-// Store the OAuth callback promise resolver so the renderer can await it
-let pendingOAuthResolve = null;
-
 // ---------------------------------------------------------------------------
 // SINGLE-INSTANCE LOCK
 // ---------------------------------------------------------------------------
@@ -591,22 +588,14 @@ app.on('open-url', (_event, url) => {
 
 function handleDeepLink(url) {
   try {
-    const parsed = new URL(url);
-    // Expected format: hellodarzi://auth/callback#access_token=xxx&refresh_token=xxx&...
-    // or hellodarzi://auth/callback?code=xxx&state=xxx (PKCE flow)
-    if (parsed.pathname === '/auth/callback' || parsed.pathname === 'auth/callback') {
-      if (pendingOAuthResolve) {
-        const resolve = pendingOAuthResolve;
-        pendingOAuthResolve = null;
-        resolve({ url: url });
-      }
-      // Also forward to renderer so it can process the session
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('oauth-callback', url);
-      }
+    // hellodarzi://order?orderId=&itemIdx= (QR) and other custom-protocol URLs
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('deep-link', url);
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
     }
   } catch (err) {
-    console.error('Failed to parse deep link:', err.message);
+    console.error('Failed to handle deep link:', err.message);
   }
 }
 
@@ -661,155 +650,6 @@ async function createWindow() {
 
   let loadRetries = 0;
   const MAX_LOAD_RETRIES = 5;
-
-  // ---------------------------------------------------------------------------
-  // IPC: Start OAuth flow using an embedded BrowserWindow
-  // ---------------------------------------------------------------------------
-  ipcMain.handle('oauth-start', async (_event, authUrl) => {
-    return new Promise((resolve) => {
-      let resolved = false;
-      const timeout = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          if (authWindow && !authWindow.isDestroyed()) authWindow.close();
-          resolve({ error: 'Authentication timed out. Please try again.' });
-        }
-      }, 120000);
-
-      const authWindow = new BrowserWindow({
-        width: 800,
-        height: 700,
-        title: 'Sign in with Google',
-        parent: mainWindow,
-        modal: true,
-        show: false,
-        webPreferences: {
-          preload: path.join(__dirname, 'preload.cjs'),
-          nodeIntegration: false,
-          contextIsolation: true,
-          sandbox: false,
-        },
-      });
-
-      authWindow.once('ready-to-show', () => {
-        authWindow.show();
-      });
-
-      authWindow.webContents.on('will-redirect', (_event, url) => {
-        if (resolved) return;
-        if (url.includes('access_token') || url.includes('error=') || url.includes('code=')) {
-          resolved = true;
-          clearTimeout(timeout);
-          authWindow.close();
-          resolve({ url });
-        }
-      });
-
-      authWindow.webContents.on('will-navigate', (_event, url) => {
-        if (resolved) return;
-        if (url.includes('access_token') || url.includes('error=') || url.includes('code=')) {
-          resolved = true;
-          clearTimeout(timeout);
-          authWindow.close();
-          resolve({ url });
-        }
-      });
-
-      authWindow.webContents.on('did-finish-load', () => {
-        if (resolved) return;
-        const currentUrl = authWindow.webContents.getURL();
-        if (currentUrl.includes('access_token') || currentUrl.includes('error=') || currentUrl.includes('code=')) {
-          resolved = true;
-          clearTimeout(timeout);
-          authWindow.close();
-          resolve({ url: currentUrl });
-        }
-      });
-
-      authWindow.loadURL(authUrl).catch((err) => {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timeout);
-          if (authWindow && !authWindow.isDestroyed()) authWindow.close();
-          resolve({ error: `Failed to load auth page: ${err.message}` });
-        }
-      });
-
-      authWindow.on('closed', () => {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timeout);
-          resolve({ error: 'Authentication window was closed.' });
-        }
-      });
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // IPC: Cancel a pending OAuth flow
-  // ---------------------------------------------------------------------------
-  ipcMain.handle('oauth-cancel', async () => {
-    if (pendingOAuthResolve) {
-      const resolve = pendingOAuthResolve;
-      pendingOAuthResolve = null;
-      resolve({ error: 'Authentication cancelled.' });
-    }
-  });
-
-  // ---------------------------------------------------------------------------
-  // IPC: Parse a deep link callback URL and extract the Supabase session
-  // ---------------------------------------------------------------------------
-  ipcMain.handle('oauth-parse-callback', async (_event, url) => {
-    try {
-      const parsed = new URL(url);
-      let params;
-      if (parsed.hash) {
-        params = new URLSearchParams(parsed.hash.replace('#', '?'));
-      } else {
-        params = parsed.searchParams;
-      }
-
-      const accessToken = params.get('access_token');
-      const refreshToken = params.get('refresh_token');
-      const expiresIn = params.get('expires_in');
-      const tokenType = params.get('token_type');
-      const code = params.get('code');
-      const error = params.get('error');
-      const errorDescription = params.get('error_description');
-
-      if (error) {
-        return { error: errorDescription || error };
-      }
-
-      if (accessToken) {
-        return {
-          access_token: accessToken,
-          refresh_token: refreshToken || '',
-          expires_in: expiresIn ? parseInt(expiresIn) : null,
-          token_type: tokenType || 'bearer',
-        };
-      }
-
-      if (code) {
-        // PKCE code flow: return the code so the renderer can exchange it
-        return {
-          code,
-          redirect_to: parsed.origin + parsed.pathname,
-        };
-      }
-
-      return { error: 'No access token or authorization code found in callback URL.' };
-    } catch {
-      return { error: 'Invalid callback URL.' };
-    }
-  });
-
-  // ---------------------------------------------------------------------------
-  // IPC: Check if custom protocol is registered
-  // ---------------------------------------------------------------------------
-  ipcMain.handle('oauth-is-protocol-registered', async () => {
-    return app.isDefaultProtocolClient(PROTOCOL);
-  });
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     console.error('Failed to load page:', errorCode, errorDescription);
