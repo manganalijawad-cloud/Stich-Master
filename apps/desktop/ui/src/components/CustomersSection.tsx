@@ -34,6 +34,7 @@ interface CustomersSectionProps {
   shopName?: string;
   shopLogo?: string;
   measurementUnit?: 'Inches' | 'Centimeters' | 'Feet';
+  isOwnerMode?: boolean;
 }
 
 export default function CustomersSection({
@@ -46,6 +47,7 @@ export default function CustomersSection({
   shopName,
   shopLogo,
   measurementUnit = 'Inches',
+  isOwnerMode = false,
 }: CustomersSectionProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -568,6 +570,10 @@ export default function CustomersSection({
 
   const handleDeleteCustomer = () => {
     if (!selectedCustomer) return;
+    if (!isOwnerMode) {
+      alert('Only available in Owner mode. Unlock Owner mode with your password to delete customers.');
+      return;
+    }
     if (!confirm(`Are you absolutely sure you want to delete customer "${selectedCustomer.name}"? This will permanently delete the customer record and all associated measurement profiles. This action is irreversible.`)) {
       return;
     }
@@ -575,8 +581,11 @@ export default function CustomersSection({
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to delete customer.');
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to delete customer.');
+        }
         setSelectedCustomer(null);
         setProfiles([]);
         setActiveProfileId(null);
@@ -942,6 +951,7 @@ export default function CustomersSection({
                           >
                             <Printer className="icon-xs" />
                           </button>
+                          {isOwnerMode && (
                           <button
                             onClick={handleDeleteCustomer}
                             className="p-1 text-red-400 hover:text-red-700 hover:bg-red-50 rounded-md cursor-pointer transition-colors"
@@ -950,6 +960,7 @@ export default function CustomersSection({
                           >
                             <Trash2 className="icon-xs" />
                           </button>
+                          )}
                         </span>
                       </span>
                       <span className="text-xs font-bold text-slate-700 block mt-0.5">

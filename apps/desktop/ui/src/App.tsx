@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Shield, Users, ShoppingBag, Settings, LogOut, Menu, X, DollarSign, Lock, Unlock } from 'lucide-react';
 import CustomersSection from './components/CustomersSection';
 import OrdersSection from './components/OrdersSection';
@@ -100,6 +100,10 @@ function AuthWrapper() {
   const [ownerPassword, setOwnerPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
+  const [activeTab, setActiveTab] = useState<'Customers' | 'Orders' | 'Financials' | 'Owner'>('Customers');
+
+  /** Idle timeout before Owner mode auto-returns to Manager (PROJECT.md §5). */
+  const OWNER_IDLE_MS = 15 * 60 * 1000;
 
   useEffect(() => {
     // Clear legacy persisted Owner flag from older builds
@@ -111,7 +115,7 @@ function AuthWrapper() {
     setShowPasswordModal(true);
   };
 
-  const switchToManager = () => {
+  const switchToManager = useCallback(() => {
     setActiveMode('Manager');
     localStorage.removeItem('tailor_active_role');
     if (token) {
@@ -120,10 +124,37 @@ function AuthWrapper() {
         headers: { Authorization: `Bearer ${token}` },
       }).catch(err => console.warn('exit-owner-mode failed:', err));
     }
-    if (activeTab === 'Owner' || activeTab === 'Financials') {
-      setActiveTab('Customers');
-    }
-  };
+    setActiveTab((prev) => (prev === 'Owner' || prev === 'Financials' ? 'Customers' : prev));
+  }, [token]);
+
+  // Auto-expire Owner mode after inactivity
+  useEffect(() => {
+    if (activeMode !== 'Owner') return;
+
+    let idleTimer: ReturnType<typeof setTimeout>;
+    const bumpActivity = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        switchToManager();
+      }, OWNER_IDLE_MS);
+    };
+
+    const events: Array<keyof WindowEventMap> = [
+      'mousemove',
+      'mousedown',
+      'keydown',
+      'touchstart',
+      'scroll',
+      'click',
+    ];
+    events.forEach((evt) => window.addEventListener(evt, bumpActivity, { passive: true }));
+    bumpActivity();
+
+    return () => {
+      clearTimeout(idleTimer);
+      events.forEach((evt) => window.removeEventListener(evt, bumpActivity));
+    };
+  }, [activeMode, switchToManager, OWNER_IDLE_MS]);
 
   const handlePasswordSubmit = async () => {
     if (!ownerPassword || !token) return;
@@ -154,7 +185,6 @@ function AuthWrapper() {
     }
   };
 
-  const [activeTab, setActiveTab] = useState<'Customers' | 'Orders' | 'Financials' | 'Owner'>('Customers');
   const [activeCustomerIdForNewOrder, setActiveCustomerIdForNewOrder] = useState<string | undefined>(undefined);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
@@ -609,6 +639,7 @@ function AuthWrapper() {
                 shopName={shopName}
                 shopLogo={shopLogo}
                 measurementUnit={measurementUnit}
+                isOwnerMode={activeMode === 'Owner'}
               />
             )}
 

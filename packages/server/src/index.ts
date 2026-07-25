@@ -494,7 +494,7 @@ interface AuthenticatedRequest extends Request {
 
 const authCache = new Map<string, { profile: AuthenticatedRequest["user"]; expiresAt: number }>();
 const ownerModeCache = new Map<string, number>();
-const OWNER_MODE_TTL_MS = 8 * 60 * 60 * 1000;
+const OWNER_MODE_TTL_MS = 15 * 60 * 1000; // inactivity window (aligned with client idle timeout)
 /** Prefer re-validating online about every 5 minutes when the network works. */
 const AUTH_CACHE_ONLINE_MS = 5 * 60 * 1000;
 /** Bound offline/cache reuse so a very long-lived JWT is still rechecked periodically when online. */
@@ -639,6 +639,13 @@ function grantOwnerMode(token: string) {
   ownerModeCache.set(token, Date.now() + OWNER_MODE_TTL_MS);
 }
 
+function touchOwnerMode(token: string) {
+  // Sliding expiration: Owner API activity counts as activity
+  if (ownerModeCache.has(token)) {
+    ownerModeCache.set(token, Date.now() + OWNER_MODE_TTL_MS);
+  }
+}
+
 function revokeOwnerMode(token: string) {
   ownerModeCache.delete(token);
 }
@@ -656,9 +663,10 @@ function isOwnerModeActive(token: string): boolean {
 function requireOwnerMode(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   if (!req.token || !isOwnerModeActive(req.token)) {
     return res.status(403).json({
-      error: "Owner mode required. Switch to Owner mode to delete orders.",
+      error: "Owner mode required. Unlock Owner mode with your password to continue.",
     });
   }
+  touchOwnerMode(req.token);
   next();
 }
 
@@ -1253,7 +1261,7 @@ app.put("/api/customers/:id", requireAuth, async (req: AuthenticatedRequest, res
 });
 
 // Delete customer
-app.delete("/api/customers/:id", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+app.delete("/api/customers/:id", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   const customerId = req.params.id;
   try {
     if (useLocalDb()) {
@@ -2130,7 +2138,7 @@ app.delete("/api/orders/:id", requireAuth, requireRole(["Owner"]), requireOwnerM
 // -------------------------------------------------------------------------
 // WORKER MANAGEMENT (Owner Only)
 // -------------------------------------------------------------------------
-app.get("/api/workers", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+app.get("/api/workers", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   try {
     if (useLocalDb()) {
       const data = db.getProfilesByOwner(req.user!.id);
@@ -2148,7 +2156,7 @@ app.get("/api/workers", requireAuth, requireRole(["Owner"]), async (req: Authent
   }
 });
 
-app.post("/api/workers", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+app.post("/api/workers", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   const { name } = req.body;
 
   if (!name || name.trim() === "") {
@@ -2211,7 +2219,7 @@ app.post("/api/workers", requireAuth, requireRole(["Owner"]), async (req: Authen
   }
 });
 
-app.delete("/api/workers/:id", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+app.delete("/api/workers/:id", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   const workerId = req.params.id;
 
   if (workerId === req.user!.id) {
@@ -2300,7 +2308,7 @@ app.get("/api/settings", requireAuth, async (req: AuthenticatedRequest, res: Res
   }
 });
 
-app.put("/api/settings", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+app.put("/api/settings", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   const settingsData = req.body;
 
   try {
@@ -2402,7 +2410,7 @@ app.get("/api/garment-types", requireAuth, async (req: AuthenticatedRequest, res
   }
 });
 
-app.post("/api/garment-types", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+app.post("/api/garment-types", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   const { name, enabled, display_order, price, measurement_fields } = req.body;
   if (!name || name.trim() === "") {
     return res.status(400).json({ error: "Garment Type name is required." });
@@ -2475,7 +2483,7 @@ app.post("/api/garment-types", requireAuth, requireRole(["Owner"]), async (req: 
   }
 });
 
-app.put("/api/garment-types/reorder", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+app.put("/api/garment-types/reorder", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   const { ids } = req.body;
   if (!ids || !Array.isArray(ids)) {
     return res.status(400).json({ error: "An array of garment type IDs is required." });
@@ -2533,7 +2541,7 @@ app.put("/api/garment-types/reorder", requireAuth, requireRole(["Owner"]), async
   }
 });
 
-app.put("/api/garment-types/:id", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+app.put("/api/garment-types/:id", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
   const { name, enabled, display_order, price, measurement_fields } = req.body;
   const userId = req.user!.id;
@@ -2612,7 +2620,7 @@ app.put("/api/garment-types/:id", requireAuth, requireRole(["Owner"]), async (re
   }
 });
 
-app.delete("/api/garment-types/:id", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+app.delete("/api/garment-types/:id", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
   const userId = req.user!.id;
   const now = new Date().toISOString();
@@ -2798,7 +2806,7 @@ app.get("/api/styling-categories", requireAuth, async (req: AuthenticatedRequest
   }
 });
 
-app.post("/api/styling-categories", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+app.post("/api/styling-categories", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   const { name, display_order, options, garment_type_id } = req.body;
   if (!name || name.trim() === "") {
     return res.status(400).json({ error: "Styling Category name is required." });
@@ -2857,7 +2865,7 @@ app.post("/api/styling-categories", requireAuth, requireRole(["Owner"]), async (
   }
 });
 
-app.put("/api/styling-categories/reorder", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+app.put("/api/styling-categories/reorder", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   const { ids } = req.body;
   if (!ids || !Array.isArray(ids)) {
     return res.status(400).json({ error: "An array of styling category IDs is required." });
@@ -2906,7 +2914,7 @@ app.put("/api/styling-categories/reorder", requireAuth, requireRole(["Owner"]), 
   }
 });
 
-app.put("/api/styling-categories/:id", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+app.put("/api/styling-categories/:id", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
   const { name, display_order, options, garment_type_id } = req.body;
   const userId = req.user!.id;
@@ -2999,7 +3007,7 @@ app.put("/api/styling-categories/:id", requireAuth, requireRole(["Owner"]), asyn
   }
 });
 
-app.delete("/api/styling-categories/:id", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+app.delete("/api/styling-categories/:id", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
   const userId = req.user!.id;
   const now = new Date().toISOString();
@@ -3056,7 +3064,7 @@ app.delete("/api/styling-categories/:id", requireAuth, requireRole(["Owner"]), a
   }
 });
 
-app.post("/api/backup", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+app.post("/api/backup", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   try {
     if (useLocalDb()) {
       const data = db.exportBackup(req.user!.id);
@@ -3086,7 +3094,7 @@ app.post("/api/backup", requireAuth, requireRole(["Owner"]), async (req: Authent
   }
 });
 
-app.post("/api/restore", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+app.post("/api/restore", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   const { backupData } = req.body;
   if (!backupData || !backupData.data) {
     return res.status(400).json({ error: "Invalid backup data provided." });
@@ -3133,7 +3141,7 @@ app.post("/api/restore", requireAuth, requireRole(["Owner"]), async (req: Authen
   }
 });
 
-app.post("/api/archive-orders", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+app.post("/api/archive-orders", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   const { beforeDate } = req.body;
   if (!beforeDate) {
     return res.status(400).json({ error: "Please specify a cutoff date." });
@@ -3174,7 +3182,7 @@ app.post("/api/archive-orders", requireAuth, requireRole(["Owner"]), async (req:
 // -------------------------------------------------------------------------
 // REPORTS & STATEMENTS (Owner Only)
 // -------------------------------------------------------------------------
-app.get("/api/reports/dashboard", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+app.get("/api/reports/dashboard", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   try {
     if (useLocalDb()) {
       const stats = db.getDashboardStats(req.user!.id);
@@ -3235,7 +3243,7 @@ app.get("/api/reports/dashboard", requireAuth, requireRole(["Owner"]), async (re
   }
 });
 
-app.get("/api/reports/financials", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+app.get("/api/reports/financials", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   try {
     if (useLocalDb()) {
       const orders = db.getOrders(req.user!.id);
@@ -3398,7 +3406,7 @@ app.use((err: any, req: Request, res: Response, next: any) => {
 // -------------------------------------------------------------------------
 // DATA IMPORT
 // -------------------------------------------------------------------------
-app.post("/api/import/customers", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+app.post("/api/import/customers", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   const { customers, create_measurements, garment_type_id } = req.body;
 
   if (!Array.isArray(customers) || customers.length === 0) {
