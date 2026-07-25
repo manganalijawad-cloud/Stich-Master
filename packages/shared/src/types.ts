@@ -4,6 +4,8 @@
  */
 
 export type UserRole = 'Owner' | 'Worker';
+// V1 uses one shop account with Manager/Owner *session modes* (see PROJECT.md §5).
+// `Worker` is a legacy multi-seat account role — not used in V1 UI; APIs return 403.
 
 export interface UserProfile {
   id: string;

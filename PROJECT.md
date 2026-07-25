@@ -48,6 +48,10 @@ Hello Darzi is a **desktop-first tailor shop management system**.
 - **Avoid feature creep.** If a feature is not required to make Hello Darzi usable and reliable for a real tailor shop today, it does not belong in V1.
 - When a request or idea falls outside V1 scope, it should be noted for later rather than implemented now.
 
+**V1 Owner tools that are in scope (supporting reliability, not core booking):** shop settings, garment/styling configuration, pipeline stages, print defaults, finances overview, backup/restore, and customer import.
+
+**Deferred / not V1 product UI:** multi-seat Worker accounts, inventory stock management UI (table may exist locally but is not synced or exposed in product UI), and a dedicated home dashboard screen.
+
 ---
 
 ## 3. Authentication
@@ -61,8 +65,9 @@ Hello Darzi is a **desktop-first tailor shop management system**.
   - Add new users.
   - Delete users.
   - Disable users.
-  - Reset user passwords/credentials.
-- All of the above happen in Supabase, outside the application.
+  - Reset user passwords/credentials (via the Supabase Dashboard when needed).
+- **Forgot password** is allowed in the app: the signed-in shop account may request a Supabase email reset link and set a new password. This is self-service recovery for the existing account only — it is **not** account creation.
+- All account provisioning (create / delete / disable) happens in Supabase, outside the application.
 
 ---
 
@@ -92,6 +97,7 @@ Hello Darzi is an **offline-first** application. This is a core architectural co
   - Dangerous or irreversible actions (e.g., deleting data, changing financial records after the fact).
 - **Switching to Owner Mode requires re-entering the account password.** This is a deliberate, explicit action.
 - **Owner Mode auto-expires:** if Owner Mode remains inactive for a period of time, the app must automatically switch back to Manager Mode without requiring user action.
+- **Offline unlock (desktop):** after a successful online sign-in or Owner unlock on a device, that device may verify the same password locally (salted verifier stored only on-device, never synced) so Owner Mode can be unlocked without internet. If no verifier exists yet, unlock once while online.
 
 **Implication for development:** every sensitive screen or action must check the current mode before allowing access, and this check must be enforced consistently, not just hidden in the UI (see [Security](#13-security)).
 
@@ -165,17 +171,20 @@ The complete order creation flow is as follows:
      - Select the **garment type**.
      - Enter the **fabric color**.
      - Select the **styling** for that specific garment.
+     - Enter the **base price** for that garment (shown on this step for speed).
 
-3. **Finance step** (applies to the order as a whole)
-   - **Base price** per garment.
+3. **Review & finance** (order as a whole)
+   - Confirm totals from garment base prices.
    - **Discount** (if applicable).
    - **Total** (calculated from base prices and discount).
    - **Paid amount** (what the customer has paid so far).
    - **Remaining balance** (total minus paid amount).
+   - Delivery / due date.
+   - Lock / confirm the order.
 
-4. **Printing step**
-   - **Customer invoice** — for the customer, summarizing the order and financials.
-   - **Worker measurement slip** — for the tailor/worker, containing garment details, styling, and measurements needed to produce the garment.
+4. **Printing** (immediately after confirm — not a separate wizard page)
+   - Offer **customer invoice** and/or **worker measurement slip(s)**.
+   - Defaults may come from Owner print settings; the user can still print again later from the order.
 
 This flow must remain simple and linear — a shop employee should be able to complete it quickly without confusion.
 
@@ -183,12 +192,14 @@ This flow must remain simple and linear — a shop employee should be able to co
 
 ## 10. Pipeline
 
-- Every new order starts in the **"Getting Ready"** stage.
+- Every new order starts in the **"Getting Ready"** stage (stored stage id: `Pending`; display name is configurable).
 - Orders then move through **configurable pipeline stages** (the shop can define/adjust the stages that make sense for their workflow).
+- Status updates must use a stage id that exists in the shop's pipeline settings (server-validated).
 - **QR code scanning** is a first-class interaction:
-  - Scanning an order's QR code should **open that order**.
+  - Scanning an order's QR code should **open that order** (compact garment action is acceptable).
   - From there, the user should be able to **move the order to its next pipeline stage**.
-- The pipeline must **remain customizable** — do not hardcode a fixed set of stages into core logic.
+  - Moving to **Delivered** must use the same payment-collection flow as the main order UI when a balance remains.
+- The pipeline must **remain customizable** — do not hardcode a fixed set of middle stages into core logic. Built-in ids `Pending`, `Delivered`, and `Archived` may remain reserved.
 
 ---
 

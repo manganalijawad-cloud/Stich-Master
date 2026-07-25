@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import type { ExtendedUserProfile } from '../lib/auth';
 import { signOut as authSignOut, checkSubscription } from '../lib/auth';
 import { useOnlineStatus } from '../lib/useOnlineStatus';
+import { localDataStore } from '../lib/localDataStore';
 
 const PROFILE_CACHE_KEY = 'hellodarzi-profile-cache';
 
@@ -60,6 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
     setSubscriptionStatus(null);
     clearCachedProfile();
+    localDataStore.clear();
   }, []);
 
   const setSession = useCallback((newUser: ExtendedUserProfile, newToken: string) => {
@@ -88,6 +90,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setToken(session.access_token);
         }
       }).catch(() => {});
+      // Re-hydrate local cache after reconnect so pulled cloud changes appear
+      void localDataStore.hydrate(token, { force: true });
     }
   });
 
@@ -107,7 +111,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       writeCachedProfile(extProfile);
     };
 
-    const loadProfile = async (authUser: { id: string; email?: string; user_metadata?: Record<string, unknown> }) => {
+    const loadProfile = async (
+      authUser: { id: string; email?: string; user_metadata?: Record<string, unknown> },
+      opts?: { background?: boolean }
+    ) => {
+      // Instant path: prefer cached profile so UI never waits on the network
+      const cached = readCachedProfile(authUser.id);
+      if (cached && !opts?.background) {
+        applyProfile(cached);
+      }
+
       let profile: any = null;
       try {
         const joined = await withTimeout(
@@ -136,8 +149,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           subStatus = await withTimeout(checkSubscription(authUser.id), 5000);
         } catch {
-          const cached = readCachedProfile(authUser.id);
-          subStatus = cached?.subscription_status || 'active';
+          const cachedAgain = readCachedProfile(authUser.id);
+          subStatus = cachedAgain?.subscription_status || 'active';
         }
         const extProfile: ExtendedUserProfile = {
           id: profile.id,
@@ -153,19 +166,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           updated_at: profile.updated_at,
           subscription_status: subStatus,
         };
-        applyProfile(extProfile);
+        if (mounted) applyProfile(extProfile);
         return;
       }
 
-      // Offline or profile unreachable: reuse last successful profile for this user
-      const cached = readCachedProfile(authUser.id);
       if (cached) {
-        applyProfile(cached);
+        if (mounted && opts?.background) applyProfile(cached);
         return;
       }
 
       // No network profile and no cache — stay signed in with session identity.
-      // Prefer metadata role when present; otherwise Owner (single-account V1 default).
       const minimal: ExtendedUserProfile = {
         id: authUser.id,
         email: authUser.email || '',
@@ -175,27 +185,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updated_at: new Date().toISOString(),
         subscription_status: 'active',
       };
-      setUser(minimal);
-      setSubscriptionStatus('active');
+      if (mounted) {
+        setUser(minimal);
+        setSubscriptionStatus('active');
+      }
     };
 
     const restoreSession = async () => {
       try {
-        const { data: { session } } = await withTimeout(supabase.auth.getSession(), 8000);
+        const { data: { session } } = await withTimeout(supabase.auth.getSession(), 3000);
 
         if (session && mounted) {
           setToken(session.access_token);
 
-          let authUser = session.user;
-          try {
-            const { data: { user: verified } } = await withTimeout(supabase.auth.getUser(), 8000);
-            if (verified) authUser = verified;
-          } catch {
-            // Offline: persisted session.user is enough for local-first restore
+          const authUser = session.user;
+          // Unblock UI immediately from local session + profile cache
+          const cached = authUser ? readCachedProfile(authUser.id) : null;
+          if (cached) {
+            applyProfile(cached);
+            if (mounted) setIsLoading(false);
+          } else if (authUser) {
+            // Minimal identity so local API auth can proceed while profile loads
+            const minimal: ExtendedUserProfile = {
+              id: authUser.id,
+              email: authUser.email || '',
+              name: (authUser.user_metadata?.name as string) || authUser.email?.split('@')[0] || 'User',
+              role: (authUser.user_metadata?.role as 'Owner' | 'Worker') || 'Owner',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              subscription_status: 'active',
+            };
+            setUser(minimal);
+            setSubscriptionStatus('active');
+            if (mounted) setIsLoading(false);
           }
 
-          if (authUser && mounted) {
-            await loadProfile(authUser);
+          // Soft network refresh — never blocks startup
+          if (authUser) {
+            void (async () => {
+              try {
+                let verified = authUser;
+                try {
+                  const { data: { user: remote } } = await withTimeout(supabase.auth.getUser(), 8000);
+                  if (remote) verified = remote;
+                } catch {
+                  // Offline: persisted session.user is enough
+                }
+                if (mounted) await loadProfile(verified, { background: true });
+              } catch {
+                // ignore background failures
+              }
+            })();
           }
         }
       } catch {

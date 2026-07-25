@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { RefreshCw, Cloud, CloudOff, AlertTriangle } from 'lucide-react';
+import { localDataStore } from '../lib/localDataStore';
 
 type SyncStatus = 'synced' | 'syncing' | 'error' | 'offline' | 'idle';
 
@@ -18,6 +19,8 @@ export default function SyncIndicator({ token, collapsed }: { token?: string | n
     error: null
   }));
   const mounted = useRef(true);
+  const prevStatus = useRef<SyncStatus | null>(null);
+  const prevLastSync = useRef<string | null>(null);
 
   useEffect(() => {
     return () => { mounted.current = false; };
@@ -33,9 +36,22 @@ export default function SyncIndicator({ token, collapsed }: { token?: string | n
         if (!res.ok) throw new Error('Failed to fetch sync status');
         const data = await res.json();
         if (mounted.current) {
+          const nextStatus = (data.status || 'idle') as SyncStatus;
+          const nextLastSync = data.lastSyncAt || null;
+          // After a successful sync cycle, refresh in-memory cache so pulled rows appear
+          if (
+            nextStatus === 'synced' &&
+            nextLastSync &&
+            nextLastSync !== prevLastSync.current &&
+            (prevStatus.current === 'syncing' || prevStatus.current === 'error' || prevStatus.current === 'offline')
+          ) {
+            void localDataStore.hydrate(token, { force: true });
+          }
+          prevStatus.current = nextStatus;
+          prevLastSync.current = nextLastSync;
           setState({
-            status: data.status || 'idle',
-            lastSync: data.lastSyncAt || null,
+            status: nextStatus,
+            lastSync: nextLastSync,
             pendingChanges: data.pendingCount || 0,
             error: data.lastError || null
           });

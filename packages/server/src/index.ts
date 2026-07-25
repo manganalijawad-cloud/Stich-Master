@@ -396,6 +396,20 @@ const DEFAULT_SHOP_SETTINGS = {
   updated_by: "system"
 };
 
+/** Returns true if status matches a configured pipeline stage id (enabled or not). */
+function isConfiguredPipelineStatus(settingsMap: Record<string, any>, status: string): boolean {
+  const stages = settingsMap.pipeline_stages || DEFAULT_SHOP_SETTINGS.pipeline_stages;
+  if (!Array.isArray(stages)) return false;
+  return stages.some((s: any) => s && String(s.id) === String(status));
+}
+
+async function loadPipelineSettingsForUser(req: AuthenticatedRequest): Promise<Record<string, any>> {
+  if (useLocalDb()) {
+    return db.getSettings(req.user!.id);
+  }
+  return getAccountSettings(getSupabaseClient(req.token), req.user!.id);
+}
+
 // -------------------------------------------------------------------------
 // ACCOUNT-SPECIFIC SHOP SETTINGS HELPERS (PREFIX-BASED MULTI-TENANCY)
 // -------------------------------------------------------------------------
@@ -985,12 +999,34 @@ app.get("/api/auth/me", requireAuth, (req: AuthenticatedRequest, res: Response) 
   res.json({ user: req.user });
 });
 
-// Owner Protection: Verify account password using Supabase Auth
+// Owner Protection: Verify account password (online via Supabase; offline via local verifier)
 app.post("/api/auth/verify-password", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   const { password } = req.body;
   if (!password) {
     return res.status(400).json({ error: "Password is required." });
   }
+
+  const tryLocalUnlock = (): { ok: true } | { ok: false; status: number; error: string } => {
+    if (!useLocalDb()) {
+      return { ok: false, status: 401, error: "Connection failed. Unlock requires internet when cloud mode is active." };
+    }
+    const profile = db.getProfile(req.user!.id);
+    const role = profile?.role || req.user!.role;
+    if (role && role !== "Owner") {
+      return { ok: false, status: 403, error: "Permission denied. Stayed in Manager mode." };
+    }
+    if (!db.hasOwnerUnlockVerifier(req.user!.id)) {
+      return {
+        ok: false,
+        status: 401,
+        error: "Unlock once while online so this device can verify your password offline.",
+      };
+    }
+    if (!db.verifyOwnerUnlockPassword(req.user!.id, password)) {
+      return { ok: false, status: 401, error: "Verification failed. Stayed in Manager mode." };
+    }
+    return { ok: true };
+  };
 
   try {
     const { data, error } = await supabaseAnon.auth.signInWithPassword({
@@ -999,17 +1035,51 @@ app.post("/api/auth/verify-password", requireAuth, async (req: AuthenticatedRequ
     });
 
     if (error || !data.session) {
+      // Wrong password vs network: if message looks network-related, try local verifier
+      const msg = (error?.message || "").toLowerCase();
+      const looksNetwork =
+        msg.includes("fetch") ||
+        msg.includes("network") ||
+        msg.includes("timeout") ||
+        msg.includes("failed to fetch") ||
+        error?.name === "AuthRetryableFetchError";
+
+      if (looksNetwork || !error) {
+        const local = tryLocalUnlock();
+        if (local.ok) {
+          grantOwnerMode(req.token!);
+          if (useLocalDb()) {
+            db.logAction("ROLE_SWITCH_VERIFICATION_SUCCESS", req.user!.id, req.user!.email, req.user!.shop_id, { offline: true });
+          }
+          return res.json({ success: true, offline: true });
+        }
+        return res.status(local.status).json({ error: local.error });
+      }
+
       return res.status(401).json({ error: "Verification failed. Stayed in Manager mode." });
     }
 
-    const { data: profile, error: profError } = await supabaseAdmin
-      .from("profiles")
-      .select("role")
-      .eq("id", req.user!.id)
-      .single();
+    let profileRole: string | undefined = req.user!.role;
+    try {
+      const { data: profile, error: profError } = await supabaseAdmin
+        .from("profiles")
+        .select("role")
+        .eq("id", req.user!.id)
+        .single();
+      if (!profError && profile) profileRole = profile.role;
+    } catch {
+      // Offline profile fetch may fail; fall back to JWT/local profile role
+      if (useLocalDb()) {
+        profileRole = db.getProfile(req.user!.id)?.role || profileRole;
+      }
+    }
 
-    if (profError || !profile || profile.role !== "Owner") {
+    if (profileRole !== "Owner") {
       return res.status(403).json({ error: "Permission denied. Stayed in Manager mode." });
+    }
+
+    if (useLocalDb()) {
+      db.setOwnerUnlockVerifier(req.user!.id, password);
     }
 
     grantOwnerMode(req.token!);
@@ -1017,7 +1087,34 @@ app.post("/api/auth/verify-password", requireAuth, async (req: AuthenticatedRequ
     return res.json({ success: true });
   } catch (err) {
     console.error("Password switch verification error:", err);
-    return res.status(401).json({ error: "Verification failed. Stayed in Manager mode." });
+    const local = tryLocalUnlock();
+    if (local.ok) {
+      grantOwnerMode(req.token!);
+      if (useLocalDb()) {
+        db.logAction("ROLE_SWITCH_VERIFICATION_SUCCESS", req.user!.id, req.user!.email, req.user!.shop_id, { offline: true });
+      }
+      return res.json({ success: true, offline: true });
+    }
+    return res.status(local.status).json({
+      error: local.error || "Verification failed. Stayed in Manager mode.",
+    });
+  }
+});
+
+// Cache salted password verifier for offline Owner unlock (Electron / local DB only)
+app.post("/api/auth/store-unlock-verifier", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const { password } = req.body;
+  if (!password || typeof password !== "string") {
+    return res.status(400).json({ error: "Password is required." });
+  }
+  if (!useLocalDb()) {
+    return res.json({ success: true, stored: false });
+  }
+  try {
+    db.setOwnerUnlockVerifier(req.user!.id, password);
+    return res.json({ success: true, stored: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || "Failed to store unlock verifier." });
   }
 });
 
@@ -1044,12 +1141,97 @@ app.get("/api/sync-status", requireAuth, async (_req: AuthenticatedRequest, res:
   }
 });
 
-app.post("/api/sync-now", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+// -------------------------------------------------------------------------
+// OFFLINE BOOTSTRAP — single local read for instant UI hydrate
+// -------------------------------------------------------------------------
+function parseJsonColumn(val: unknown, fallback: unknown) {
+  if (val == null) return fallback;
+  if (typeof val === "object") return val;
+  if (typeof val !== "string") return fallback;
   try {
-    sync.triggerSync(req.token || "");
-    res.json({ message: "Sync triggered" });
+    return JSON.parse(val);
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeGarmentTypeRow(row: any) {
+  return {
+    ...row,
+    enabled: row.enabled === true || row.enabled === 1 || row.enabled === "1",
+    price: Number(row.price) || 0,
+    measurement_fields: parseJsonColumn(row.measurement_fields, []),
+  };
+}
+
+function normalizeStylingCategoryRow(row: any) {
+  return {
+    ...row,
+    options: parseJsonColumn(row.options, []),
+  };
+}
+
+function normalizeMeasurementRow(row: any) {
+  return {
+    id: row.id,
+    customer_id: row.customer_id,
+    data: parseJsonColumn(row.data, {}),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    created_by: row.created_by,
+    updated_by: row.updated_by,
+  };
+}
+
+app.get("/api/bootstrap", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (useLocalDb()) {
+      const userId = req.user!.id;
+      const shopId = req.user!.shop_id;
+      const settingsMap = db.getSettings(userId);
+      const customers = db.getCustomers(userId);
+      const measurements = db.getAllMeasurements(userId).map(normalizeMeasurementRow);
+      const garmentTypes = db.getGarmentTypes(userId, shopId).map(normalizeGarmentTypeRow);
+      const stylingCategories = db.getStylingCategories(userId).map(normalizeStylingCategoryRow);
+
+      return res.json({
+        settings: {
+          ...DEFAULT_SHOP_SETTINGS,
+          ...settingsMap,
+          updated_at: new Date().toISOString(),
+          updated_by: userId,
+        },
+        customers,
+        measurements,
+        garmentTypes,
+        stylingCategories,
+        hydratedAt: new Date().toISOString(),
+        source: "local",
+      });
+    }
+
+    // Cloud / browser mode — parallel fetches (online-only path)
+    const userSupabase = getSupabaseClient(req.token);
+    const userId = req.user!.id;
+    const [settings, customersRes, measurementsRes, garmentTypes, stylingCategories] = await Promise.all([
+      getAccountSettings(userSupabase, userId),
+      userSupabase.from("customers").select("*").eq("created_by", userId).order("created_at", { ascending: false }),
+      userSupabase.from("measurements").select("*").eq("created_by", userId),
+      getGarmentTypes(userSupabase, userId, req.user!.shop_id || "default-shop"),
+      getStylingCategories(userSupabase, userId, req.user!.shop_id || "default-shop"),
+    ]);
+
+    return res.json({
+      settings,
+      customers: customersRes.data || [],
+      measurements: (measurementsRes.data || []).map(normalizeMeasurementRow),
+      garmentTypes: (garmentTypes || []).map(normalizeGarmentTypeRow),
+      stylingCategories: (stylingCategories || []).map(normalizeStylingCategoryRow),
+      hydratedAt: new Date().toISOString(),
+      source: "cloud",
+    });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message || "Bootstrap failed" });
   }
 });
 
@@ -1155,8 +1337,12 @@ app.post("/api/customers", requireAuth, async (req: AuthenticatedRequest, res: R
         shop_id: req.user!.shop_id, created_by: req.user!.id, updated_by: req.user!.id,
       });
       db.upsertMeasurement(customer.id, req.user!.id, measurements || {}, req.user!.id);
+      const measRow = db.getMeasurements(customer.id, req.user!.id)[0];
       db.logAction("CREATE_CUSTOMER", req.user!.id, req.user!.email, req.user!.shop_id, { customer_id: customer.id, name });
       sync.syncAfterMutation("customers", customer.id, "insert", customer, req.token);
+      if (measRow) {
+        sync.syncAfterMutation("measurements", measRow.id, "insert", measRow, req.token);
+      }
       return res.status(201).json(customer);
     }
 
@@ -1328,7 +1514,7 @@ app.get("/api/customers/:id/measurements", requireAuth, async (req: Authenticate
       if (!data || data.length === 0) {
         return res.json({ customer_id: customerId, data: {} });
       }
-      return res.json(data[0]);
+      return res.json(normalizeMeasurementRow(data[0]));
     }
     const userSupabase = getSupabaseClient(req.token);
     
@@ -1591,6 +1777,10 @@ app.get("/api/orders", requireAuth, async (req: AuthenticatedRequest, res: Respo
       status,
       items,
       total_amount,
+      discount_type,
+      discount_value,
+      discount_amount,
+      final_total,
       paid_amount,
       due_date,
       delivered_at,
@@ -1852,6 +2042,13 @@ app.put("/api/orders/:id/status", requireAuth, async (req: AuthenticatedRequest,
   }
 
   try {
+    const settingsMap = await loadPipelineSettingsForUser(req);
+    if (!isConfiguredPipelineStatus(settingsMap, status)) {
+      return res.status(400).json({
+        error: `Invalid order status "${status}". Choose a stage from this shop's pipeline settings.`,
+      });
+    }
+
     if (useLocalDb()) {
       const oldOrder = db.getOrderById(orderId, req.user!.id);
       const updateData: any = { status, updated_by: req.user!.id };
@@ -1949,7 +2146,131 @@ app.put("/api/orders/:id/status", requireAuth, async (req: AuthenticatedRequest,
   }
 });
 
-app.put("/api/orders/:id", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+// Day-to-day payment collection (Manager allowed). Full order edits use PUT /:id with Owner mode.
+app.put("/api/orders/:id/payment", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const orderId = req.params.id;
+  const { paid_amount } = req.body;
+  const now = new Date().toISOString();
+
+  if (paid_amount === undefined || paid_amount === null || Number.isNaN(Number(paid_amount))) {
+    return res.status(400).json({ error: "paid_amount is required." });
+  }
+  if (Number(paid_amount) < 0) {
+    return res.status(400).json({ error: "paid_amount cannot be negative." });
+  }
+
+  try {
+    if (useLocalDb()) {
+      const oldOrder = db.getOrderById(orderId, req.user!.id);
+      if (!oldOrder) return res.status(404).json({ error: "Order not found or access denied." });
+
+      const order = db.updateOrder(orderId, req.user!.id, {
+        paid_amount: Number(paid_amount),
+        updated_by: req.user!.id,
+      });
+      if (!order) return res.status(404).json({ error: "Order not found or access denied." });
+
+      const oldPaid = oldOrder.paid_amount || 0;
+      const newPaid = order.paid_amount || 0;
+      const paymentDiff = newPaid - oldPaid;
+
+      if (paymentDiff > 0) {
+        db.logAction("PAYMENT_RECEIVED", req.user!.id, req.user!.email, req.user!.shop_id,
+          { order_id: orderId, order_number: order.order_number, amount: paymentDiff },
+          {
+            userName: req.user!.name, userRole: req.user!.role,
+            module: "Payments", recordId: orderId,
+            previousValue: { paid_amount: oldPaid },
+            newValue: { paid_amount: newPaid },
+            notes: `Payment of ${paymentDiff} collected`,
+          }
+        );
+      } else if (paymentDiff < 0) {
+        db.logAction("REFUND", req.user!.id, req.user!.email, req.user!.shop_id,
+          { order_id: orderId, order_number: order.order_number, amount: Math.abs(paymentDiff) },
+          {
+            userName: req.user!.name, userRole: req.user!.role,
+            module: "Payments", recordId: orderId,
+            previousValue: { paid_amount: oldPaid },
+            newValue: { paid_amount: newPaid },
+            notes: `Refund of ${Math.abs(paymentDiff)} processed`,
+          }
+        );
+      }
+
+      sync.syncAfterMutation("orders", orderId, "update", order, req.token);
+      const c = db.getCustomerById(order.customer_id, req.user!.id);
+      return res.json({
+        ...order,
+        customer_name: c?.name || "Unknown Customer",
+        customer_phone: c?.phone || "N/A",
+        customer_address: c?.address || null
+      });
+    }
+
+    const userSupabase = getSupabaseClient(req.token);
+    const { data: oldOrder } = await userSupabase
+      .from("orders")
+      .select("paid_amount, order_number, customer_id")
+      .eq("id", orderId)
+      .eq("created_by", req.user!.id)
+      .single();
+
+    if (!oldOrder) return res.status(404).json({ error: "Order not found or access denied." });
+
+    const { data: order, error: orderErr } = await userSupabase
+      .from("orders")
+      .update({
+        paid_amount: Number(paid_amount),
+        updated_by: req.user!.id,
+        updated_at: now
+      })
+      .eq("id", orderId)
+      .eq("created_by", req.user!.id)
+      .select()
+      .single();
+
+    if (orderErr) throw orderErr;
+
+    const oldPaid = oldOrder.paid_amount || 0;
+    const newPaid = order.paid_amount || 0;
+    const paymentDiff = newPaid - oldPaid;
+
+    if (paymentDiff > 0) {
+      await logAction(req.user!, "PAYMENT_RECEIVED", { order_id: orderId, order_number: order?.order_number, amount: paymentDiff }, req.token, {
+        module: "Payments", recordId: orderId,
+        previousValue: { paid_amount: oldPaid },
+        newValue: { paid_amount: newPaid },
+        notes: `Payment of ${paymentDiff} collected`,
+      });
+    } else if (paymentDiff < 0) {
+      await logAction(req.user!, "REFUND", { order_id: orderId, order_number: order?.order_number, amount: Math.abs(paymentDiff) }, req.token, {
+        module: "Payments", recordId: orderId,
+        previousValue: { paid_amount: oldPaid },
+        newValue: { paid_amount: newPaid },
+        notes: `Refund of ${Math.abs(paymentDiff)} processed`,
+      });
+    }
+
+    const { data: cust } = await userSupabase
+      .from("customers")
+      .select("name, phone, address")
+      .eq("id", order.customer_id)
+      .maybeSingle();
+
+    return res.json({
+      ...order,
+      customer_name: cust?.name || "Unknown Customer",
+      customer_phone: cust?.phone || "N/A",
+      customer_address: cust?.address || null
+    });
+  } catch (err: any) {
+    return handleSupabaseError(err, res);
+  }
+});
+
+// Full order edit (items, discounts, totals, due date, etc.) — Owner mode required (§5 / §13)
+app.put("/api/orders/:id", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   const orderId = req.params.id;
   const { items, total_amount, discount_type, discount_value, discount_amount, final_total, paid_amount, due_date, status, measurement_snapshot } = req.body;
   const now = new Date().toISOString();
@@ -2163,7 +2484,8 @@ app.delete("/api/orders/:id", requireAuth, requireRole(["Owner"]), requireOwnerM
 
 // -------------------------------------------------------------------------
 // WORKER MANAGEMENT — disabled for V1 (PROJECT.md §5: one account per shop)
-// Multi-seat Worker accounts are out of V1 scope. Use Manager/Owner modes.
+// Runtime auth uses Manager/Owner session modes (requireOwnerMode).
+// profiles.role "Worker" is legacy multi-seat — these routes stay stubbed.
 // -------------------------------------------------------------------------
 const V1_NO_MULTI_SEAT = {
   error:
@@ -2302,12 +2624,12 @@ async function isGarmentTypeUsed(userSupabase: any, userId: string, garmentTypeN
 app.get("/api/garment-types", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     if (useLocalDb()) {
-      const data = db.getGarmentTypes(req.user!.id, req.user!.shop_id);
+      const data = db.getGarmentTypes(req.user!.id, req.user!.shop_id).map(normalizeGarmentTypeRow);
       return res.json(data);
     }
     const userSupabase = getSupabaseClient(req.token);
     const data = await getGarmentTypes(userSupabase, req.user!.id, req.user!.shop_id || "default-shop");
-    return res.json(data);
+    return res.json((data || []).map(normalizeGarmentTypeRow));
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -2706,12 +3028,12 @@ app.get("/api/styling-categories", requireAuth, async (req: AuthenticatedRequest
   const garmentTypeId = req.query.garment_type_id as string | undefined;
   try {
     if (useLocalDb()) {
-      const data = db.getStylingCategories(req.user!.id, garmentTypeId);
+      const data = db.getStylingCategories(req.user!.id, garmentTypeId).map(normalizeStylingCategoryRow);
       return res.json(data);
     }
     const userSupabase = getSupabaseClient(req.token);
     const data = await getStylingCategories(userSupabase, req.user!.id, req.user!.shop_id || "default-shop", garmentTypeId);
-    return res.json(data);
+    return res.json((data || []).map(normalizeStylingCategoryRow));
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -2988,18 +3310,22 @@ app.post("/api/backup", requireAuth, requireRole(["Owner"]), requireOwnerMode, a
       return res.json(backup);
     }
     const userSupabase = getSupabaseClient(req.token);
-    const [profiles, customers, measurements, orders, settings] = await Promise.all([
+    const [profiles, customers, measurements, orders, settings, garmentTypes, stylingCategories] = await Promise.all([
       userSupabase.from("profiles").select("*").eq("created_by", req.user!.id),
       userSupabase.from("customers").select("*").eq("created_by", req.user!.id),
       userSupabase.from("measurements").select("*").eq("created_by", req.user!.id),
       userSupabase.from("orders").select("*").eq("created_by", req.user!.id),
       userSupabase.from("shop_settings").select("*").like("key", `${req.user!.id}:%`),
+      userSupabase.from("garment_types").select("*").eq("created_by", req.user!.id),
+      userSupabase.from("styling_categories").select("*").eq("created_by", req.user!.id),
     ]);
 
     const backup = { timestamp: new Date().toISOString(), version: "1.0", data: {
       profiles: profiles.data || [], customers: customers.data || [],
       measurements: measurements.data || [], orders: orders.data || [],
-      shop_settings: settings.data || []
+      shop_settings: settings.data || [],
+      garment_types: garmentTypes.data || [],
+      styling_categories: stylingCategories.data || [],
     }};
 
     await logAction(req.user!, "SYSTEM_BACKUP", {}, req.token);
@@ -3019,10 +3345,12 @@ app.post("/api/restore", requireAuth, requireRole(["Owner"]), requireOwnerMode, 
     if (useLocalDb()) {
       db.importBackup(backupData.data, req.user!.id);
       db.logAction("SYSTEM_RESTORE", req.user!.id, req.user!.email, req.user!.shop_id, { timestamp: backupData.timestamp });
+      // Ensure restored local rows are pushed to Supabase in the background
+      sync.queueAllLocalDataForSync(req.user!.id, req.token);
       return res.json({ success: true });
     }
     const userSupabase = getSupabaseClient(req.token);
-    const { customers, measurements, orders, shop_settings } = backupData.data;
+    const { customers, measurements, orders, shop_settings, garment_types, styling_categories } = backupData.data;
 
     if (customers && customers.length > 0) {
       const sanitized = customers.map((c: any) => ({ ...c, shop_id: req.user!.shop_id, created_by: req.user!.id, updated_by: req.user!.id }));
@@ -3039,11 +3367,21 @@ app.post("/api/restore", requireAuth, requireRole(["Owner"]), requireOwnerMode, 
       const { error } = await userSupabase.from("orders").upsert(sanitized);
       if (error) throw error;
     }
+    if (garment_types && garment_types.length > 0) {
+      const sanitized = garment_types.map((g: any) => ({ ...g, shop_id: req.user!.shop_id, created_by: req.user!.id, updated_by: req.user!.id }));
+      const { error } = await userSupabase.from("garment_types").upsert(sanitized);
+      if (error) throw error;
+    }
+    if (styling_categories && styling_categories.length > 0) {
+      const sanitized = styling_categories.map((s: any) => ({ ...s, shop_id: req.user!.shop_id, created_by: req.user!.id, updated_by: req.user!.id }));
+      const { error } = await userSupabase.from("styling_categories").upsert(sanitized);
+      if (error) throw error;
+    }
     if (shop_settings && shop_settings.length > 0) {
       const sanitized = shop_settings.map((s: any) => {
         let cleanKey = s.key;
         if (cleanKey.includes(":")) { const parts = cleanKey.split(":"); cleanKey = parts.slice(1).join(":"); }
-        return { key: `${req.user!.id}:${cleanKey}`, value: s.value, updated_at: new Date().toISOString(), updated_by: req.user!.id };
+        return { key: `${req.user!.id}:${cleanKey}`, value: s.value, updated_at: new Date().toISOString(), updated_by: req.user!.id, user_id: req.user!.id };
       });
       const { error } = await userSupabase.from("shop_settings").upsert(sanitized);
       if (error) throw error;
@@ -3100,73 +3438,7 @@ app.post("/api/archive-orders", requireAuth, requireRole(["Owner"]), requireOwne
 // -------------------------------------------------------------------------
 // REPORTS & STATEMENTS (Owner Only)
 // -------------------------------------------------------------------------
-app.get("/api/reports/dashboard", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    if (useLocalDb()) {
-      const stats = db.getDashboardStats(req.user!.id);
-      const orders = db.getOrders(req.user!.id);
-      const settingsMap = db.getSettings(req.user!.id);
-      const stages = settingsMap.pipeline_stages || DEFAULT_SHOP_SETTINGS.pipeline_stages;
-      const orderStatuses: Record<string, number> = {};
-      stages.forEach((s: any) => { orderStatuses[s.name] = orders.filter((o: any) => o.status === s.id).length; });
-      orders.forEach((o: any) => {
-        if (!stages.find((s: any) => s.id === o.status)) {
-          orderStatuses[o.status] = (orderStatuses[o.status] || 0) + 1;
-        }
-      });
-      const popularItems: Record<string, number> = {};
-      orders.forEach((o: any) => {
-        let items: any[];
-        try { items = typeof o.items === "string" ? JSON.parse(o.items) : (o.items || []); } catch { items = []; }
-        items.forEach((item: any) => { popularItems[item.type] = (popularItems[item.type] || 0) + 1; });
-      });
-      return res.json({
-        stats: {
-          totalRevenue: stats.revenue,
-          totalReceived: stats.received,
-          totalPendingDues: Math.max(0, stats.revenue - stats.received),
-          customerCount: stats.totalCustomers,
-          orderCount: stats.totalOrders,
-        },
-        orderStatuses, popularItems
-      });
-    }
-    const userSupabase = getSupabaseClient(req.token);
-    const [ordersRes, customersCountRes, settingsMap] = await Promise.all([
-      userSupabase.from("orders").select("total_amount, final_total, paid_amount, status, items").eq("created_by", req.user!.id),
-      userSupabase.from("customers").select("*", { count: "exact", head: true }).eq("created_by", req.user!.id),
-      getAccountSettings(userSupabase, req.user!.id)
-    ]);
-
-    const orders = ordersRes.data || [];
-    const customerCount = customersCountRes.count || 0;
-    const totalRevenue = orders.reduce((sum, o) => sum + (Number(o.final_total ?? o.total_amount) || 0), 0);
-    const totalReceived = orders.reduce((sum, o) => sum + (Number(o.paid_amount) || 0), 0);
-    const totalPendingDues = Math.max(0, totalRevenue - totalReceived);
-    const stages = settingsMap.pipeline_stages || DEFAULT_SHOP_SETTINGS.pipeline_stages;
-    const orderStatuses: Record<string, number> = {};
-    stages.forEach((s: any) => { orderStatuses[s.name] = orders.filter(o => o.status === s.id).length; });
-    orders.forEach(o => {
-      if (!stages.find((s: any) => s.id === o.status)) {
-        orderStatuses[o.status] = (orderStatuses[o.status] || 0) + 1;
-      }
-    });
-    const popularItems: Record<string, number> = {};
-    orders.forEach(o => {
-      if (Array.isArray(o.items)) {
-        o.items.forEach((item: any) => { popularItems[item.type] = (popularItems[item.type] || 0) + 1; });
-      }
-    });
-
-    return res.json({
-      stats: { totalRevenue, totalReceived, totalPendingDues, customerCount, orderCount: orders.length },
-      orderStatuses, popularItems
-    });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
-});
-
+// Finances overview (Owner-only). Live order totals — no inventory/expenses in V1 (PROJECT.md §2).
 app.get("/api/reports/financials", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   try {
     if (useLocalDb()) {
@@ -3177,43 +3449,44 @@ app.get("/api/reports/financials", requireAuth, requireRole(["Owner"]), requireO
         return { ...o, customer_name: c?.name || "Unknown Customer", customer_phone: c?.phone || "N/A" };
       });
       return res.json({
-        orders: mappedOrders, inventory: [],
-        settings: { currency: settingsMap.currency || "$", pipeline_stages: settingsMap.pipeline_stages || DEFAULT_SHOP_SETTINGS.pipeline_stages }
+        orders: mappedOrders,
+        settings: {
+          currency: settingsMap.currency || "$",
+          pipeline_stages: settingsMap.pipeline_stages || DEFAULT_SHOP_SETTINGS.pipeline_stages,
+        },
       });
     }
     const userSupabase = getSupabaseClient(req.token);
-    const [ordersRes, inventoryRes, settingsMap] = await Promise.all([
-      userSupabase.from("orders").select(`id,order_number,total_amount,final_total,discount_type,discount_value,discount_amount,paid_amount,status,created_at,due_date,items,customer_id,customers(id,name,phone)`).eq("created_by", req.user!.id),
-      userSupabase.from("inventory").select("*").eq("created_by", req.user!.id),
-      getAccountSettings(userSupabase, req.user!.id)
+    const [ordersRes, settingsMap] = await Promise.all([
+      userSupabase
+        .from("orders")
+        .select(
+          `id,order_number,total_amount,final_total,discount_type,discount_value,discount_amount,paid_amount,status,created_at,due_date,items,customer_id,customers(id,name,phone)`
+        )
+        .eq("created_by", req.user!.id),
+      getAccountSettings(userSupabase, req.user!.id),
     ]);
     if (ordersRes.error) throw ordersRes.error;
     const orders = ordersRes.data || [];
-    const inventory = inventoryRes.data || [];
-    const mappedOrders = orders.map((o: any) => ({ ...o, customer_name: o.customers?.name || "Unknown Customer", customer_phone: o.customers?.phone || "N/A" }));
-    return res.json({ orders: mappedOrders, inventory, settings: { currency: settingsMap.currency || "$", pipeline_stages: settingsMap.pipeline_stages || DEFAULT_SHOP_SETTINGS.pipeline_stages } });
+    const mappedOrders = orders.map((o: any) => ({
+      ...o,
+      customer_name: o.customers?.name || "Unknown Customer",
+      customer_phone: o.customers?.phone || "N/A",
+    }));
+    return res.json({
+      orders: mappedOrders,
+      settings: {
+        currency: settingsMap.currency || "$",
+        pipeline_stages: settingsMap.pipeline_stages || DEFAULT_SHOP_SETTINGS.pipeline_stages,
+      },
+    });
   } catch (err: any) {
     console.error("Error in /api/reports/financials:", err);
     return res.status(500).json({ error: err.message });
   }
 });
 
-app.get("/api/audit-logs-debug", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    if (useLocalDb()) {
-      const all = db.getAuditLogs({ limit: 5 });
-      return res.json({ count: all.total, sample: all.data, mode: 'sqlite' });
-    }
-    const userSupabase = getSupabaseClient(req.token);
-    const { data, error, count } = await userSupabase.from("audit_logs").select("*", { count: "exact" }).limit(5);
-    if (error) return res.json({ error: error.message, mode: 'supabase' });
-    return res.json({ count, sample: data, mode: 'supabase' });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
-});
-
-app.get("/api/audit-logs", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+app.get("/api/audit-logs", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const {
       search, from, to, userId, action, module,
@@ -3390,7 +3663,8 @@ app.post("/api/import/customers", requireAuth, requireRole(["Owner"]), requireOw
           shop_id: req.user!.shop_id, created_by: req.user!.id, updated_by: req.user!.id,
         });
         if (create_measurements && measurements && typeof measurements === "object") {
-          db.upsertMeasurement(created.id, req.user!.id, measurements, req.user!.id);
+          const meas = db.upsertMeasurement(created.id, req.user!.id, measurements, req.user!.id);
+          sync.syncAfterMutation("measurements", meas.id, "insert", meas, req.token);
         }
         sync.syncAfterMutation("customers", created.id, "insert", created, req.token);
         results.imported++;

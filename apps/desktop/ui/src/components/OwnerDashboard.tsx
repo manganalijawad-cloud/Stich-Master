@@ -138,10 +138,10 @@ export default function OwnerDashboard({ token, onSettingsUpdated }: OwnerDashbo
   ];
 
   return (
-    <div className="space-y-3">
+    <div className="stack-md">
 
       {/* ─── Compact Tab Navigation ─── */}
-      <div className="flex gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200 w-fit max-w-full overflow-x-auto">
+      <div className="filter-group w-fit max-w-full overflow-x-auto">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isSelected = activeTab === tab.id;
@@ -149,13 +149,9 @@ export default function OwnerDashboard({ token, onSettingsUpdated }: OwnerDashbo
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
-                isSelected
-                  ? 'bg-white text-brand-sidebar shadow-sm border border-slate-200'
-                  : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
-              }`}
+              className={`filter-tab ${isSelected ? 'filter-tab-active' : ''}`}
             >
-              <Icon className={`icon-xs ${isSelected ? 'text-brand-sky' : 'text-slate-400'}`} />
+              <Icon className="icon-xs" />
               {tab.label}
             </button>
           );
@@ -163,7 +159,7 @@ export default function OwnerDashboard({ token, onSettingsUpdated }: OwnerDashbo
       </div>
 
       {/* ─── Content Area ─── */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-hidden">
 
         {activeTab === 'ShopProfile' && (
           <ShopProfile token={token} onSettingsUpdated={onSettingsUpdated} />
@@ -191,6 +187,24 @@ export default function OwnerDashboard({ token, onSettingsUpdated }: OwnerDashbo
 
         {activeTab === 'Backup' && (
           <div className="p-4 space-y-3 animate-fade-in">
+
+            <div className="card-flat space-y-3">
+              <div className="flex items-center gap-2">
+                <Database className="icon-sm text-slate-600 shrink-0" />
+                <div>
+                  <h3 className="text-xs font-bold text-brand-sidebar uppercase tracking-wider">Download backup</h3>
+                  <p className="text-3xs text-slate-500">Save a .json copy of shop data</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={triggerBackupDownload}
+                disabled={backupLoading}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white font-semibold rounded-lg cursor-pointer text-xs uppercase tracking-wider border border-slate-900 transition-colors"
+              >
+                {backupLoading ? 'Preparing…' : 'Download backup'}
+              </button>
+            </div>
 
             <div className="card-flat space-y-3">
               <div className="flex items-center gap-2">

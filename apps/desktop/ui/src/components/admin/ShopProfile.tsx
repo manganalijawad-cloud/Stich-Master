@@ -14,11 +14,13 @@ export default function ShopProfile({ token, onSettingsUpdated }: ShopProfilePro
   const [measurementUnit, setMeasurementUnit] = useState<'Inches' | 'Centimeters' | 'Feet'>('Inches');
   const [autoArchiveDays, setAutoArchiveDays] = useState<number>(30);
   const [shopLogo, setShopLogo] = useState('');
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadSettings = async () => {
+    setLoading(true);
     try {
       const res = await window.fetch('/api/settings', {
         headers: { Authorization: `Bearer ${token}` },
@@ -34,6 +36,7 @@ export default function ShopProfile({ token, onSettingsUpdated }: ShopProfilePro
         setShopLogo(data.shop_logo || '');
       }
     } catch (err) { console.error(err); }
+    finally { setLoading(false); }
   };
 
   useEffect(() => { loadSettings(); }, [token]);
@@ -67,6 +70,14 @@ export default function ShopProfile({ token, onSettingsUpdated }: ShopProfilePro
       setSaving(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="px-4 py-8 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider animate-pulse">
+        Loading shop settings…
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSave} className="divide-y divide-slate-100 animate-fade-in">

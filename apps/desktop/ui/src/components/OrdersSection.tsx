@@ -10,8 +10,19 @@ import { printPage } from '../lib/print';
 import { validateGarmentMeasurementsCompleted } from '../lib/validation';
 import { createCustomerWithMeasurements } from '../lib/createCustomer';
 import { buildOrderQrPayload, parseOrderQrPayload } from '../lib/orderQr';
+import { formatMoney } from '../lib/format';
+import {
+  CustomerName,
+  DeliveryDateText,
+  MoneyTotal,
+  OrderId,
+  PaymentChip,
+  StatusBadge,
+} from './ui/ScanValue';
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
+import { localDataStore } from '../lib/localDataStore';
+import { useLocalData, cacheCustomer, cacheMeasurements } from '../lib/useLocalData';
 
 /** True when a customer profile has at least one non-empty measurement value. */
 function profileHasSavedMeasurements(profile: MeasurementProfile): boolean {
@@ -71,7 +82,8 @@ export default function OrdersSection({
 
   // Active stages for the queue columns (except Archived and only enabled)
   const activeQueueStages = stagesList.filter(s => s.enabled && s.id !== 'Archived' && s.name.toLowerCase() !== 'archived');
-  const activeWorkflowStages = stagesList.filter(s => s.enabled);
+  // Progression stages — never auto-advance into Archived from QR/main "next" actions
+  const activeWorkflowStages = stagesList.filter(s => s.enabled && s.id !== 'Archived' && s.name.toLowerCase() !== 'archived');
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeFilter, setActiveFilter] = useState<string | 'All'>('All');
@@ -236,9 +248,10 @@ export default function OrdersSection({
   const [newCustGarmentTypeId, setNewCustGarmentTypeId] = useState('');
   const [newCustMeasurements, setNewCustMeasurements] = useState<Record<string, string | number>>({});
 
-  // settings data
-  const [garmentTypes, setGarmentTypes] = useState<GarmentType[]>([]);
-  const [stylingCategories, setStylingCategories] = useState<StylingCategory[]>([]);
+  // settings data — offline bootstrap cache
+  const localData = useLocalData();
+  const garmentTypes = localData.garmentTypes as GarmentType[];
+  const stylingCategories = localData.stylingCategories as StylingCategory[];
   const [customerProfiles, setCustomerProfiles] = useState<MeasurementProfile[]>([]);
   const [bookingItems, setBookingItems] = useState<BookingItem[]>([]);
   const [manuallyEditedPriceIds, setManuallyEditedPriceIds] = useState<Set<string>>(new Set());
@@ -462,78 +475,32 @@ export default function OrdersSection({
     }
   }, [selectedOrder?.id, showCustomerHistory]);
 
-  // Fetch Garment Types and Styling Categories
-  useEffect(() => {
-    const fetchGarmentAndStyling = async () => {
-      try {
-        const [garmentRes, stylingRes] = await Promise.all([
-          fetch('/api/garment-types', { headers: { Authorization: `Bearer ${token}` } }),
-          fetch('/api/styling-categories', { headers: { Authorization: `Bearer ${token}` } })
-        ]);
-        if (garmentRes.ok) {
-          const gData = await garmentRes.json();
-          setGarmentTypes(gData);
-        }
-        if (stylingRes.ok) {
-          const sData = await stylingRes.json();
-          setStylingCategories(sData);
-        }
-      } catch (err) {
-        console.error('Error fetching garment types & styling categories:', err);
-      }
-    };
-    fetchGarmentAndStyling();
-  }, [token]);
+  // Reference data comes from localDataStore bootstrap — no per-tab network fetch
 
-  // Debounced Customer Search
+  // Instant local customer search for booking
   useEffect(() => {
     if (bookingStep !== 'customer' || !customerSearch.trim()) {
       setSearchResults([]);
+      setSearching(false);
       return;
     }
-    const delayDebounce = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const res = await fetch(`/api/customers?q=${encodeURIComponent(customerSearch)}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setSearchResults(data);
-        }
-      } catch (err) {
-        console.error('Error searching customers:', err);
-      } finally {
-        setSearching(false);
-      }
-    }, 300);
+    if (!localData.ready) {
+      setSearching(localData.hydrating);
+      return;
+    }
+    setSearching(false);
+    setSearchResults(localDataStore.searchCustomers(customerSearch, 30));
+  }, [customerSearch, bookingStep, localData.ready, localData.version, localData.hydrating]);
 
-    return () => clearTimeout(delayDebounce);
-  }, [customerSearch, bookingStep, token]);
-
-  // Debounced check if inline new customer name already exists in database
+  // Instant duplicate-name check from local cache
   useEffect(() => {
     if (!newCustName.trim()) {
       setIsNameDuplicate(false);
       return;
     }
-    const checkDuplicate = async () => {
-      try {
-        const res = await fetch(`/api/customers?q=${encodeURIComponent(newCustName.trim())}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const hasMatch = data.some((c: Customer) => c.name.toLowerCase() === newCustName.trim().toLowerCase());
-          setIsNameDuplicate(hasMatch);
-        }
-      } catch (err) {
-        console.error('Error checking duplicate name:', err);
-      }
-    };
-    const delay = setTimeout(checkDuplicate, 450);
-    return () => clearTimeout(delay);
-  }, [newCustName, token]);
+    if (!localData.ready) return;
+    setIsNameDuplicate(localDataStore.nameExists(newCustName));
+  }, [newCustName, localData.ready, localData.version]);
 
   // Helper to create a single booking item (optional profiles override for init-before-state-settles)
   const createDefaultBookingItem = (
@@ -580,76 +547,96 @@ export default function OrdersSection({
     };
   };
 
-  // Load customer profiles and initialize booking items when customer selected
+  const applyProfilesToBooking = (parsedProfiles: MeasurementProfile[]) => {
+    setCustomerProfiles(parsedProfiles);
+    setBookingItems(prev => {
+      if (prev.length > 0 || garmentTypes.length === 0) return prev;
+      const typesWithMeasurements = garmentTypes
+        .filter(g => g.enabled !== false)
+        .filter(g => {
+          const profile = parsedProfiles.find(p => p.garment_type_id === g.id);
+          return !!profile && profileHasSavedMeasurements(profile);
+        })
+        .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+
+      const fallbackType = garmentTypes.find(g => g.enabled) || garmentTypes[0];
+      const typesToPreselect = typesWithMeasurements.length > 0
+        ? typesWithMeasurements
+        : (fallbackType ? [fallbackType] : []);
+
+      return typesToPreselect.map(gt => createDefaultBookingItem(gt, parsedProfiles));
+    });
+  };
+
+  // Auto-load measurements from local cache when customer selected
   useEffect(() => {
     if (!customer) {
       setCustomerProfiles([]);
       return;
     }
-    const loadProfiles = async () => {
+
+    const cachedProfiles = localDataStore.getProfiles(customer.id);
+    const cachedEntry = localDataStore.getMeasurements(customer.id);
+    if (cachedEntry || cachedProfiles.length > 0) {
+      applyProfilesToBooking(cachedProfiles);
+      return;
+    }
+
+    void (async () => {
       try {
         const res = await fetch(`/api/customers/${customer.id}/measurements`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (res.ok) {
           const mData = await res.json();
+          cacheMeasurements(customer.id, {
+            id: mData.id,
+            customer_id: customer.id,
+            data: mData.data || {},
+            created_at: mData.created_at,
+            updated_at: mData.updated_at,
+          });
           const rawData = mData.data || {};
-          let parsedProfiles: MeasurementProfile[] = [];
-          if (Array.isArray(rawData.profiles)) {
-            parsedProfiles = rawData.profiles;
-          }
-          setCustomerProfiles(parsedProfiles);
-
-          // Only initialize bookingItems if empty — pre-select every garment with saved measurements
-          if (bookingItems.length === 0 && garmentTypes.length > 0) {
-            const typesWithMeasurements = garmentTypes
-              .filter(g => g.enabled !== false)
-              .filter(g => {
-                const profile = parsedProfiles.find(p => p.garment_type_id === g.id);
-                return !!profile && profileHasSavedMeasurements(profile);
-              })
-              .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
-
-            const fallbackType = garmentTypes.find(g => g.enabled) || garmentTypes[0];
-            const typesToPreselect = typesWithMeasurements.length > 0
-              ? typesWithMeasurements
-              : (fallbackType ? [fallbackType] : []);
-
-            if (typesToPreselect.length > 0) {
-              setBookingItems(typesToPreselect.map(gt => createDefaultBookingItem(gt, parsedProfiles)));
-            }
-          }
+          const parsedProfiles: MeasurementProfile[] = Array.isArray(rawData.profiles) ? rawData.profiles : [];
+          applyProfilesToBooking(parsedProfiles);
         }
       } catch (err) {
         console.error('Error loading customer profiles:', err);
       }
-    };
-    loadProfiles();
-  }, [customer, garmentTypes, stylingCategories]);
+    })();
+  }, [customer, garmentTypes, stylingCategories, localData.version, token]);
 
   // Load active customer if passed for order creation
   useEffect(() => {
-    if (activeCustomerId) {
-      const fetchCustomerDetails = async () => {
-        try {
-          const res = await fetch(`/api/customers/${activeCustomerId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (res.ok) {
-            const matched = await res.json();
-            setCustomer(matched);
-            setIsCreating(true);
-            setBookingStep('garments');
-            setSelectedOrder(null);
-            setBookingItems([]); // Reset so profiles hook can populate it
-          }
-        } catch (err) {
-          console.error('Error fetching customer details for order:', err);
-        }
-      };
-      fetchCustomerDetails();
+    if (!activeCustomerId) return;
+    const cached = localDataStore.getCustomerById(activeCustomerId);
+    if (cached) {
+      setCustomer(cached);
+      setIsCreating(true);
+      setBookingStep('garments');
+      setSelectedOrder(null);
+      setBookingItems([]);
+      return;
     }
-  }, [activeCustomerId, token]);
+    void (async () => {
+      try {
+        const res = await fetch(`/api/customers/${activeCustomerId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const matched = await res.json();
+          cacheCustomer(matched);
+          setCustomer(matched);
+          setIsCreating(true);
+          setBookingStep('garments');
+          setSelectedOrder(null);
+          setBookingItems([]);
+        }
+      } catch (err) {
+        console.error('Error fetching customer details for order:', err);
+      }
+    })();
+  }, [activeCustomerId, token, localData.version]);
 
   const startNewBooking = () => {
     setCustomer(null);
@@ -875,6 +862,11 @@ export default function OrdersSection({
       }
 
       setCustomerProfiles(updatedProfiles);
+      cacheMeasurements(customer.id, {
+        customer_id: customer.id,
+        data: { profiles: updatedProfiles },
+        updated_at: new Date().toISOString(),
+      });
 
       // Calculate totals
       const totalAmountVal = bookingItems.reduce((sum, item) => sum + (Number(item.price) || 0) * (item.quantity || 1), 0);
@@ -937,7 +929,38 @@ export default function OrdersSection({
     setEditedTotal(total);
   }, [editedItems]);
 
-  // Status transitions
+  // Shared deliver gate: opens payment dialog when dues exist. Used by main pipeline + QR.
+  // Returns true if the payment dialog was opened (caller must not advance status yet).
+  const openDeliverPaymentIfNeeded = async (order: Order): Promise<boolean> => {
+    const remaining = getOrderRemaining(order);
+
+    let otherDueOrders: Order[] = [];
+    let otherDues = 0;
+    try {
+      const otherRes = await fetch(`/api/customers/${order.customer_id}/orders`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (otherRes.ok) {
+        const otherOrders: Order[] = await otherRes.json();
+        otherDueOrders = (otherOrders || [])
+          .filter((o) => o.id !== order.id && o.status !== 'Archived' && getOrderRemaining(o) > 0)
+          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        otherDues = otherDueOrders.reduce((sum, o) => sum + getOrderRemaining(o), 0);
+      }
+    } catch {}
+
+    if (remaining > 0 || otherDues > 0) {
+      setPendingDeliverOrder(order);
+      setPendingOtherDueOrders(otherDueOrders);
+      setCollectAmount(remaining + otherDues);
+      setOldDues(otherDues);
+      setShowPaymentDialog(true);
+      return true;
+    }
+    return false;
+  };
+
+  // Status transitions (main order detail / queue actions)
   const advanceOrderStatus = async (order: Order) => {
     const activeWorkflowStageIds = activeWorkflowStages.map(s => s.id);
     const currentIndex = activeWorkflowStageIds.indexOf(order.status);
@@ -946,51 +969,19 @@ export default function OrdersSection({
     const nextStatus = activeWorkflowStageIds[currentIndex + 1];
 
     if (nextStatus === 'Delivered') {
-      const remaining = getOrderRemaining(order);
-
-      let otherDueOrders: Order[] = [];
-      let otherDues = 0;
-      try {
-        const otherRes = await fetch(`/api/customers/${order.customer_id}/orders`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (otherRes.ok) {
-          const otherOrders: Order[] = await otherRes.json();
-          otherDueOrders = (otherOrders || [])
-            .filter((o) => o.id !== order.id && o.status !== 'Archived' && getOrderRemaining(o) > 0)
-            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-          otherDues = otherDueOrders.reduce((sum, o) => sum + getOrderRemaining(o), 0);
-        }
-      } catch {}
-
-      if (remaining > 0 || otherDues > 0) {
-        setPendingDeliverOrder(order);
-        setPendingOtherDueOrders(otherDueOrders);
-        setCollectAmount(remaining + otherDues);
-        setOldDues(otherDues);
-        setShowPaymentDialog(true);
-        return;
-      }
+      const needsPayment = await openDeliverPaymentIfNeeded(order);
+      if (needsPayment) return;
     }
 
     await updateOrderStatus(order, nextStatus);
   };
 
+  // Manager-allowed: collect/adjust paid amount only (does not require Owner mode)
   const applyPaidAmountUpdate = async (order: Order, newPaidAmount: number): Promise<Order | null> => {
-    const res = await fetch(`/api/orders/${order.id}`, {
+    const res = await fetch(`/api/orders/${order.id}/payment`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        items: order.items,
-        total_amount: order.total_amount,
-        discount_type: order.discount_type,
-        discount_value: order.discount_value,
-        discount_amount: order.discount_amount,
-        final_total: order.final_total,
-        paid_amount: newPaidAmount,
-        due_date: order.due_date,
-        measurement_snapshot: order.measurement_snapshot,
-      }),
+      body: JSON.stringify({ paid_amount: newPaidAmount }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -1069,10 +1060,22 @@ export default function OrdersSection({
     }
   };
 
-  // Edit Order Submission (Owner Only)
+  // Exit edit form if Owner mode expires while editing
+  useEffect(() => {
+    if (!isOwnerMode && isEditing) {
+      setIsEditing(false);
+      setEditError(null);
+    }
+  }, [isOwnerMode, isEditing]);
+
+  // Edit Order Submission (Owner mode required — server also enforces)
   const handleEditOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedOrder) return;
+    if (!isOwnerMode) {
+      setEditError('Owner mode required to edit order details. Unlock Owner mode with your password.');
+      return;
+    }
 
     setEditError(null);
 
@@ -1116,7 +1119,33 @@ export default function OrdersSection({
   };
 
   const handleEditAddItem = () => {
-    setEditedItems(prev => [...prev, { type: 'Suit', price: 0, notes: '' }]);
+    const fallbackType = garmentTypes.find(g => g.enabled) || garmentTypes[0];
+    if (!fallbackType) return;
+
+    const measurement_snapshot: Record<string, string | number> = {};
+    fallbackType.measurement_fields.forEach(f => {
+      measurement_snapshot[f.name] = '';
+    });
+
+    const styling_snapshot: Record<string, string> = {};
+    const enabledCategories = stylingCategories.filter(
+      sc => sc.garment_type_id === fallbackType.id && sc.options && sc.options.some(o => o.enabled)
+    );
+    enabledCategories.forEach(cat => {
+      const firstEnabled = cat.options.find(o => o.enabled);
+      if (firstEnabled) {
+        styling_snapshot[cat.id] = firstEnabled.id;
+      }
+    });
+
+    setEditedItems(prev => [...prev, {
+      type: fallbackType.name,
+      price: fallbackType.price || 0,
+      notes: '',
+      color: '',
+      measurement_snapshot,
+      styling_snapshot,
+    }]);
   };
 
   const handleEditRemoveItem = (index: number) => {
@@ -1179,22 +1208,8 @@ export default function OrdersSection({
     }, 100);
   };
 
-  // Color-coded status helpers mapping strictly to Professional Polish rules
-  const getStatusBadgeStyle = (status: OrderStatus) => {
-    switch (status) {
-      case 'Ready':
-      case 'Ready to Deliver':
-        return 'bg-emerald-100 text-emerald-700 border border-green-200';
-      case 'Delivered':
-        return 'bg-slate-100 text-slate-600 border border-slate-200';
-      case 'Archived':
-        return 'bg-purple-100 text-purple-700 border border-purple-200';
-      case 'Pending':
-        return 'bg-blue-100 text-blue-700 border border-blue-100';
-      default: // Cutting, Stitching, Fitting
-        return 'bg-amber-100 text-amber-700 border border-yellow-200';
-    }
-  };
+  // Status badge styles live in lib/statusUi + ScanValue StatusBadge
+
 
   // CAMERA SCANNER & OVERLAY HELPERS
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
@@ -1302,41 +1317,31 @@ export default function OrdersSection({
     };
   }, [isScannerOpen, scannerActiveTab]);
 
-  // Update status from Scanned Garment Compact Action Screen
+  // Update status from Scanned Garment Compact Action Screen (same deliver/payment gate as main pipeline)
   const handleUpdateScannedStatus = async (nextStatus: string) => {
     if (!scannedGarmentItem) return;
     const { order } = scannedGarmentItem;
-    
+
     setUpdatingStatus(true);
     try {
-      const res = await fetch(`/api/orders/${order.id}/status`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status: nextStatus }),
-      });
-      
-      if (res.ok) {
-        const updatedOrder = await res.json();
-        const mergedOrder: Order = { ...order, ...updatedOrder, status: nextStatus as OrderStatus };
-        
-        setOrders((prev) => prev.map(o => o.id === order.id ? mergedOrder : o));
-        
-        if (selectedOrder && selectedOrder.id === order.id) {
-          setSelectedOrder(mergedOrder);
+      if (nextStatus === 'Delivered') {
+        const needsPayment = await openDeliverPaymentIfNeeded(order);
+        if (needsPayment) {
+          // Payment dialog takes over; close scanned modal to avoid stacked overlays
+          setScannedGarmentItem(null);
+          return;
         }
+      }
 
+      const mergedOrder = await updateOrderStatus(order, nextStatus);
+      if (mergedOrder) {
+        setScannedGarmentItem((prev) => (prev ? { ...prev, order: mergedOrder } : null));
         setUpdateSuccessState(true);
         setTimeout(() => {
           setUpdateSuccessState(false);
           setScannedGarmentItem(null);
           fetchOrders();
         }, 1200);
-      } else {
-        const errData = await res.json();
-        alert(errData.error || 'Failed to update garment stage.');
       }
     } catch (err) {
       console.error('Error updating garment stage:', err);
@@ -1355,13 +1360,13 @@ export default function OrdersSection({
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
+    <div className={`grid grid-cols-1 gap-3 items-stretch min-h-0 ${isCreating ? '' : 'lg:grid-cols-12 lg:h-full'}`}>
       
       {/* LEFT COLUMN: Queue / Filters */}
       {!isCreating && (
-        <div className="lg:col-span-5 card space-y-2 overflow-y-auto">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-black text-slate-900 tracking-tight font-display uppercase">
+        <div className="lg:col-span-5 card stack-sm flex flex-col min-h-0 overflow-hidden lg:h-full">
+          <div className="flex items-center justify-between gap-2 shrink-0">
+            <h2 className="text-h2">
               {viewMode === 'Active' ? 'Open orders' : 'Finished orders'}
             </h2>
             {!isCreating && (
@@ -1369,25 +1374,21 @@ export default function OrdersSection({
                 onClick={startNewBooking}
                 className="btn-primary"
               >
-                <ShoppingCart className="icon-sm text-brand-sky" />
+                <ShoppingCart className="icon-sm" />
                 Book Order
               </button>
             )}
           </div>
 
           {/* Segmented Control for Active vs Archived */}
-          <div className="grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200/60">
+          <div className="grid grid-cols-2 filter-group shrink-0">
             <button
               type="button"
               onClick={() => {
                 setViewMode('Active');
                 setActiveFilter('All');
               }}
-              className={`py-1.5 text-sm font-semibold rounded-md cursor-pointer transition-[background-color,color,box-shadow] text-center uppercase tracking-wider ${
-                viewMode === 'Active'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
+              className={`filter-tab ${viewMode === 'Active' ? 'filter-tab-active' : ''}`}
             >
               Open orders
             </button>
@@ -1397,19 +1398,15 @@ export default function OrdersSection({
                 setViewMode('Archived');
                 setActiveFilter('Archived');
               }}
-              className={`py-1.5 text-sm font-semibold rounded-md cursor-pointer transition-[background-color,color,box-shadow] text-center uppercase tracking-wider ${
-                viewMode === 'Archived'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
+              className={`filter-tab ${viewMode === 'Archived' ? 'filter-tab-active' : ''}`}
             >
               Finished orders
             </button>
           </div>
 
-          {/* Status Filters - Styled as elegant tabs - Only shown in Active view mode */}
+          {/* Status Filters - Only shown in Active view mode */}
           {viewMode === 'Active' ? (
-            <div className="flex flex-wrap gap-1.5 bg-slate-50/50 p-2 rounded-lg border border-slate-200/50 justify-center">
+            <div className="filter-group justify-center shrink-0">
               {['All', ...activeQueueStages.map(s => s.id)].map((tabId) => {
                 const isSelected = activeFilter === tabId;
                 const tabName = tabId === 'All' ? 'All' : (stagesList.find(s => s.id === tabId)?.name || tabId);
@@ -1418,11 +1415,7 @@ export default function OrdersSection({
                     key={tabId}
                     type="button"
                     onClick={() => setActiveFilter(tabId)}
-                    className={`px-3 py-1 rounded-md text-xs font-semibold transition-[background-color,color,box-shadow] cursor-pointer text-center uppercase tracking-wider ${
-                      isSelected
-                        ? 'bg-brand-active text-white shadow-sm'
-                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
-                    }`}
+                    className={`filter-tab ${isSelected ? 'filter-tab-solid' : ''}`}
                     title={tabName}
                   >
                     {tabName}
@@ -1431,74 +1424,80 @@ export default function OrdersSection({
               })}
             </div>
           ) : (
-            <div className="p-2 bg-purple-50 rounded-lg border border-purple-100 text-center text-purple-700 text-xs font-semibold uppercase tracking-wider">
+            <div className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-center text-secondary text-xs font-semibold uppercase tracking-wider shrink-0">
               Showing finished orders
             </div>
           )}
 
           {/* Search & Scanner */}
-          <div className="space-y-1.5">
-            <div className="flex gap-1.5">
+          <div className="stack-sm flex-1 min-h-0 flex flex-col">
+            <div className="flex gap-2 shrink-0">
               <div className="relative flex-1">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 icon-xs text-slate-400" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search order #, customer name..."
-                  className="w-full pl-7 pr-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 font-medium focus-visible:outline-none focus:border-brand-sky focus:ring-2 focus:ring-sky-100 transition-[border-color]"
+                  className="input-base pl-8"
                 />
               </div>
               <button
                 type="button"
                 onClick={() => setIsScannerOpen(true)}
-                className="px-2.5 py-1.5 bg-brand-bg hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg flex items-center justify-center gap-1 cursor-pointer text-3xs font-semibold uppercase tracking-wide transition-[background-color]"
+                className="btn-secondary"
                 title="Scan QR Code from Device Camera"
               >
-                <QrCode className="w-3 h-3 text-brand-sky" />
+                <QrCode className="icon-sm" />
                 <span className="hidden sm:inline">Scan QR</span>
               </button>
             </div>
 
-            {/* Active List */}
-            <div className="space-y-1 max-h-[60vh] overflow-y-auto pr-0.5">
-              {loading && <p className="text-center text-slate-400 text-xs font-semibold uppercase tracking-wider py-3">Refreshing Queue...</p>}
+            {/* Active List — only scroll owner in this column */}
+            <div className="panel-scroll space-y-1.5 pr-0.5">
+              {loading && (
+                <p className="text-center text-muted text-xs font-semibold uppercase tracking-wider py-3">
+                  Refreshing Queue...
+                </p>
+              )}
               {!loading && orders.length === 0 && (
-                <p className="text-center text-slate-400 py-6 text-xs font-semibold uppercase tracking-wider">No active orders.</p>
+                <div className="empty-state py-8">
+                  <ShoppingCart className="empty-state-icon" aria-hidden="true" />
+                  <p className="empty-state-title">No orders here</p>
+                  <p className="empty-state-text">
+                    {viewMode === 'Active'
+                      ? 'Book a new order or clear filters to see the queue.'
+                      : 'Finished orders will appear in this list.'}
+                  </p>
+                </div>
               )}
               {orders.map((o) => {
                 const isSelected = selectedOrder?.id === o.id;
+                const remaining = (o.final_total ?? o.total_amount) - o.paid_amount;
                 return (
                   <button
                     key={o.id}
                     onClick={() => selectOrderWithDetails(o)}
-                    className={`w-full p-2 rounded-lg text-left border transition-[background-color,border-color,box-shadow] flex items-center justify-between cursor-pointer ${
-                      isSelected
-                        ? 'bg-sky-50/70 border-sky-400 shadow-xs'
-                        : 'bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300'
-                    }`}
+                    className={`list-row ${isSelected ? 'list-row-selected' : ''}`}
                   >
-                    <div className="space-y-0.5 min-w-0 flex-1 mr-2">
+                    <div className="space-y-1 min-w-0 flex-1 mr-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-3xs font-semibold text-slate-400 font-mono tracking-wide">{o.order_number}</span>
-                        <span className={`px-1.5 py-0.5 rounded text-3xs font-semibold uppercase leading-tight ${getStatusBadgeStyle(o.status)}`}>
-                          {stagesList.find(s => s.id === o.status)?.name || o.status}
-                        </span>
+                        <OrderId value={o.order_number} />
+                        <StatusBadge
+                          status={o.status}
+                          label={stagesList.find(s => s.id === o.status)?.name || o.status}
+                        />
                       </div>
-                      <p className="text-xs font-semibold text-slate-900">{o.customer_name}</p>
-                      <p className="text-3xs text-slate-400 font-semibold uppercase tracking-wider">Due: {new Date(o.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p>
+                      <CustomerName name={o.customer_name} as="p" className="truncate" />
+                      <DeliveryDateText dueDate={o.due_date} className="text-3xs uppercase tracking-wider" />
                     </div>
-                    <div className="text-right space-y-0.5 shrink-0">
-                      <span className="text-sm font-black text-slate-900 block font-display leading-tight">
-                        {currency}{o.total_amount}
-                      </span>
-                      {(o.final_total ?? o.total_amount) - o.paid_amount > 0 ? (
-                        <span className="inline-block text-3xs bg-red-50 text-red-700 font-semibold px-1.5 py-0.5 rounded border border-red-100">
-                          Due {currency}{(o.final_total ?? o.total_amount) - o.paid_amount}
-                        </span>
-                      ) : (
-                        <span className="inline-block text-3xs bg-emerald-50 text-emerald-700 font-semibold px-1.5 py-0.5 rounded border border-emerald-100">Paid</span>
-                      )}
+                    <div className="text-right space-y-1 shrink-0">
+                      <MoneyTotal
+                        currency={currency}
+                        amount={o.total_amount}
+                        className="text-sm block leading-tight"
+                      />
+                      <PaymentChip currency={currency} remaining={remaining} />
                     </div>
                   </button>
                 );
@@ -1507,7 +1506,7 @@ export default function OrdersSection({
                 <button
                   onClick={loadMoreOrders}
                   disabled={loading}
-                  className="w-full mt-2 py-2 px-4 bg-white hover:bg-slate-50 text-slate-600 font-semibold text-xs uppercase tracking-wider rounded-lg border border-slate-200 cursor-pointer text-center flex items-center justify-center gap-1.5 transition-[background-color,border-color] hover:border-slate-300"
+                  className="btn-secondary w-full mt-1"
                 >
                   {loading ? 'Loading...' : 'Load More Orders'}
                 </button>
@@ -1518,7 +1517,7 @@ export default function OrdersSection({
       )}
 
       {/* RIGHT COLUMN: Action Forms or Details */}
-      <div className={`${isCreating ? 'lg:col-span-12' : 'lg:col-span-7'} card space-y-3`}>
+      <div className={`${isCreating ? 'lg:col-span-12' : 'lg:col-span-7 lg:h-full'} card stack-md min-h-0 overflow-x-hidden overflow-y-auto`}>
         
         {isCreating ? (
           <div className="space-y-4">
@@ -1556,10 +1555,10 @@ export default function OrdersSection({
                 const isActive = bookingStep === step.key;
                 const isDone = step.done && !isActive;
                 return (
-                  <div key={step.key} className={`flex items-center ${isActive ? 'text-sky-600' : isDone ? 'text-emerald-600' : 'text-slate-400'}`}>
-                    {i > 0 && <div className={`w-8 h-px mx-1.5 ${isDone || isActive ? 'bg-emerald-400' : 'bg-slate-300'}`} />}
+                  <div key={step.key} className={`flex items-center ${isActive ? 'text-feedback-info' : isDone ? 'text-feedback-success' : 'text-muted'}`}>
+                    {i > 0 && <div className={`w-8 h-px mx-1.5 ${isDone || isActive ? 'bg-success-200' : 'bg-slate-300'}`} />}
                     <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs ${
-                      isActive ? 'bg-sky-50 border border-sky-200 font-black' : isDone ? 'font-semibold' : 'font-semibold'
+                      isActive ? 'bg-info-50 border border-info-200 font-bold' : 'font-semibold'
                     }`}>
                       {isDone ? <Check className="icon-xs" /> : <>{i + 1}. </>}
                       {step.label}
@@ -1985,13 +1984,11 @@ export default function OrdersSection({
                 <div className="space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                      <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Total</span>
-                      <span className="text-2xl font-black text-slate-800 font-display">
-                        {currency}{rawTotal}
-                      </span>
+                      <span className="text-label mb-0">Total</span>
+                      <MoneyTotal currency={currency} amount={rawTotal} className="text-2xl block mt-1" />
                     </div>
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Paid Amount ({currency})</label>
+                      <label className="text-label">Paid Amount ({currency})</label>
                       <input
                         type="number"
                         min="0"
@@ -2030,10 +2027,19 @@ export default function OrdersSection({
                       />
                     </div>
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                      <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">Remaining</span>
-                      <span className="text-2xl font-black text-slate-800 font-display">
-                        {currency}{Math.max(0, finalTotal - (paidAmount === '' ? 0 : Number(paidAmount)))}
-                      </span>
+                      <span className="text-label mb-0">Remaining</span>
+                      {(() => {
+                        const rem = Math.max(0, finalTotal - (paidAmount === '' ? 0 : Number(paidAmount)));
+                        return rem > 0 ? (
+                          <span className="text-2xl text-money-due font-display block mt-1">
+                            {formatMoney(currency, rem)}
+                          </span>
+                        ) : (
+                          <span className="text-2xl text-money-paid font-display block mt-1">
+                            {formatMoney(currency, 0)}
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -2415,17 +2421,20 @@ export default function OrdersSection({
                 <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-4 gap-3">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-black text-xl text-slate-900 tracking-tight font-display">{selectedOrder.order_number}</span>
-                      <span className={`px-2 py-0.5 rounded text-3xs font-extrabold uppercase leading-tight ${getStatusBadgeStyle(selectedOrder.status)}`}>
-                        {selectedOrder.status}
-                      </span>
+                      <OrderId value={selectedOrder.order_number} className="!text-xl !font-bold font-display tracking-tight" />
+                      <StatusBadge
+                        status={selectedOrder.status}
+                        label={stagesList.find(s => s.id === selectedOrder.status)?.name || selectedOrder.status}
+                      />
                       {selectedOrder.items && (
-                        <span className="text-xs font-semibold text-slate-400 font-mono bg-slate-100 px-2 py-0.5 rounded-md">Total Items: {selectedOrder.items.length}</span>
+                        <span className="text-xs font-semibold text-secondary font-mono bg-slate-100 px-2 py-0.5 rounded-md">
+                          {selectedOrder.items.length} item{selectedOrder.items.length !== 1 ? 's' : ''}
+                        </span>
                       )}
                     </div>
-                    <p className="font-semibold text-base text-slate-800">{selectedOrder.customer_name}</p>
-                    <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">
-                      Contact: <span className="text-slate-700 font-semibold">{selectedOrder.customer_phone && !selectedOrder.customer_phone.startsWith('NO-PHONE-') ? selectedOrder.customer_phone : 'Not Provided'}</span>
+                    <CustomerName name={selectedOrder.customer_name} as="p" className="!text-base" />
+                    <p className="text-xs text-secondary">
+                      Contact: <span className="text-primary">{selectedOrder.customer_phone && !selectedOrder.customer_phone.startsWith('NO-PHONE-') ? selectedOrder.customer_phone : 'Not Provided'}</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -2434,12 +2443,11 @@ export default function OrdersSection({
                           }
                           setShowCustomerHistory(!showCustomerHistory);
                         }}
-                        className="ml-2 px-1.5 py-0.5 rounded text-3xs font-semibold uppercase tracking-wider border cursor-pointer transition-[background-color,border-color]"
-                        style={{
-                          backgroundColor: showCustomerHistory ? 'rgb(14 165 233)' : 'rgb(248 250 252)',
-                          color: showCustomerHistory ? 'white' : 'rgb(14 165 233)',
-                          borderColor: showCustomerHistory ? 'rgb(14 165 233)' : 'rgb(14 165 233)',
-                        }}
+                        className={`ml-2 px-1.5 py-0.5 rounded text-3xs font-semibold uppercase tracking-wider border cursor-pointer transition-colors ${
+                          showCustomerHistory
+                            ? 'bg-brand-sidebar text-white border-brand-sidebar'
+                            : 'bg-slate-50 text-secondary border-slate-300 hover:border-slate-400'
+                        }`}
                       >
                         {showCustomerHistory ? 'Hide History' : 'Order History'}
                       </button>
@@ -2455,7 +2463,7 @@ export default function OrdersSection({
                       Print
                     </button>
 
-                    {selectedOrder.status !== 'Delivered' && selectedOrder.status !== 'Archived' && (
+                    {isOwnerMode && selectedOrder.status !== 'Delivered' && selectedOrder.status !== 'Archived' && (
                       <button
                         onClick={() => {
                           setEditedItems([...(selectedOrder.items || [])]);
@@ -2519,43 +2527,42 @@ export default function OrdersSection({
                     </div>
                     <div className="max-h-[40vh] overflow-y-auto divide-y divide-slate-100 bg-white">
                       {loadingCustomerHistory && customerOrders.length === 0 && (
-                        <div className="p-4 text-center text-slate-400 text-xs font-semibold uppercase tracking-wider">Loading history...</div>
+                        <div className="empty-state py-6">
+                          <p className="empty-state-text">Loading history...</p>
+                        </div>
                       )}
                       {!loadingCustomerHistory && customerOrders.length === 0 && (
-                        <div className="p-4 text-center text-slate-400 text-xs font-semibold uppercase tracking-wider">No previous orders for this customer.</div>
+                        <div className="empty-state py-6">
+                          <p className="empty-state-title">No previous orders</p>
+                          <p className="empty-state-text">This customer has no other orders yet.</p>
+                        </div>
                       )}
                       {customerOrders.map((o) => {
                         const isCurrentOrder = selectedOrder?.id === o.id;
+                        const remaining = (o.final_total ?? o.total_amount) - o.paid_amount;
                         return (
                           <button
                             key={o.id}
                             onClick={() => selectOrderWithDetails(o)}
-                            className={`w-full p-2.5 text-left border-0 transition-[background-color] flex items-center justify-between cursor-pointer ${
+                            className={`w-full p-2.5 text-left border-0 transition-colors flex items-center justify-between cursor-pointer ${
                               isCurrentOrder
-                                ? 'bg-sky-50/70'
+                                ? 'bg-info-50'
                                 : 'bg-white hover:bg-slate-50'
                             }`}
                           >
-                            <div className="space-y-0.5 min-w-0 flex-1 mr-2">
+                            <div className="space-y-1 min-w-0 flex-1 mr-2">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="text-3xs font-semibold text-slate-400 font-mono tracking-wide">{o.order_number}</span>
-                                <span className={`px-1.5 py-0.5 rounded text-3xs font-semibold uppercase leading-tight ${getStatusBadgeStyle(o.status)}`}>
-                                  {stagesList.find(s => s.id === o.status)?.name || o.status}
-                                </span>
+                                <OrderId value={o.order_number} />
+                                <StatusBadge
+                                  status={o.status}
+                                  label={stagesList.find(s => s.id === o.status)?.name || o.status}
+                                />
                               </div>
-                              <p className="text-3xs text-slate-400 font-semibold uppercase tracking-wider">Due: {new Date(o.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</p>
+                              <DeliveryDateText dueDate={o.due_date} className="text-3xs uppercase tracking-wider" />
                             </div>
-                            <div className="text-right space-y-0.5 shrink-0">
-                              <span className="text-xs font-black text-slate-900 block font-display leading-tight">
-                                {currency}{o.total_amount}
-                              </span>
-                              {(o.final_total ?? o.total_amount) - o.paid_amount > 0 ? (
-                                <span className="inline-block text-3xs bg-red-50 text-red-700 font-semibold px-1.5 py-0.5 rounded border border-red-100">
-                                  Due {currency}{(o.final_total ?? o.total_amount) - o.paid_amount}
-                                </span>
-                              ) : (
-                                <span className="inline-block text-3xs bg-emerald-50 text-emerald-700 font-semibold px-1.5 py-0.5 rounded border border-emerald-100">Paid</span>
-                              )}
+                            <div className="text-right space-y-1 shrink-0">
+                              <MoneyTotal currency={currency} amount={o.total_amount} className="text-xs block" />
+                              <PaymentChip currency={currency} remaining={remaining} />
                             </div>
                           </button>
                         );
@@ -2571,8 +2578,8 @@ export default function OrdersSection({
                       return (
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                           <div className="space-y-0.5">
-                            <span className="font-semibold text-xs text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
-                              <CheckCircle className="icon-xs text-emerald-500" />
+                            <span className="font-semibold text-xs text-status-ready uppercase tracking-wider flex items-center gap-1.5">
+                              <CheckCircle className="icon-xs text-success-600" />
                               Delivered
                             </span>
                             <p className="text-xs text-slate-500 font-semibold">
@@ -2739,27 +2746,42 @@ export default function OrdersSection({
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-brand-sidebar text-white p-4 rounded-xl border border-neutral-800">
                     <div>
                       <span className="text-xs text-neutral-400 font-semibold block uppercase tracking-wider">Total</span>
-                      <span className="text-xl font-black block mt-0.5">{currency}{selectedOrder.total_amount}</span>
+                      <span className="text-xl font-bold block mt-0.5 text-info-200 font-display font-variant-numeric tabular-nums">
+                        {formatMoney(currency, selectedOrder.total_amount)}
+                      </span>
                       {selectedOrder.discount_type && Number(selectedOrder.discount_amount) > 0 && (
                         <div className="mt-1 text-[10px] text-neutral-300 font-semibold leading-tight">
-                          <span>Discount: -{currency}{Number(selectedOrder.discount_amount).toLocaleString()}</span>
-                          <span className="block text-neutral-200">Final: {currency}{Number(selectedOrder.final_total ?? selectedOrder.total_amount).toLocaleString()}</span>
+                          <span>Discount: -{formatMoney(currency, selectedOrder.discount_amount)}</span>
+                          <span className="block text-neutral-200">
+                            Final: {formatMoney(currency, selectedOrder.final_total ?? selectedOrder.total_amount)}
+                          </span>
                         </div>
                       )}
                     </div>
                     <div>
                       <span className="text-xs text-neutral-400 font-semibold block uppercase tracking-wider">Paid Amount</span>
-                      <span className="text-xl font-black text-white block mt-0.5">{currency}{selectedOrder.paid_amount}</span>
+                      <span className="text-xl font-bold text-success-200 block mt-0.5 font-display font-variant-numeric tabular-nums">
+                        {formatMoney(currency, selectedOrder.paid_amount)}
+                      </span>
                     </div>
                     <div>
                       <span className="text-xs text-neutral-400 font-semibold block uppercase tracking-wider">Remaining</span>
-                      <span className="text-xl font-black text-white block mt-0.5">
-                        {currency}{(selectedOrder.final_total ?? selectedOrder.total_amount) - selectedOrder.paid_amount}
+                      <span className={`text-xl font-bold block mt-0.5 font-display font-variant-numeric tabular-nums ${
+                        ((selectedOrder.final_total ?? selectedOrder.total_amount) - selectedOrder.paid_amount) > 0
+                          ? 'text-danger-200'
+                          : 'text-success-200'
+                      }`}>
+                        {formatMoney(currency, (selectedOrder.final_total ?? selectedOrder.total_amount) - selectedOrder.paid_amount)}
                       </span>
                     </div>
                     <div>
                       <span className="text-xs text-neutral-400 font-semibold block uppercase tracking-wider">Delivery Date</span>
-                      <span className="text-sm font-black block mt-1.5 text-neutral-200">{new Date(selectedOrder.due_date).toLocaleDateString(undefined, { dateStyle: 'medium' })}</span>
+                      <DeliveryDateText
+                        dueDate={selectedOrder.due_date}
+                        prefix=""
+                        short={false}
+                        className="text-sm font-bold block mt-1.5"
+                      />
                     </div>
                   </div>
                 </div>
@@ -3065,8 +3087,8 @@ export default function OrdersSection({
       {createSuccess && selectedOrder && (
         <div className="modal-overlay">
           <div className="modal-content text-center">
-            <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center mx-auto">
-              <CheckCircle className="w-7 h-7 text-emerald-600" />
+            <div className="w-14 h-14 bg-success-50 border border-success-200 rounded-full flex items-center justify-center mx-auto">
+              <CheckCircle className="w-7 h-7 text-success-600" />
             </div>
             <div>
               <h3 className="text-lg font-black text-slate-900 uppercase tracking-wider">Order Created Successfully</h3>
@@ -3272,13 +3294,14 @@ export default function OrdersSection({
                     {orders.filter(o => o.status !== 'Delivered' && o.status !== 'Archived').map((o) => (
                       <div key={o.id} className="border border-slate-100 rounded-2xl p-3 bg-slate-50/50 space-y-2">
                         <div className="flex justify-between items-center pb-1.5 border-b border-slate-200/50">
-                          <div>
-                            <span className="font-extrabold text-xs text-slate-800">{o.order_number}</span>
-                            <span className="text-xs text-slate-400 font-semibold ml-2">({o.customer_name})</span>
+                          <div className="min-w-0">
+                            <OrderId value={o.order_number} className="!text-xs" />
+                            <CustomerName name={o.customer_name} className="ml-2 !text-xs text-secondary !font-medium" />
                           </div>
-                          <span className={`px-2 py-1 rounded text-sm font-semibold uppercase ${getStatusBadgeStyle(o.status)}`}>
-                            {stagesList.find(s => s.id === o.status)?.name || o.status}
-                          </span>
+                          <StatusBadge
+                            status={o.status}
+                            label={stagesList.find(s => s.id === o.status)?.name || o.status}
+                          />
                         </div>
                         
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1">
@@ -3355,7 +3378,7 @@ export default function OrdersSection({
             {/* Main Details Panel */}
             {updateSuccessState ? (
               <div className="flex-1 flex flex-col items-center justify-center space-y-3 py-8 animate-scale-up">
-                <div className="w-16 h-16 bg-emerald-100 border border-emerald-300 rounded-full flex items-center justify-center text-emerald-600 shadow-md">
+                <div className="w-16 h-16 bg-success-50 border border-success-200 rounded-full flex items-center justify-center text-success-700 shadow-md">
                   <Check className="w-8 h-8" />
                 </div>
                 <h4 className="font-extrabold text-slate-900 text-base uppercase tracking-wider text-center">Status Updated!</h4>
@@ -3380,18 +3403,19 @@ export default function OrdersSection({
                 {/* Grid Details */}
                 <div className="space-y-2 text-xs">
                   <div className="flex justify-between items-center border-b border-slate-100 py-1.5">
-                    <span className="text-slate-400 uppercase font-semibold tracking-wider text-xs">Order Number:</span>
-                    <span className="font-extrabold text-slate-900">{scannedGarmentItem.order.order_number}</span>
+                    <span className="text-secondary uppercase font-semibold tracking-wider text-xs">Order Number</span>
+                    <OrderId value={scannedGarmentItem.order.order_number} className="!text-xs !font-bold" />
                   </div>
                   <div className="flex justify-between items-center border-b border-slate-100 py-1.5">
-                    <span className="text-slate-400 uppercase font-semibold tracking-wider text-xs">Customer Name:</span>
-                    <span className="font-black text-slate-900">{scannedGarmentItem.order.customer_name}</span>
+                    <span className="text-secondary uppercase font-semibold tracking-wider text-xs">Customer Name</span>
+                    <CustomerName name={scannedGarmentItem.order.customer_name} />
                   </div>
                   <div className="flex justify-between items-center border-b border-slate-100 py-1.5">
-                    <span className="text-slate-400 uppercase font-semibold tracking-wider text-xs">Current Status:</span>
-                    <span className={`px-2 py-0.5 rounded text-xs font-semibold uppercase ${getStatusBadgeStyle(scannedGarmentItem.order.status)}`}>
-                      {stagesList.find(s => s.id === scannedGarmentItem.order.status)?.name || scannedGarmentItem.order.status}
-                    </span>
+                    <span className="text-secondary uppercase font-semibold tracking-wider text-xs">Current Status</span>
+                    <StatusBadge
+                      status={scannedGarmentItem.order.status}
+                      label={stagesList.find(s => s.id === scannedGarmentItem.order.status)?.name || scannedGarmentItem.order.status}
+                    />
                   </div>
                 </div>
               </div>
@@ -3468,50 +3492,51 @@ export default function OrdersSection({
       {showPaymentDialog && pendingDeliverOrder && (
         <div className="modal-overlay">
           <div className="modal-content text-center">
-            <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto">
-              <svg className="w-7 h-7 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <div className="w-14 h-14 bg-warning-50 rounded-full flex items-center justify-center mx-auto border border-warning-200">
+              <svg className="w-7 h-7 text-warning-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
             <div>
-              <h3 className="text-lg font-black text-slate-900 uppercase tracking-wider">Payment Due</h3>
-              <p className="text-xs text-slate-500 mt-1 font-semibold leading-relaxed">
-                Order <strong className="text-slate-800">{pendingDeliverOrder.order_number}</strong> for <strong className="text-slate-800">{pendingDeliverOrder.customer_name}</strong> has an outstanding balance.
+              <h3 className="text-h2">Payment Due</h3>
+              <p className="text-xs text-secondary mt-1 leading-relaxed">
+                Order <OrderId value={pendingDeliverOrder.order_number} className="!inline !text-xs" /> for{' '}
+                <CustomerName name={pendingDeliverOrder.customer_name} className="!inline" /> has an outstanding balance.
               </p>
             </div>
 
-            <div className="bg-slate-50 rounded-xl p-3 space-y-2">
+            <div className="bg-slate-50 rounded-xl p-3 space-y-2 text-left">
               <div className="flex justify-between text-xs font-semibold">
-                <span className="text-slate-500">Original Total</span>
-                <span className="text-slate-800">{currency}{pendingDeliverOrder.total_amount}</span>
+                <span className="text-secondary">Original Total</span>
+                <MoneyTotal currency={currency} amount={pendingDeliverOrder.total_amount} className="!text-xs" />
               </div>
               {pendingDeliverOrder.discount_type && Number(pendingDeliverOrder.discount_amount) > 0 && (
                 <div className="flex justify-between text-xs font-semibold">
-                  <span className="text-slate-500">Discount</span>
-                  <span className="text-red-500">-{currency}{Number(pendingDeliverOrder.discount_amount)}</span>
+                  <span className="text-secondary">Discount</span>
+                  <span className="text-money-due">-{formatMoney(currency, pendingDeliverOrder.discount_amount)}</span>
                 </div>
               )}
               <div className="flex justify-between text-xs font-semibold">
-                <span className="text-slate-500">Final Total</span>
-                <span className="text-slate-800 font-bold">{currency}{(pendingDeliverOrder.final_total ?? pendingDeliverOrder.total_amount)}</span>
+                <span className="text-secondary">Final Total</span>
+                <MoneyTotal currency={currency} amount={pendingDeliverOrder.final_total ?? pendingDeliverOrder.total_amount} className="!text-xs" />
               </div>
               <div className="flex justify-between text-xs font-semibold">
-                <span className="text-slate-500">Already Paid</span>
-                <span className="text-emerald-600">{currency}{pendingDeliverOrder.paid_amount}</span>
+                <span className="text-secondary">Already Paid</span>
+                <MoneyPaid currency={currency} amount={pendingDeliverOrder.paid_amount} className="!text-xs" />
               </div>
               <div className="flex justify-between text-xs font-semibold">
-                <span className="text-slate-500">This Order Remaining</span>
-                <span className="text-red-500 font-bold">{currency}{Math.round(getOrderRemaining(pendingDeliverOrder))}</span>
+                <span className="text-secondary">This Order Remaining</span>
+                <MoneyDue currency={currency} amount={getOrderRemaining(pendingDeliverOrder)} className="!text-xs !font-bold" />
               </div>
               {oldDues > 0 && (
-                <div className="flex justify-between text-xs font-semibold border-t border-amber-200 pt-2">
-                  <span className="text-amber-700">Old Dues ({pendingOtherDueOrders.length} Other Order{pendingOtherDueOrders.length === 1 ? '' : 's'})</span>
-                  <span className="text-amber-700 font-bold">{currency}{Math.round(oldDues)}</span>
+                <div className="flex justify-between text-xs font-semibold border-t border-warning-200 pt-2">
+                  <span className="text-feedback-warning">Old Dues ({pendingOtherDueOrders.length} Other Order{pendingOtherDueOrders.length === 1 ? '' : 's'})</span>
+                  <span className="text-feedback-warning font-bold">{formatMoney(currency, oldDues)}</span>
                 </div>
               )}
               <div className="flex justify-between text-xs font-bold border-t border-slate-200 pt-2">
-                <span className="text-slate-700">Total Outstanding</span>
-                <span className="text-red-600 font-black">{currency}{Math.round(getOrderRemaining(pendingDeliverOrder) + oldDues)}</span>
+                <span className="text-primary">Total Outstanding</span>
+                <MoneyDue currency={currency} amount={getOrderRemaining(pendingDeliverOrder) + oldDues} className="!text-xs !font-bold" />
               </div>
             </div>
 

@@ -1,5 +1,6 @@
 import { validateGarmentMeasurementsCompleted, validateMobileNumber } from './validation';
 import type { MeasurementProfile } from '../types';
+import { localDataStore } from './localDataStore';
 
 export type CreateCustomerGarment = {
   id: string;
@@ -87,6 +88,7 @@ export async function createCustomerWithMeasurements(
     }
 
     if (data.alreadyExists) {
+      if (data.customer) localDataStore.upsertCustomer(data.customer);
       return {
         ok: true,
         customer: data.customer,
@@ -95,9 +97,20 @@ export async function createCustomerWithMeasurements(
       };
     }
 
+    const customer = data.customer || data;
+    if (customer?.id) {
+      localDataStore.upsertCustomer(customer);
+      localDataStore.upsertMeasurements(customer.id, {
+        customer_id: customer.id,
+        data: { profiles: [firstProfile] },
+        updated_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+      });
+    }
+
     return {
       ok: true,
-      customer: data.customer || data,
+      customer,
       firstProfile,
     };
   } catch (err: unknown) {

@@ -11,11 +11,13 @@ export default function PrintSettings({ token, onSettingsUpdated }: PrintSetting
   const [termsConditions, setTermsConditions] = useState('');
   const [defaultPrintReceipt, setDefaultPrintReceipt] = useState(true);
   const [defaultPrintMeasure, setDefaultPrintMeasure] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadSettings = async () => {
+    setLoading(true);
     try {
       const res = await window.fetch('/api/settings', {
         headers: { Authorization: `Bearer ${token}` },
@@ -28,6 +30,7 @@ export default function PrintSettings({ token, onSettingsUpdated }: PrintSetting
         setDefaultPrintMeasure(data.default_print_measure !== false);
       }
     } catch (err) { console.error(err); }
+    finally { setLoading(false); }
   };
 
   useEffect(() => { loadSettings(); }, [token]);
@@ -58,6 +61,14 @@ export default function PrintSettings({ token, onSettingsUpdated }: PrintSetting
       setSaving(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="px-4 py-8 text-center text-xs font-semibold text-slate-400 uppercase tracking-wider animate-pulse">
+        Loading print settings…
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSave} className="divide-y divide-slate-100 animate-fade-in">

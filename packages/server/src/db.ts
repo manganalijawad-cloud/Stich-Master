@@ -1,6 +1,7 @@
 import path from "path";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
+import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
 
 let Database: any;
 try {
@@ -122,6 +123,14 @@ CREATE TABLE IF NOT EXISTS inventory (
   created_by TEXT NOT NULL,
   updated_by TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Local-only: salted password verifier for offline Owner-mode unlock (never synced)
+CREATE TABLE IF NOT EXISTS owner_unlock_verifier (
+  user_id TEXT PRIMARY KEY,
+  salt TEXT NOT NULL,
+  hash TEXT NOT NULL,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -324,6 +333,13 @@ export function getMeasurements(customerId: string, createdBy: string): DbMeasur
   return db.prepare(
     "SELECT * FROM measurements WHERE customer_id = ? AND created_by = ? ORDER BY created_at DESC"
   ).all(customerId, createdBy) as DbMeasurement[];
+}
+
+/** All measurement rows for a user — used by offline bootstrap preload. */
+export function getAllMeasurements(createdBy: string): DbMeasurement[] {
+  return db.prepare(
+    "SELECT * FROM measurements WHERE created_by = ? ORDER BY updated_at DESC"
+  ).all(createdBy) as DbMeasurement[];
 }
 
 export function upsertMeasurement(customerId: string, createdBy: string, measurementData: Record<string, any>, updatedBy?: string): DbMeasurement {
@@ -1154,4 +1170,41 @@ export function updateInventoryItem(id: string, createdBy: string, data: any): a
 
 export function deleteInventoryItem(id: string, createdBy: string): boolean {
   return db.prepare("DELETE FROM inventory WHERE id = ? AND created_by = ?").run(id, createdBy).changes > 0;
+}
+
+// ---------------------------------------------------------------------------
+// OFFLINE OWNER UNLOCK VERIFIER (local-only, never synced)
+// ---------------------------------------------------------------------------
+export function setOwnerUnlockVerifier(userId: string, password: string): void {
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(password, salt, 64).toString("hex");
+  db.prepare(`
+    INSERT INTO owner_unlock_verifier (user_id, salt, hash, updated_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET salt = excluded.salt, hash = excluded.hash, updated_at = excluded.updated_at
+  `).run(userId, salt, hash, nowISO());
+}
+
+export function hasOwnerUnlockVerifier(userId: string): boolean {
+  const row = db.prepare("SELECT 1 AS ok FROM owner_unlock_verifier WHERE user_id = ?").get(userId) as { ok: number } | undefined;
+  return !!row;
+}
+
+export function verifyOwnerUnlockPassword(userId: string, password: string): boolean {
+  const row = db.prepare(
+    "SELECT salt, hash FROM owner_unlock_verifier WHERE user_id = ?"
+  ).get(userId) as { salt: string; hash: string } | undefined;
+  if (!row) return false;
+  try {
+    const computed = scryptSync(password, row.salt, 64);
+    const expected = Buffer.from(row.hash, "hex");
+    if (computed.length !== expected.length) return false;
+    return timingSafeEqual(computed, expected);
+  } catch {
+    return false;
+  }
+}
+
+export function clearOwnerUnlockVerifier(userId: string): void {
+  db.prepare("DELETE FROM owner_unlock_verifier WHERE user_id = ?").run(userId);
 }

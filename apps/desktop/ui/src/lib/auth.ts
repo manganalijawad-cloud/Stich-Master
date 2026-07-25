@@ -39,6 +39,8 @@ export async function signInWithEmail(
       return { user: null, token: null, error: 'Failed to load your profile. Please contact support.' };
     }
 
+    await cacheOwnerUnlockPassword(data.session.access_token, password);
+
     return { user: profile, token: data.session.access_token, error: null };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'An unexpected error occurred';
@@ -71,10 +73,31 @@ export async function updatePassword(
   try {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) return { error: error.message };
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (token) {
+      await cacheOwnerUnlockPassword(token, newPassword);
+    }
     return { error: null };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to update password';
     return { error: message };
+  }
+}
+
+/** Best-effort: store salted verifier on the desktop for offline Owner unlock. */
+export async function cacheOwnerUnlockPassword(token: string, password: string): Promise<void> {
+  try {
+    await fetch('/api/auth/store-unlock-verifier', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ password }),
+    });
+  } catch {
+    // Ignore — online unlock still works; offline unlock needs a successful cache later
   }
 }
 

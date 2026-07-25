@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, Save, ArrowUp, ArrowDown, GripVertical, Check, X, Sparkles, CheckSquare, Square, Info, Sliders, Ruler, HelpCircle, AlertTriangle } from 'lucide-react';
 import { GarmentType, MeasurementField, StylingCategory, StylingOption } from '../types';
+import { localDataStore } from '../lib/localDataStore';
 
 interface GarmentConfigurationProps {
   token: string;
@@ -152,6 +153,7 @@ export default function GarmentConfiguration({ token }: GarmentConfigurationProp
       const data = await res.json();
       if (res.ok) {
         setGarmentTypes(data);
+        localDataStore.setGarmentTypes(data);
         if (data.length > 0) {
           // Keep current selection or default to first
           if (selectedType) {
@@ -589,6 +591,12 @@ Do you absolutely want to proceed with deletion?`;
       const data = await res.json();
       if (res.ok) {
         setStylingCategories(data);
+        // Keep offline bootstrap cache in sync for order booking
+        const others = localDataStore
+          .getSnapshot()
+          .stylingCategories
+          .filter((c) => c.garment_type_id !== garmentTypeId);
+        localDataStore.setStylingCategories([...others, ...data]);
         if (data.length > 0) {
           // Keep current category selection or choose first
           if (selectedStylingCategory) {

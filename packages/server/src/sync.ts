@@ -20,9 +20,10 @@ const SYNC_INTERVAL_MS = 30_000;
 const MAX_RETRIES = 10;
 
 // Tables that are synced bidirectionally
+// inventory intentionally omitted until a V1 inventory UI exists (PROJECT.md §2)
 const SYNC_TABLES = [
   "customers", "measurements", "orders", "shop_settings",
-  "garment_types", "styling_categories", "inventory"
+  "garment_types", "styling_categories"
 ] as const;
 
 export function getSyncStatus(): {
@@ -483,5 +484,36 @@ export function syncAfterMutation(tableName: string, rowId: string, operation: "
   if (!token) return;
   updateSyncToken(token);
   queueSync(tableName, String(rowId), operation, payload);
+  triggerSync(token);
+}
+
+/** After a local restore/import, queue every synced row for the user so cloud catches up. */
+export function queueAllLocalDataForSync(userId: string, token?: string): void {
+  if (!token) return;
+  updateSyncToken(token);
+
+  const ownedTables = ["customers", "measurements", "orders", "garment_types", "styling_categories"] as const;
+  for (const table of ownedTables) {
+    try {
+      const rows = db.prepare(`SELECT id FROM ${table} WHERE created_by = ?`).all(userId) as { id: string }[];
+      for (const row of rows) {
+        queueSync(table, row.id, "update");
+      }
+    } catch (err: any) {
+      console.warn(`queueAllLocalDataForSync(${table}) failed:`, err?.message || err);
+    }
+  }
+
+  try {
+    const settings = db.prepare(
+      "SELECT id FROM shop_settings WHERE user_id = ? OR key LIKE ?"
+    ).all(userId, `${userId}:%`) as { id: string }[];
+    for (const row of settings) {
+      queueSync("shop_settings", String(row.id), "update");
+    }
+  } catch (err: any) {
+    console.warn("queueAllLocalDataForSync(shop_settings) failed:", err?.message || err);
+  }
+
   triggerSync(token);
 }

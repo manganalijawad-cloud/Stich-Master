@@ -8,7 +8,7 @@ import FinancialReports from './components/FinancialReports';
 import SyncIndicator from './components/SyncIndicator';
 import TitleBar from './components/TitleBar';
 import VersionInfo from './components/VersionInfo';
-import { Customer, UserProfile, PipelineStage } from './types';
+import { Customer, PipelineStage } from './types';
 import { supabase, ensureSupabase } from './lib/supabase';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -17,8 +17,9 @@ import ForgotPasswordPage from './components/auth/ForgotPasswordPage';
 import ResetPasswordPage from './components/auth/ResetPasswordPage';
 import OfflineBanner from './components/auth/OfflineBanner';
 
-import type { ExtendedUserProfile } from './lib/auth';
 import { parseOrderQrPayload } from './lib/orderQr';
+import { localDataStore } from './lib/localDataStore';
+import { useLocalData } from './lib/useLocalData';
 
 type AuthPage = 'login' | 'forgot-password' | 'reset-password';
 
@@ -245,8 +246,54 @@ function AuthWrapper() {
     });
   }, []);
 
+  const applySettingsData = useCallback((settingsData: Record<string, any>) => {
+    setShopName(settingsData.shop_name ?? '');
+    setShopPhone(settingsData.phone ?? '');
+    setShopAddress(settingsData.address ?? '');
+    setShopLogo(settingsData.shop_logo ?? '');
+    setTermsConditions(settingsData.terms_conditions ?? '');
+    setReceiptFooterText(settingsData.receipt_footer_text ?? '');
+    setDefaultPrintReceipt(settingsData.default_print_receipt !== false);
+    setDefaultPrintMeasure(settingsData.default_print_measure !== false);
+    setCurrency(settingsData.currency || '$');
+    setMeasurementFields(settingsData.measurement_fields || []);
+    setMeasurementUnit(settingsData.measurement_unit || 'Inches');
+    setPipelineStages(settingsData.pipeline_stages || [
+      { id: 'Pending', name: 'Getting Ready', enabled: true },
+      { id: 'Ready to Deliver', name: 'Ready to Deliver', enabled: true },
+      { id: 'Delivered', name: 'Delivered', enabled: true },
+      { id: 'Archived', name: 'Archived', enabled: true }
+    ]);
+  }, []);
+
+  // Instant paint from last-known settings (localStorage) before bootstrap returns
+  useEffect(() => {
+    const cached = localDataStore.applyCachedSettings();
+    if (cached) applySettingsData(cached);
+  }, [applySettingsData]);
+
+  const localData = useLocalData();
+
+  useEffect(() => {
+    if (localData.settings) {
+      applySettingsData(localData.settings);
+    }
+  }, [localData.settings, localData.version, applySettingsData]);
+
+  // Offline-first hydrate: one local SQLite bootstrap for customers, measurements, reference data
+  useEffect(() => {
+    if (!token) {
+      localDataStore.clear();
+      return;
+    }
+    void localDataStore.hydrate(token);
+  }, [token]);
+
   const fetchShopMetadata = async () => {
     if (!token) return;
+    // Prefer re-bootstrap (keeps customers/measurements/reference in sync with settings)
+    const ok = await localDataStore.hydrate(token, { force: true });
+    if (ok) return;
     try {
       const settingsRes = await fetch('/api/settings', {
         headers: { Authorization: `Bearer ${token}` },
@@ -255,41 +302,24 @@ function AuthWrapper() {
       const settingsContentType = settingsRes.headers.get('content-type') || '';
       if (settingsRes.ok && settingsContentType.includes('application/json')) {
         const settingsData = await settingsRes.json();
-        setShopName(settingsData.shop_name ?? '');
-        setShopPhone(settingsData.phone ?? '');
-        setShopAddress(settingsData.address ?? '');
-        setShopLogo(settingsData.shop_logo ?? '');
-        setTermsConditions(settingsData.terms_conditions ?? '');
-        setReceiptFooterText(settingsData.receipt_footer_text ?? '');
-        setDefaultPrintReceipt(settingsData.default_print_receipt !== false);
-        setDefaultPrintMeasure(settingsData.default_print_measure !== false);
-        setCurrency(settingsData.currency || '$');
-        setMeasurementFields(settingsData.measurement_fields || []);
-        setMeasurementUnit(settingsData.measurement_unit || 'Inches');
-        setPipelineStages(settingsData.pipeline_stages || [
-          { id: 'Pending', name: 'Getting Ready', enabled: true },
-          { id: 'Ready to Deliver', name: 'Ready to Deliver', enabled: true },
-          { id: 'Delivered', name: 'Delivered', enabled: true },
-          { id: 'Archived', name: 'Archived', enabled: true }
-        ]);
+        localDataStore.setSettings(settingsData);
+        applySettingsData(settingsData);
       }
     } catch (err) {
       console.error('Failed to load shop configuration:', err);
     }
   };
 
-  useEffect(() => {
-    fetchShopMetadata();
-  }, [token]);
-
   const handleLogout = async () => {
     await signOut();
+    localDataStore.clear();
     localStorage.removeItem('tailor_active_role');
     localStorage.removeItem('tailor_intentional_worker_mode');
     localStorage.removeItem('tailor_token');
     localStorage.removeItem('tailor_user');
     localStorage.removeItem('hellodarzi-auth');
     localStorage.removeItem('hellodarzi-profile-cache');
+    localStorage.removeItem('hellodarzi-settings-cache');
   };
 
   const handleSettingsUpdated = () => {
@@ -396,12 +426,12 @@ function AuthWrapper() {
   ];
 
   const pageTitle = activeTab === 'Customers'
-    ? 'Customer Registry'
+    ? 'Customers'
     : activeTab === 'Orders'
-    ? 'POS Order Queue'
+    ? 'Orders'
     : activeTab === 'Financials'
     ? 'Finances'
-    : 'Admin Panel';
+    : 'Settings';
 
   return (
     <div className="h-screen flex flex-col">
@@ -412,7 +442,7 @@ function AuthWrapper() {
       <div className="flex flex-1 min-h-0 flex-col md:flex-row font-sans text-slate-800 bg-brand-bg">
 
       <aside
-        className={`hidden md:flex flex-col bg-brand-sidebar text-white shrink-0 border-r border-slate-800 print:hidden h-full overflow-y-auto transition-[width,padding] duration-300 ease-in-out ${
+        className={`hidden md:flex flex-col bg-brand-sidebar text-white shrink-0 border-r border-slate-800 print:hidden h-full min-h-0 overflow-y-auto overflow-x-hidden transition-[width,padding] duration-300 ease-in-out ${
           isSidebarCollapsed ? 'w-14 py-3 items-center' : 'w-56 p-3'
         }`}
       >
@@ -491,10 +521,10 @@ function AuthWrapper() {
               className={`w-full ${isSidebarCollapsed ? 'flex justify-center p-2' : 'flex items-center gap-2.5 px-3 py-2'} rounded-lg text-sm font-semibold uppercase tracking-wider bg-white/5 hover:bg-white/10 text-neutral-200 border border-white/15 cursor-pointer transition-colors relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40`}
             >
               <Unlock className="icon-sm shrink-0 text-white" />
-              {!isSidebarCollapsed && <span className="truncate">Back to daily work</span>}
+              {!isSidebarCollapsed && <span className="truncate">Back to Manager</span>}
               {isSidebarCollapsed && (
                 <div className="absolute left-full ml-2 hidden group-hover:block z-50 pointer-events-none">
-                  <div className="tooltip !bg-neutral-900 !border-neutral-700 !text-white">Back to daily work</div>
+                  <div className="tooltip !bg-neutral-900 !border-neutral-700 !text-white">Back to Manager</div>
                 </div>
               )}
             </button>
@@ -582,9 +612,11 @@ function AuthWrapper() {
                 className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wider bg-white/5 hover:bg-white/10 text-neutral-200 border border-white/15 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
               >
                 <Unlock className="icon-sm shrink-0 text-white" />
-                <span>Back to daily work</span>
+                <span>Back to Manager</span>
               </button>
             )}
+            <SyncIndicator token={token} collapsed={false} />
+            <VersionInfo collapsed={false} />
             <button
               onClick={() => {
                 setIsMobileMenuOpen(false);
@@ -619,15 +651,15 @@ function AuthWrapper() {
             {activeMode === 'Manager' ? (
               <button
                 onClick={switchToOwner}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-warning-50 text-warning-700 hover:bg-warning-100 border border-warning-200 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning-600/40"
               >
                 <Lock className="icon-xs" aria-hidden="true" />
-                <span>Daily work</span>
+                <span>Manager</span>
               </button>
             ) : (
               <button
                 onClick={switchToManager}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-success-50 text-success-700 hover:bg-success-100 border border-success-200 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success-600/40"
               >
                 <Unlock className="icon-xs" aria-hidden="true" />
                 <span>Settings unlocked</span>
@@ -636,8 +668,8 @@ function AuthWrapper() {
           </div>
         </header>
 
-        <main className="flex-1 p-1.5 md:p-2 overflow-auto">
-          <div className="animate-fade-in">
+        <main className="flex-1 min-h-0 min-w-0 p-2 md:p-3 overflow-x-hidden overflow-y-auto content-scroll">
+          <div className="animate-fade-in h-full min-h-0">
             {activeTab === 'Customers' && (
               <CustomersSection
                 token={token}
@@ -645,6 +677,10 @@ function AuthWrapper() {
                 selectedCustomerId={activeCustomerIdForNewOrder}
                 onBookOrder={(cust: Customer) => {
                   setActiveCustomerIdForNewOrder(cust.id);
+                  setActiveTab('Orders');
+                }}
+                onOpenOrder={(orderId: string) => {
+                  setActiveOrderId(orderId);
                   setActiveTab('Orders');
                 }}
                 shopName={shopName}
@@ -695,10 +731,6 @@ function AuthWrapper() {
           </div>
         </main>
 
-        <div className="hidden md:block print:hidden">
-          <VersionInfo collapsed={false} position="bottom-right" />
-        </div>
-
         {showPasswordModal && (
           <div role="presentation" className="modal-overlay" onClick={() => { setShowPasswordModal(false); setPasswordError(null); setOwnerPassword(''); }}>
             <div className="modal-content max-w-sm" onClick={(e) => e.stopPropagation()}>
@@ -707,7 +739,9 @@ function AuthWrapper() {
                   <Shield className="icon-lg text-neutral-800" aria-hidden="true" />
                 </div>
                 <h3 className="text-lg font-semibold text-slate-900">Unlock settings</h3>
-                <p className="text-xs text-slate-500 mt-1">Enter your password to change shop settings and reports.</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  Enter your account password. Works offline after you have unlocked (or signed in) once while online on this device.
+                </p>
               </div>
               {passwordError && (
                 <div className="alert-error mb-4">

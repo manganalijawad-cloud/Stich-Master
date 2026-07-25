@@ -25,11 +25,23 @@ import { Customer, Order, GarmentType, MeasurementProfile } from '../types';
 import { printPage } from '../lib/print';
 import { createCustomerWithMeasurements } from '../lib/createCustomer';
 import { validateGarmentMeasurementsCompleted, validateMobileNumber } from '../lib/validation';
+import {
+  CustomerName,
+  DeliveryDateText,
+  MoneyTotal,
+  OrderId,
+  PaymentChip,
+  StatusBadge,
+} from './ui/ScanValue';
+import { localDataStore } from '../lib/localDataStore';
+import { useLocalData } from '../lib/useLocalData';
+import { cacheCustomer, cacheMeasurements, removeCachedCustomer } from '../lib/useLocalData';
 
 interface CustomersSectionProps {
   token: string;
   currency: string;
   onBookOrder: (customer: Customer) => void;
+  onOpenOrder?: (orderId: string) => void;
   selectedCustomerId?: string;
   shopName?: string;
   shopLogo?: string;
@@ -41,6 +53,7 @@ export default function CustomersSection({
   token,
   currency,
   onBookOrder,
+  onOpenOrder,
   selectedCustomerId,
   shopName,
   shopLogo,
@@ -55,9 +68,10 @@ export default function CustomersSection({
   const [recentCustomers, setRecentCustomers] = useState<Customer[]>([]);
   const [recentLoading, setRecentLoading] = useState(false);
 
-  // Garment Types state
-  const [garmentTypes, setGarmentTypes] = useState<GarmentType[]>([]);
-  const [garmentsLoading, setGarmentsLoading] = useState(false);
+  // Garment Types — from offline bootstrap cache
+  const localData = useLocalData();
+  const garmentTypes = localData.garmentTypes as GarmentType[];
+  const garmentsLoading = localData.hydrating && !localData.ready;
 
   // Create customer form state
   const [isCreating, setIsCreating] = useState(false);
@@ -72,7 +86,6 @@ export default function CustomersSection({
   const [initialMeasurements, setInitialMeasurements] = useState<Record<string, string | number>>({});
 
   const [createError, setCreateError] = useState<string | null>(null);
-  const [createSuccess, setCreateSuccess] = useState(false);
   const [duplicateAlert, setDuplicateAlert] = useState<string | null>(null);
 
   // Selected customer measurements/profiles state
@@ -128,92 +141,85 @@ export default function CustomersSection({
     return customerDate;
   };
 
-  // Fetch Garment Types on load
+  // Prefer first enabled garment when reference data arrives
   useEffect(() => {
-    const fetchGarmentTypes = async () => {
-      setGarmentsLoading(true);
+    if (!garmentTypes.length) return;
+    const enabledGarments = garmentTypes.filter((g) => g.enabled);
+    const first = enabledGarments[0] || garmentTypes[0];
+    if (first) {
+      setSelectedGarmentTypeId((prev) => prev || first.id);
+      setNewProfileGarmentTypeId((prev) => prev || first.id);
+    }
+  }, [garmentTypes]);
+
+  // Resolve deep-linked customer by ID from local cache (fallback API)
+  useEffect(() => {
+    if (!selectedCustomerId || !token) return;
+
+    const cached = localDataStore.getCustomerById(selectedCustomerId);
+    if (cached) {
+      setSelectedCustomer(cached);
+      return;
+    }
+
+    let cancelled = false;
+    const loadSelectedCustomer = async () => {
       try {
-        const res = await fetch('/api/garment-types', {
+        const res = await fetch(`/api/customers/${selectedCustomerId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (res.ok) {
-          const data = await res.json();
-          setGarmentTypes(data);
-          
-          // Auto-select first active garment
-          const enabledGarments = data.filter((g: GarmentType) => g.enabled);
-          if (enabledGarments.length > 0) {
-            setSelectedGarmentTypeId(enabledGarments[0].id);
-            setNewProfileGarmentTypeId(enabledGarments[0].id);
-          }
+        if (!res.ok) return;
+        const customer: Customer = await res.json();
+        if (!cancelled) {
+          cacheCustomer(customer);
+          setSelectedCustomer(customer);
         }
       } catch (err) {
-        console.error('Error fetching garment types:', err);
-      } finally {
-        setGarmentsLoading(false);
+        console.error('Error loading selected customer:', err);
       }
     };
 
-    fetchGarmentTypes();
-  }, [token]);
+    loadSelectedCustomer();
+    return () => { cancelled = true; };
+  }, [selectedCustomerId, token, localData.version]);
 
-  // Search Customers on input change
+  // Instant local customer search (no network)
   useEffect(() => {
-    const fetchCustomers = async () => {
-      setLoading(true);
-      try {
-        const res = await fetch(`/api/customers?q=${encodeURIComponent(searchQuery)}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (res.ok) {
-          setCustomers(data);
-          // Auto select if id provided
-          if (selectedCustomerId && data.length > 0) {
-            const matched = data.find((c: Customer) => c.id === selectedCustomerId);
-            if (matched) setSelectedCustomer(matched);
-          }
-        }
-      } catch (err) {
-        console.error('Error searching customers:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
+    if (!localData.ready) {
+      // Store not ready yet — keep previous list; avoid spinner flash on remount when empty
+      if (!localData.hydrating) setLoading(false);
+      else setLoading(true);
+      return;
+    }
+    setLoading(false);
+    setCustomers(localDataStore.searchCustomers(searchQuery));
+  }, [searchQuery, localData.ready, localData.version, localData.hydrating]);
 
-    const delayDebounce = setTimeout(() => {
-      fetchCustomers();
-    }, 200);
-
-    return () => clearTimeout(delayDebounce);
-  }, [searchQuery, token, selectedCustomerId]);
-
-  // Debounced check if name already exists in database
+  // Instant duplicate-name check from local cache
   useEffect(() => {
     if (!newName.trim()) {
       setIsNameDuplicate(false);
       return;
     }
-    const checkDuplicate = async () => {
-      try {
-        const res = await fetch(`/api/customers?q=${encodeURIComponent(newName.trim())}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const hasMatch = data.some((c: Customer) => c.name.toLowerCase() === newName.trim().toLowerCase());
-          setIsNameDuplicate(hasMatch);
-        }
-      } catch (err) {
-        console.error('Error checking duplicate name:', err);
-      }
-    };
-    const delay = setTimeout(checkDuplicate, 450);
-    return () => clearTimeout(delay);
-  }, [newName, token]);
+    if (!localData.ready) return;
+    setIsNameDuplicate(localDataStore.nameExists(newName));
+  }, [newName, localData.ready, localData.version]);
 
-  // Fetch 6 newly added customers
+  // Recent customers from local cache
+  useEffect(() => {
+    if (!localData.ready) {
+      setRecentLoading(localData.hydrating);
+      return;
+    }
+    setRecentLoading(false);
+    setRecentCustomers(localDataStore.getRecentCustomers(4));
+  }, [localData.ready, localData.version, localData.hydrating]);
+
   const fetchRecentCustomers = async () => {
+    if (localData.ready) {
+      setRecentCustomers(localDataStore.getRecentCustomers(4));
+      return;
+    }
     if (!token) return;
     setRecentLoading(true);
     try {
@@ -231,11 +237,7 @@ export default function CustomersSection({
     }
   };
 
-  useEffect(() => {
-    fetchRecentCustomers();
-  }, [token]);
-
-  // Fetch measurements and order history when selected customer changes
+  // Auto-load measurements from local cache when customer selected
   useEffect(() => {
     if (!selectedCustomer) {
       setProfiles([]);
@@ -251,48 +253,61 @@ export default function CustomersSection({
       return;
     }
 
-    const fetchMeasurements = async () => {
-      try {
-        const res = await fetch(`/api/customers/${selectedCustomer.id}/measurements`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const rawData = data.data || {};
-          
-          let parsedProfiles: MeasurementProfile[] = [];
-          if (Array.isArray(rawData.profiles)) {
-            parsedProfiles = rawData.profiles;
-          } else if (Object.keys(rawData).length > 0) {
-            // Migrate legacy flat measurements to customer's first default garment type
-            const activeGarments = garmentTypes.filter(g => g.enabled);
-            const defaultGarment = activeGarments.length > 0 ? activeGarments[0] : garmentTypes[0];
-            if (defaultGarment) {
-              parsedProfiles = [
-                {
-                  id: 'legacy-migrated',
-                  garment_type_id: defaultGarment.id,
-                  garment_name: defaultGarment.name,
-                  values: rawData,
-                  created_at: data.created_at || new Date().toISOString(),
-                  updated_at: data.updated_at || new Date().toISOString()
-                }
-              ];
+    const applyMeasurementPayload = (data: any) => {
+      const rawData = data?.data || {};
+      let parsedProfiles: MeasurementProfile[] = [];
+      if (Array.isArray(rawData.profiles)) {
+        parsedProfiles = rawData.profiles;
+      } else if (Object.keys(rawData).length > 0) {
+        const activeGarments = garmentTypes.filter(g => g.enabled);
+        const defaultGarment = activeGarments.length > 0 ? activeGarments[0] : garmentTypes[0];
+        if (defaultGarment) {
+          parsedProfiles = [
+            {
+              id: 'legacy-migrated',
+              garment_type_id: defaultGarment.id,
+              garment_name: defaultGarment.name,
+              values: rawData,
+              created_at: data.created_at || new Date().toISOString(),
+              updated_at: data.updated_at || new Date().toISOString()
             }
-          }
-          
-          setProfiles(parsedProfiles);
-          if (parsedProfiles.length > 0) {
-            setActiveProfileId(parsedProfiles[0].id);
-          } else {
-            setActiveProfileId(null);
-          }
-          setMeasurementsUpdatedAt(data.updated_at || null);
+          ];
         }
-      } catch (err) {
-        console.error('Error fetching measurements:', err);
       }
+      setProfiles(parsedProfiles);
+      setActiveProfileId(parsedProfiles.length > 0 ? parsedProfiles[0].id : null);
+      setMeasurementsUpdatedAt(data?.updated_at || null);
     };
+
+    const cached = localDataStore.getMeasurements(selectedCustomer.id);
+    if (cached) {
+      applyMeasurementPayload(cached);
+    } else {
+      // Empty placeholder until API (or later hydrate) fills it
+      setProfiles([]);
+      setActiveProfileId(null);
+      setMeasurementsUpdatedAt(null);
+      void (async () => {
+        try {
+          const res = await fetch(`/api/customers/${selectedCustomer.id}/measurements`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            cacheMeasurements(selectedCustomer.id, {
+              id: data.id,
+              customer_id: selectedCustomer.id,
+              data: data.data || {},
+              created_at: data.created_at,
+              updated_at: data.updated_at,
+            });
+            applyMeasurementPayload(data);
+          }
+        } catch (err) {
+          console.error('Error fetching measurements:', err);
+        }
+      })();
+    }
 
     const fetchOrderHistory = async () => {
       setHistoryLoading(true);
@@ -311,7 +326,6 @@ export default function CustomersSection({
       }
     };
 
-    fetchMeasurements();
     fetchOrderHistory();
     setMeasSuccess(false);
     setMeasError(null);
@@ -321,13 +335,12 @@ export default function CustomersSection({
     setEditingProfileMeasurements({});
     setEditingCustomer(false);
     setPrintProfileId(null);
-  }, [selectedCustomer, token, garmentTypes]);
+  }, [selectedCustomer, token, garmentTypes, localData.version]);
 
   // Handle Customer Creation with first Measurement Profile automatically created
   const handleCreateCustomer = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     setCreateError(null);
-    setCreateSuccess(false);
     setDuplicateAlert(null);
 
     const selectedGarment = garmentTypes.find(g => g.id === selectedGarmentTypeId);
@@ -358,7 +371,6 @@ export default function CustomersSection({
       return;
     }
 
-    setCreateSuccess(true);
     setNewName('');
     setNewPhone('');
     setNewAddress('');
@@ -396,6 +408,13 @@ export default function CustomersSection({
 
       setProfiles(updatedProfiles);
       setMeasurementsUpdatedAt(data.updated_at || new Date().toISOString());
+      cacheMeasurements(selectedCustomer.id, {
+        id: data.id,
+        customer_id: selectedCustomer.id,
+        data: { profiles: updatedProfiles },
+        created_at: data.created_at,
+        updated_at: data.updated_at || new Date().toISOString(),
+      });
       setMeasSuccess(true);
       setTimeout(() => setMeasSuccess(false), 4000);
     } catch (err: any) {
@@ -452,7 +471,9 @@ export default function CustomersSection({
     if (!selectedCustomer) return;
     setEditCustomerForm({
       name: selectedCustomer.name,
-      phone: selectedCustomer.phone || '',
+      phone: selectedCustomer.phone && !selectedCustomer.phone.startsWith('NO-PHONE-')
+        ? selectedCustomer.phone
+        : '',
       address: selectedCustomer.address || '',
     });
     setEditingCustomer(true);
@@ -460,6 +481,20 @@ export default function CustomersSection({
       setEditingProfileId(activeProfileId);
       setEditingProfileMeasurements({ ...profiles.find(p => p.id === activeProfileId)?.values || {} });
     }
+  };
+
+  const handleStartEditMeasurements = (profileId: string) => {
+    const profile = profiles.find(p => p.id === profileId);
+    if (!profile) return;
+    setActiveProfileId(profileId);
+    setEditingProfileId(profileId);
+    setEditingProfileMeasurements({ ...profile.values });
+    setIsAddingProfile(false);
+  };
+
+  const handleCancelEditMeasurements = () => {
+    setEditingProfileId(null);
+    setEditingProfileMeasurements({});
   };
 
   const handleCancelEditCustomer = () => {
@@ -510,6 +545,7 @@ export default function CustomersSection({
       if (!res.ok) throw new Error(data.error || 'Failed to update customer.');
 
       setSelectedCustomer(data);
+      cacheCustomer(data);
 
       await handleSaveCurrentProfileMeasurements();
 
@@ -548,6 +584,7 @@ export default function CustomersSection({
           const data = await res.json().catch(() => ({}));
           throw new Error(data.error || 'Failed to delete customer.');
         }
+        removeCachedCustomer(selectedCustomer.id);
         setSelectedCustomer(null);
         setProfiles([]);
         setActiveProfileId(null);
@@ -577,17 +614,17 @@ export default function CustomersSection({
 
   if (showAllPage) {
     return (
-      <div className="card animate-fade-in space-y-2">
+      <div className="card animate-fade-in stack-md">
         {/* Full Customers Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div>
             <button
               onClick={() => setShowAllPage(false)}
-              className="flex items-center gap-1 text-xs text-sky-600 hover:text-sky-800 transition-colors uppercase tracking-wider mb-1 cursor-pointer bg-transparent border-none p-0"
+              className="btn-ghost text-xs !px-0 !min-h-0 mb-1"
             >
               ← Back to customers
             </button>
-            <h1 className="text-xl font-bold text-brand-sidebar font-display">Customers</h1>
+            <h1 className="text-h1">Customers</h1>
           </div>
           
           <button
@@ -603,69 +640,72 @@ export default function CustomersSection({
             }}
             className="btn-primary self-start sm:self-auto"
           >
-            <UserPlus className="icon-sm text-brand-sky" />
+            <UserPlus className="icon-sm" />
             Add Customer
           </button>
         </div>
 
         {/* Search Bar */}
         <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 icon-md text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 icon-sm text-slate-400" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by name, phone..."
-            className="input-base pl-10"
+            className="input-base pl-9"
           />
         </div>
 
         {/* Database List Table/Grid */}
-        <div className="overflow-x-auto border border-slate-150 rounded-xl">
-          <table className="w-full text-left border-collapse text-table-cell">
+        <div className="table-wrap">
+          <table className="table-base">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-150 text-slate-400 font-semibold text-table-header">
-                <th className="p-4">Customer Name</th>
-                <th className="p-4">Mobile Number</th>
-                <th className="p-4">Address</th>
-                <th className="p-4 text-right">Actions</th>
+              <tr>
+                <th className="table-th">Customer Name</th>
+                <th className="table-th">Mobile Number</th>
+                <th className="table-th">Address</th>
+                <th className="table-th text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+            <tbody>
               {loading && customers.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="p-8 text-center text-slate-400 font-semibold uppercase tracking-wider">
+                  <td colSpan={4} className="table-td text-center text-muted font-semibold">
                     Searching...
                   </td>
                 </tr>
               ) : customers.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="p-8 text-center text-slate-400 font-semibold uppercase tracking-wider">
-                    No customers found. Try a different search.
+                  <td colSpan={4} className="table-td">
+                    <div className="empty-state py-8">
+                      <p className="empty-state-title">No customers found</p>
+                      <p className="empty-state-text">Try a different search.</p>
+                    </div>
                   </td>
                 </tr>
               ) : (
                 customers.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
-                     <td className="p-4 font-semibold text-slate-900">{c.name}</td>
-                    <td className="p-4">
+                  <tr key={c.id} className="table-tr">
+                     <td className="table-td"><span className="text-customer-name">{c.name}</span></td>
+                    <td className="table-td">
                       {c.phone && !c.phone.startsWith('NO-PHONE-') ? (
-                        <span className="flex items-center gap-1.5 text-slate-600 font-semibold">
+                        <span className="flex items-center gap-1.5 text-secondary font-semibold">
                           <Phone className="icon-sm text-slate-400 shrink-0" />
                           {c.phone}
                         </span>
                       ) : (
-                        <span className="text-slate-400 italic">No phone</span>
+                        <span className="text-muted italic">No phone</span>
                       )}
                     </td>
-                    <td className="p-4 break-words min-w-0">{c.address || <span className="text-slate-400 italic">No address</span>}</td>
-                    <td className="p-4 text-right">
+                    <td className="table-td break-words min-w-0">{c.address || <span className="text-muted italic">No address</span>}</td>
+                    <td className="table-td text-right">
                       <button
                         onClick={() => {
                           setSelectedCustomer(c);
                           setShowAllPage(false);
                         }}
-                        className="px-3 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 font-semibold uppercase tracking-wider rounded-lg text-btn-md transition-[background-color] cursor-pointer border border-sky-100"
+                        className="btn-secondary"
                       >
                         View Profile &amp; Measure
                       </button>
@@ -683,13 +723,13 @@ export default function CustomersSection({
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch min-h-0 lg:h-full">
       
       {/* LEFT COLUMN: Customer Search & List */}
-      <div className="lg:col-span-5 card space-y-2">
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-h2 font-semibold text-slate-900 tracking-tight font-display">Customers</h2>
+      <div className="lg:col-span-5 card stack-sm flex flex-col min-h-0 overflow-hidden lg:h-full">
+        <div className="stack-sm flex-1 min-h-0 flex flex-col">
+          <div className="flex items-center justify-between gap-2 shrink-0">
+            <h2 className="text-h2">Customers</h2>
             {!isCreating && (
               <button
                 onClick={() => {
@@ -704,79 +744,86 @@ export default function CustomersSection({
                 }}
                 className="btn-primary"
               >
-                <UserPlus className="icon-sm text-brand-sky" />
+                <UserPlus className="icon-sm" />
                 Add Customer
               </button>
             )}
           </div>
 
           {!isCreating && (
-            <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 icon-md text-slate-400" />
+            <div className="relative shrink-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 icon-sm text-slate-400" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search customers by name, phone..."
-                className="input-base pl-10 pr-10 bg-slate-50 border-slate-150 focus:bg-white focus:ring-sky-50"
+                className="input-base pl-9 pr-9"
               />
               {searchQuery && (
                 <button
                   type="button"
                   aria-label="Clear search"
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
                 >
-                  <X className="icon-md" />
+                  <X className="icon-sm" />
                 </button>
               )}
             </div>
           )}
 
           {isCreating ? (
-            <form onSubmit={handleCreateCustomer} className="space-y-2">
+            <form onSubmit={handleCreateCustomer} className="stack-sm">
               <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                <span className="font-semibold text-sm text-slate-800 font-display">New Customer</span>
-                <button type="button" onClick={() => setIsCreating(false)} className="text-xs text-slate-500 hover:text-slate-800 font-semibold uppercase tracking-wider cursor-pointer bg-transparent border-none">Cancel</button>
+                <span className="text-h3">New Customer</span>
+                <button type="button" onClick={() => setIsCreating(false)} className="btn-ghost text-xs">Cancel</button>
               </div>
               {createError && <div className="alert-error text-xs py-2">{createError}</div>}
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-3xs font-bold uppercase tracking-wider text-slate-600 mb-0.5">NAME*</label>
+                  <label className="text-label">Name*</label>
                   <input type="text" required autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Ali Khan" className="input-base" />
                 </div>
                 <div>
-                  <label className="block text-3xs font-bold uppercase tracking-wider text-slate-600 mb-0.5">
-                    MOBILE{isNameDuplicate && <span className="text-red-500">*</span>}
+                  <label className="text-label">
+                    Mobile{isNameDuplicate && <span className="text-feedback-error">*</span>}
                   </label>
-                  <input type="tel" required={isNameDuplicate} value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="0300-1234567" className={`input-base ${isNameDuplicate ? 'border-amber-300' : ''}`} />
+                  <input type="tel" required={isNameDuplicate} value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="0300-1234567" className={`input-base ${isNameDuplicate ? 'input-error' : ''}`} />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-3xs font-bold uppercase tracking-wider text-slate-600 mb-0.5">ADDRESS</label>
+                  <label className="text-label">Address</label>
                   <input type="text" value={newAddress} onChange={(e) => setNewAddress(e.target.value)} placeholder="House 45, Tariq Road, Karachi" className="input-base" />
                 </div>
               </div>
             </form>
           ) : (
             /* RECENT CUSTOMER OR SEARCH LIST */
-            <div className="space-y-2">
-                <span className="text-caption-xs font-extrabold text-slate-400 uppercase">
+            <div className="stack-sm flex-1 min-h-0 flex flex-col">
+                <span className="text-caption-xs font-bold uppercase shrink-0">
                   {searchQuery ? `Search Results (${customers.length})` : 'Newly Added Customers'}
                 </span>
 
-              <div className="space-y-1 max-h-[42vh] overflow-y-auto pr-1">
+              <div className="panel-scroll space-y-1.5 pr-0.5">
                 {loading && (
-                  <p className="text-center text-slate-400 py-3 text-caption-xs font-semibold uppercase tracking-wider animate-pulse">Searching...</p>
+                  <p className="text-center text-muted py-3 text-caption-xs font-semibold">Searching...</p>
                 )}
                 {!loading && searchQuery && customers.length === 0 && (
-                  <p className="text-center text-slate-400 py-6 text-caption-xs font-semibold uppercase tracking-wider">No matching customers found.</p>
+                  <div className="empty-state py-8">
+                    <p className="empty-state-title">No matches</p>
+                    <p className="empty-state-text">Try another name or phone number.</p>
+                  </div>
                 )}
                 {!searchQuery && recentLoading && recentCustomers.length === 0 && (
-                  <p className="text-center text-slate-400 py-3 text-caption-xs font-semibold uppercase tracking-wider animate-pulse">Loading...</p>
+                  <p className="text-center text-muted py-3 text-caption-xs font-semibold">Loading...</p>
                 )}
                 {!searchQuery && !recentLoading && recentCustomers.length === 0 && (
-                  <p className="text-center text-slate-400 py-6 text-caption-xs font-semibold uppercase tracking-wider">No customers found.</p>
+                  <div className="empty-state py-8">
+                    <UserPlus className="empty-state-icon" aria-hidden="true" />
+                    <p className="empty-state-title">No customers yet</p>
+                    <p className="empty-state-text">Add a customer to start taking measurements and orders.</p>
+                  </div>
                 )}
                 {(searchQuery ? customers : recentCustomers).map((c) => (
                   <button
@@ -784,26 +831,22 @@ export default function CustomersSection({
                     onClick={() => {
                       setSelectedCustomer(c);
                     }}
-                    className={`w-full p-2 rounded-lg text-left border transition-[background-color,border-color,color] flex items-center justify-between cursor-pointer ${
-                      selectedCustomer?.id === c.id
-                        ? 'bg-sky-50/70 border-sky-400 text-sky-900 font-semibold'
-                        : 'bg-white hover:bg-slate-50 border-slate-200'
-                    }`}
+                    className={`list-row ${selectedCustomer?.id === c.id ? 'list-row-selected' : ''}`}
                   >
-                    <div className="space-y-0.5">
-                      <p className="font-semibold text-slate-800 text-sm">{c.name}</p>
+                    <div className="space-y-0.5 min-w-0">
+                      <CustomerName name={c.name} as="p" className="truncate" />
                       {c.phone && !c.phone.startsWith('NO-PHONE-') ? (
-                        <div className="flex items-center gap-1 text-slate-500 text-caption-xs font-semibold">
-                          <Phone className="icon-sm text-slate-400 shrink-0" />
+                        <div className="flex items-center gap-1 text-secondary text-caption-xs">
+                          <Phone className="icon-xs text-slate-400 shrink-0" />
                           <span>{c.phone}</span>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-1 text-slate-400 text-caption-xs font-medium italic">
+                        <div className="text-muted text-caption-xs italic">
                           No phone
                         </div>
                       )}
                     </div>
-                    <ChevronRight className={`icon-md shrink-0 ${selectedCustomer?.id === c.id ? 'text-sky-500' : 'text-slate-400'}`} />
+                    <ChevronRight className={`icon-md shrink-0 ${selectedCustomer?.id === c.id ? 'text-info-600' : 'text-slate-400'}`} />
                   </button>
                 ))}
               </div>
@@ -813,12 +856,12 @@ export default function CustomersSection({
 
         {/* "Show More" Button - Always visible at the bottom of the Left Column except when creating customer */}
         {!isCreating && (
-          <div className="pt-2.5 border-t border-slate-100 mt-2.5">
+          <div className="pt-2 border-t border-slate-100 shrink-0">
             <button
               onClick={() => {
                 setShowAllPage(true);
               }}
-              className="w-full py-2.5 px-4 bg-sky-50 hover:bg-sky-100 text-sky-700 font-semibold text-xs uppercase tracking-wider rounded-xl border border-sky-200 cursor-pointer text-center flex items-center justify-center gap-1.5 transition-[background-color] shadow-3xs"
+              className="btn-secondary w-full"
             >
               Show More
             </button>
@@ -827,13 +870,13 @@ export default function CustomersSection({
       </div>
 
       {/* RIGHT COLUMN: Customer Details & Measurements */}
-      <div className="lg:col-span-7 card space-y-2">
+      <div className="lg:col-span-7 card stack-sm min-h-0 overflow-x-hidden overflow-y-auto lg:h-full">
         {duplicateAlert && (
-          <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs font-semibold flex items-start justify-between gap-2 animate-fade-in">
+          <div className="alert-warning text-xs flex items-start justify-between gap-2 animate-fade-in">
             <span>{duplicateAlert}</span>
             <button 
               onClick={() => setDuplicateAlert(null)}
-              className="text-amber-500 hover:text-amber-800 font-extrabold cursor-pointer px-1 text-sm shrink-0"
+              className="text-feedback-warning hover:opacity-80 font-bold cursor-pointer px-1 text-sm shrink-0"
               aria-label="Dismiss"
             >
               ×
@@ -853,7 +896,7 @@ export default function CustomersSection({
                   className="text-base font-bold text-slate-900 tracking-tight uppercase w-full border-b-2 border-sky-300 pb-0.5 bg-transparent focus-visible:outline-none"
                 />
               ) : (
-                <h1 className="text-base font-bold text-slate-900 tracking-tight uppercase">{selectedCustomer.name}</h1>
+                <CustomerName name={selectedCustomer.name} as="h1" className="!text-base tracking-tight uppercase" />
               )}
 
               {/* Attributes display - compact 2-column */}
@@ -986,51 +1029,55 @@ export default function CustomersSection({
                 </div>
 
                 {historyLoading ? (
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider py-4 text-center">Loading orders...</p>
+                  <p className="text-xs font-semibold text-muted py-4 text-center">Loading orders...</p>
                 ) : orderHistory.length === 0 ? (
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider py-4 text-center">No orders booked yet for this customer.</p>
+                  <div className="empty-state py-6">
+                    <ShoppingCart className="empty-state-icon" aria-hidden="true" />
+                    <p className="empty-state-title">No orders yet</p>
+                    <p className="empty-state-text">Book an order for this customer to see history here.</p>
+                  </div>
                 ) : (
                   <div className="space-y-1.5 max-h-[35vh] overflow-y-auto pr-1">
-                    {orderHistory.map((order) => (
-                      <div key={order.id} className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-4">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-black text-slate-900 text-sm font-display">{order.order_number}</span>
-                            <span className={`px-2 py-0.5 rounded text-xs font-extrabold uppercase ${
-                              order.status === 'Ready' || order.status === 'Ready to Deliver'
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : order.status === 'Delivered'
-                                ? 'bg-slate-100 text-slate-600'
-                                : order.status === 'Pending'
-                                ? 'bg-blue-100 text-blue-700'
-                                : 'bg-amber-100 text-amber-700'
-                            }`}>
-                              {order.status}
-                            </span>
+                    {orderHistory.map((order) => {
+                      const remaining = (order.final_total ?? order.total_amount) - order.paid_amount;
+                      return (
+                      <button
+                        key={order.id}
+                        type="button"
+                        onClick={() => onOpenOrder?.(order.id)}
+                        disabled={!onOpenOrder}
+                        className={`list-row ${
+                          onOpenOrder ? '' : 'cursor-default opacity-90'
+                        }`}
+                      >
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <OrderId value={order.order_number} className="!text-xs" />
+                            <StatusBadge status={order.status} />
                           </div>
-                          <p className="text-slate-500 text-sm font-medium uppercase tracking-wider">
-                            Booked: {new Date(order.created_at).toLocaleDateString(undefined, { dateStyle: 'medium' })} • Due: {new Date(order.due_date).toLocaleDateString(undefined, { dateStyle: 'medium' })}
+                          <p className="text-secondary text-xs">
+                            Booked: {new Date(order.created_at).toLocaleDateString(undefined, { dateStyle: 'medium' })} ·{' '}
+                            <DeliveryDateText dueDate={order.due_date} short={false} className="!inline" />
                           </p>
-                          <div className="text-sm text-slate-600 font-medium">
+                          <div className="text-xs text-secondary truncate">
                             Items: {(order.items || []).map(it => it.type).join(', ')}
                           </div>
                         </div>
                         <div className="text-right space-y-1 shrink-0">
-                          <span className="text-base font-black text-slate-800 block font-display">
-                            {currency}{order.total_amount}
-                          </span>
-                          {(order.final_total ?? order.total_amount) - order.paid_amount > 0 ? (
-                            <span className="text-xs bg-red-50 text-red-700 font-semibold px-2 py-1 rounded border border-red-100">
-                              Due: {currency}{(order.final_total ?? order.total_amount) - order.paid_amount}
-                            </span>
-                          ) : (
-                            <span className="text-xs bg-emerald-50 text-emerald-700 font-semibold px-2 py-1 rounded border border-emerald-100">
-                              Paid
+                          <MoneyTotal
+                            currency={currency}
+                            amount={order.final_total ?? order.total_amount}
+                            className="text-sm block"
+                          />
+                          <PaymentChip currency={currency} remaining={remaining} />
+                          {onOpenOrder && (
+                            <span className="text-3xs font-bold text-muted uppercase tracking-wider flex items-center justify-end gap-0.5">
+                              Open <ChevronRight className="w-3 h-3" />
                             </span>
                           )}
                         </div>
-                      </div>
-                    ))}
+                      </button>
+                    );})}
                   </div>
                 )}
               </div>
@@ -1165,8 +1212,8 @@ export default function CustomersSection({
                         type="button"
                         onClick={() => {
                           setActiveProfileId(p.id);
-                          setEditingProfileId(editingCustomer ? p.id : null);
-                          if (editingCustomer) {
+                          if (editingCustomer || editingProfileId === p.id) {
+                            setEditingProfileId(p.id);
                             setEditingProfileMeasurements({ ...p.values });
                           }
                         }}
@@ -1180,11 +1227,12 @@ export default function CustomersSection({
                       </button>
                     );
                   })}
-                  {editingCustomer && garmentTypes.filter(g => g.enabled && !profiles.some(p => p.garment_type_id === g.id)).length > 0 && (
+                  {garmentTypes.filter(g => g.enabled && !profiles.some(p => p.garment_type_id === g.id)).length > 0 && !isAddingProfile && (
                     <button
                       type="button"
                       onClick={() => {
                         setIsAddingProfile(true);
+                        setEditingProfileId(null);
                         const available = garmentTypes.filter(g => g.enabled && !profiles.some(p => p.garment_type_id === g.id));
                         if (available.length > 0) {
                           setNewProfileGarmentTypeId(available[0].id);
@@ -1203,11 +1251,11 @@ export default function CustomersSection({
               {/* Opened Profile View Area */}
               {!isAddingProfile && activeProfile && (
                 <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 animate-fade-in">
-                  {editingProfileId === activeProfile.id && !editingCustomer && (
+                  {!editingCustomer && editingProfileId === activeProfile.id && (
                     <div className="flex items-center justify-end border-b border-slate-200 pb-2 gap-1.5">
                       <button
                         type="button"
-                        onClick={() => setEditingProfileId(null)}
+                        onClick={handleCancelEditMeasurements}
                         className="px-2.5 py-1.5 text-slate-500 hover:text-slate-800 font-extrabold text-caption-xs uppercase tracking-wider cursor-pointer"
                       >
                         Cancel
@@ -1219,6 +1267,19 @@ export default function CustomersSection({
                       >
                         <Check className="icon-sm text-brand-sky" />
                         Save
+                      </button>
+                    </div>
+                  )}
+
+                  {!editingCustomer && editingProfileId !== activeProfile.id && (
+                    <div className="flex items-center justify-end border-b border-slate-200 pb-2">
+                      <button
+                        type="button"
+                        onClick={() => handleStartEditMeasurements(activeProfile.id)}
+                        className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-extrabold text-caption-xs uppercase tracking-wider rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <Edit2 className="icon-sm" />
+                        Edit measurements
                       </button>
                     </div>
                   )}
