@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Customer, UserRole, Order, GarmentType, MeasurementProfile } from '../types';
 import { printPage } from '../lib/print';
+import { validateGarmentMeasurementsCompleted, validateMobileNumber } from '../lib/validation';
 
 interface CustomersSectionProps {
   token: string;
@@ -333,8 +334,15 @@ export default function CustomersSection({
       return;
     }
 
-    if (isNameDuplicate && (!newPhone || newPhone.trim() === '')) {
+    const phoneRequired = isNameDuplicate;
+    if (phoneRequired && (!newPhone || newPhone.trim() === '')) {
       setCreateError('A customer with this name already exists. A Phone Number is required to save a duplicate name.');
+      return;
+    }
+
+    const phoneError = validateMobileNumber(newPhone, phoneRequired);
+    if (phoneError) {
+      setCreateError(phoneError);
       return;
     }
 
@@ -344,17 +352,9 @@ export default function CustomersSection({
 
     try {
       const selectedGarment = garmentTypes.find(g => g.id === selectedGarmentTypeId);
-      if (!selectedGarment) {
-        throw new Error('Please select an active garment type to define measurements.');
-      }
-
-      // Validate required measurement fields
-      const missingRequired = selectedGarment.measurement_fields
-        .filter(f => f.required)
-        .find(f => !initialMeasurements[f.name] || String(initialMeasurements[f.name]).trim() === '');
-      
-      if (missingRequired) {
-        throw new Error(`Measurement field "${missingRequired.name}" is required.`);
+      const measError = validateGarmentMeasurementsCompleted(selectedGarment, initialMeasurements);
+      if (measError || !selectedGarment) {
+        throw new Error(measError || 'Please select a garment type and enter measurements.');
       }
 
       // Automatically construct first Measurement Profile
@@ -462,7 +462,11 @@ export default function CustomersSection({
     if (!newProfileGarmentTypeId) return;
 
     const selectedGarment = garmentTypes.find(g => g.id === newProfileGarmentTypeId);
-    if (!selectedGarment) return;
+    const measError = validateGarmentMeasurementsCompleted(selectedGarment, newProfileMeasurements);
+    if (measError || !selectedGarment) {
+      setMeasError(measError || 'Please select a garment type and enter measurements.');
+      return;
+    }
 
     const newProfile: MeasurementProfile = {
       id: Math.random().toString(36).substring(2, 11),
@@ -532,6 +536,17 @@ export default function CustomersSection({
     if (!selectedCustomer) return;
     setMeasError(null);
     try {
+      if (!editCustomerForm.name.trim()) {
+        setMeasError('Customer Name is required.');
+        return;
+      }
+
+      const phoneError = validateMobileNumber(editCustomerForm.phone, false);
+      if (phoneError) {
+        setMeasError(phoneError);
+        return;
+      }
+
       const res = await fetch(`/api/customers/${selectedCustomer.id}`, {
         method: 'PUT',
         headers: {
@@ -607,6 +622,11 @@ export default function CustomersSection({
   const activeProfile = profiles.find(p => p.id === activeProfileId) || null;
   const activeGarmentType = activeProfile ? garmentTypes.find(gt => gt.id === activeProfile.garment_type_id) : null;
   const selectedGarmentTypeForNewCustomer = garmentTypes.find(g => g.id === selectedGarmentTypeId);
+  const newCustomerMeasError = validateGarmentMeasurementsCompleted(
+    selectedGarmentTypeForNewCustomer,
+    initialMeasurements
+  );
+  const canSaveNewCustomer = !!newName.trim() && !newCustomerMeasError;
 
   if (showAllPage) {
     return (
@@ -1475,11 +1495,18 @@ export default function CustomersSection({
               id="btn-save-customer-profile-right"
               type="button"
               onClick={(e) => handleCreateCustomer(e)}
-              className="btn-success w-full mt-2"
+              disabled={!canSaveNewCustomer}
+              title={newCustomerMeasError || undefined}
+              className="btn-success w-full mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Check className="icon-xs" />
               Save Customer Profile
             </button>
+            {newCustomerMeasError && (
+              <p className="text-xs text-amber-700 font-semibold mt-1.5 text-center">
+                {newCustomerMeasError}
+              </p>
+            )}
           </div>
         ) : (
                   <div className="flex flex-col items-center justify-center py-16 text-center print:hidden">

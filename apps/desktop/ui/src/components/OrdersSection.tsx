@@ -7,8 +7,14 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ShoppingCart, Calendar, Plus, Trash2, Printer, CheckCircle, Clock, ShieldAlert, ArrowRight, ChevronRight, Edit3, Search, UserPlus, ChevronLeft, Scissors, Info, Check, QrCode, Camera, Smartphone, Users, ChevronDown, MoreVertical } from 'lucide-react';
 import { Customer, Order, OrderItem, OrderStatus, UserRole, PipelineStage, GarmentType, StylingCategory, MeasurementProfile } from '../types';
 import { printPage } from '../lib/print';
+import { validateGarmentMeasurementsCompleted, validateMobileNumber } from '../lib/validation';
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
+
+/** True when a customer profile has at least one non-empty measurement value. */
+function profileHasSavedMeasurements(profile: MeasurementProfile): boolean {
+  return Object.values(profile.values || {}).some(v => String(v ?? '').trim() !== '');
+}
 
 interface OrdersSectionProps {
   token: string;
@@ -511,103 +517,12 @@ export default function OrdersSection({
     return () => clearTimeout(delay);
   }, [newCustName, token]);
 
-  // Load customer profiles and initialize booking items when customer selected
-  useEffect(() => {
-    if (!customer) {
-      setCustomerProfiles([]);
-      return;
-    }
-    const loadProfiles = async () => {
-      try {
-        const res = await fetch(`/api/customers/${customer.id}/measurements`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const mData = await res.json();
-          const rawData = mData.data || {};
-          let parsedProfiles: MeasurementProfile[] = [];
-          if (Array.isArray(rawData.profiles)) {
-            parsedProfiles = rawData.profiles;
-          }
-          setCustomerProfiles(parsedProfiles);
-
-          // Only initialize bookingItems if empty
-          if (bookingItems.length === 0 && garmentTypes.length > 0) {
-            const firstType = garmentTypes.find(g => g.enabled) || garmentTypes[0];
-            if (firstType) {
-              const existingProfile = parsedProfiles.find(p => p.garment_type_id === firstType.id);
-              const measurement_snapshot: Record<string, string | number> = {};
-              if (existingProfile) {
-                Object.assign(measurement_snapshot, existingProfile.values);
-              } else {
-                firstType.measurement_fields.forEach(f => {
-                  measurement_snapshot[f.name] = '';
-                });
-              }
-
-              const styling_snapshot: Record<string, string> = {};
-              const enabledCategories = stylingCategories.filter(sc => sc.garment_type_id === firstType.id && sc.options && sc.options.some(o => o.enabled));
-              enabledCategories.forEach(cat => {
-                if (existingProfile?.styling_preferences?.[cat.id]) {
-                  styling_snapshot[cat.id] = existingProfile.styling_preferences[cat.id];
-                } else {
-                  const firstEnabled = cat.options.find(o => o.enabled);
-                  if (firstEnabled) {
-                    styling_snapshot[cat.id] = firstEnabled.id;
-                  }
-                }
-              });
-
-              const d = new Date();
-              d.setDate(d.getDate() + 10);
-
-              setBookingItems([{
-                id: Math.random().toString(36).substring(2, 11),
-                garment_type_id: firstType.id,
-                type: firstType.name,
-                price: firstType.price || 0,
-                delivery_date: sharedDeliveryDate || d.toLocaleDateString('en-CA'),
-                measurement_snapshot,
-                styling_snapshot,
-                notes: ''
-              }]);
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Error loading customer profiles:', err);
-      }
-    };
-    loadProfiles();
-  }, [customer, garmentTypes, stylingCategories]);
-
-  // Load active customer if passed for order creation
-  useEffect(() => {
-    if (activeCustomerId) {
-      const fetchCustomerDetails = async () => {
-        try {
-          const res = await fetch(`/api/customers/${activeCustomerId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (res.ok) {
-            const matched = await res.json();
-            setCustomer(matched);
-            setIsCreating(true);
-            setBookingStep('garments');
-            setSelectedOrder(null);
-            setBookingItems([]); // Reset so profiles hook can populate it
-          }
-        } catch (err) {
-          console.error('Error fetching customer details for order:', err);
-        }
-      };
-      fetchCustomerDetails();
-    }
-  }, [activeCustomerId, token]);
-
-  // Helper to create a single booking item
-  const createDefaultBookingItem = (garmentType: GarmentType): BookingItem => {
-    const existingProfile = customerProfiles.find(p => p.garment_type_id === garmentType.id);
+  // Helper to create a single booking item (optional profiles override for init-before-state-settles)
+  const createDefaultBookingItem = (
+    garmentType: GarmentType,
+    profiles: MeasurementProfile[] = customerProfiles
+  ): BookingItem => {
+    const existingProfile = profiles.find(p => p.garment_type_id === garmentType.id);
     const measurement_snapshot: Record<string, string | number> = {};
     if (existingProfile) {
       Object.assign(measurement_snapshot, existingProfile.values);
@@ -647,6 +562,77 @@ export default function OrdersSection({
     };
   };
 
+  // Load customer profiles and initialize booking items when customer selected
+  useEffect(() => {
+    if (!customer) {
+      setCustomerProfiles([]);
+      return;
+    }
+    const loadProfiles = async () => {
+      try {
+        const res = await fetch(`/api/customers/${customer.id}/measurements`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const mData = await res.json();
+          const rawData = mData.data || {};
+          let parsedProfiles: MeasurementProfile[] = [];
+          if (Array.isArray(rawData.profiles)) {
+            parsedProfiles = rawData.profiles;
+          }
+          setCustomerProfiles(parsedProfiles);
+
+          // Only initialize bookingItems if empty — pre-select every garment with saved measurements
+          if (bookingItems.length === 0 && garmentTypes.length > 0) {
+            const typesWithMeasurements = garmentTypes
+              .filter(g => g.enabled !== false)
+              .filter(g => {
+                const profile = parsedProfiles.find(p => p.garment_type_id === g.id);
+                return !!profile && profileHasSavedMeasurements(profile);
+              })
+              .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+
+            const fallbackType = garmentTypes.find(g => g.enabled) || garmentTypes[0];
+            const typesToPreselect = typesWithMeasurements.length > 0
+              ? typesWithMeasurements
+              : (fallbackType ? [fallbackType] : []);
+
+            if (typesToPreselect.length > 0) {
+              setBookingItems(typesToPreselect.map(gt => createDefaultBookingItem(gt, parsedProfiles)));
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error loading customer profiles:', err);
+      }
+    };
+    loadProfiles();
+  }, [customer, garmentTypes, stylingCategories]);
+
+  // Load active customer if passed for order creation
+  useEffect(() => {
+    if (activeCustomerId) {
+      const fetchCustomerDetails = async () => {
+        try {
+          const res = await fetch(`/api/customers/${activeCustomerId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const matched = await res.json();
+            setCustomer(matched);
+            setIsCreating(true);
+            setBookingStep('garments');
+            setSelectedOrder(null);
+            setBookingItems([]); // Reset so profiles hook can populate it
+          }
+        } catch (err) {
+          console.error('Error fetching customer details for order:', err);
+        }
+      };
+      fetchCustomerDetails();
+    }
+  }, [activeCustomerId, token]);
+
   const startNewBooking = () => {
     setCustomer(null);
     setBookingItems([]);
@@ -677,23 +663,24 @@ export default function OrdersSection({
     e.preventDefault();
     if (!newCustName.trim()) return;
 
-    if (isNameDuplicate && (!newCustPhone || !newCustPhone.trim())) {
+    const phoneRequired = isNameDuplicate;
+    if (phoneRequired && (!newCustPhone || !newCustPhone.trim())) {
       setCreateError('A customer with this name already exists. A Phone Number is required to save a duplicate name.');
+      return;
+    }
+
+    const phoneError = validateMobileNumber(newCustPhone, phoneRequired);
+    if (phoneError) {
+      setCreateError(phoneError);
       return;
     }
 
     const selectedGarment = newCustGarmentTypeId
       ? garmentTypes.find(g => g.id === newCustGarmentTypeId)
       : null;
-    if (!selectedGarment) {
-      setCreateError('Please select a garment type and enter measurements. A customer cannot be saved without measurements.');
-      return;
-    }
-    const missingRequired = selectedGarment.measurement_fields
-      .filter(f => f.required)
-      .find(f => !newCustMeasurements[f.name] || String(newCustMeasurements[f.name]).trim() === '');
-    if (missingRequired) {
-      setCreateError(`Missing required measurement: "${missingRequired.name}". Please fill in all required measurements to save the customer.`);
+    const measError = validateGarmentMeasurementsCompleted(selectedGarment, newCustMeasurements);
+    if (measError || !selectedGarment) {
+      setCreateError(measError || 'Please select a garment type and enter measurements.');
       return;
     }
 
@@ -813,16 +800,35 @@ export default function OrdersSection({
   };
 
   const handleUpdateBookingItemMeasurement = (itemId: string, fieldName: string, value: string | number) => {
-    setBookingItems(prev => prev.map(item => {
-      if (item.id !== itemId) return item;
-      return {
-        ...item,
-        measurement_snapshot: {
-          ...item.measurement_snapshot,
-          [fieldName]: value
-        }
-      };
-    }));
+    // Measurements are shared per garment type (PROJECT.md §8) — keep all items of that type in sync
+    setBookingItems(prev => {
+      const source = prev.find(item => item.id === itemId);
+      if (!source) return prev;
+      const garmentTypeId = source.garment_type_id;
+
+      setCustomerProfiles(profiles => {
+        const idx = profiles.findIndex(p => p.garment_type_id === garmentTypeId);
+        if (idx === -1) return profiles;
+        const next = [...profiles];
+        next[idx] = {
+          ...next[idx],
+          values: { ...next[idx].values, [fieldName]: value },
+          updated_at: new Date().toISOString(),
+        };
+        return next;
+      });
+
+      return prev.map(item => {
+        if (item.garment_type_id !== garmentTypeId) return item;
+        return {
+          ...item,
+          measurement_snapshot: {
+            ...item.measurement_snapshot,
+            [fieldName]: value,
+          },
+        };
+      });
+    });
   };
 
   const handleUpdateBookingItemStyling = (itemId: string, categoryId: string, optionId: string) => {
@@ -836,6 +842,45 @@ export default function OrdersSection({
         }
       };
     }));
+  };
+
+  /** One shared measurement profile per garment type — never let last order item win. */
+  const mergeProfilesFromBookingItems = (
+    existingProfiles: MeasurementProfile[],
+    items: typeof bookingItems
+  ): MeasurementProfile[] => {
+    const updatedProfiles = [...existingProfiles];
+    const nowStr = new Date().toISOString();
+    const seenGarmentTypes = new Set<string>();
+
+    for (const item of items) {
+      if (seenGarmentTypes.has(item.garment_type_id)) continue;
+      seenGarmentTypes.add(item.garment_type_id);
+
+      const existingIdx = updatedProfiles.findIndex(p => p.garment_type_id === item.garment_type_id);
+      if (existingIdx !== -1) {
+        // Update shared measurement values once. Do not overwrite styling_preferences —
+        // styling is per order item (PROJECT.md §8), not a shared profile field to clobber.
+        updatedProfiles[existingIdx] = {
+          ...updatedProfiles[existingIdx],
+          values: { ...item.measurement_snapshot },
+          updated_at: nowStr,
+        };
+      } else {
+        updatedProfiles.push({
+          id: Math.random().toString(36).substring(2, 11),
+          garment_type_id: item.garment_type_id,
+          garment_name: item.type,
+          values: { ...item.measurement_snapshot },
+          // Seed defaults only when creating a new garment profile
+          styling_preferences: { ...item.styling_snapshot },
+          created_at: nowStr,
+          updated_at: nowStr,
+        });
+      }
+    }
+
+    return updatedProfiles;
   };
 
   const handleFinalizeBooking = async (e: React.FormEvent) => {
@@ -853,33 +898,9 @@ export default function OrdersSection({
     setCreateSuccess(false);
 
     try {
-      // 1. Update customer profile measurements & styling preferences in DB
-      let updatedProfiles = [...customerProfiles];
-      const nowStr = new Date().toISOString();
+      // 1. Persist shared customer measurement profiles (one per garment type)
+      const updatedProfiles = mergeProfilesFromBookingItems(customerProfiles, bookingItems);
 
-      bookingItems.forEach(item => {
-        const existingIdx = updatedProfiles.findIndex(p => p.garment_type_id === item.garment_type_id);
-        if (existingIdx !== -1) {
-          updatedProfiles[existingIdx] = {
-            ...updatedProfiles[existingIdx],
-            values: item.measurement_snapshot,
-            styling_preferences: item.styling_snapshot,
-            updated_at: nowStr
-          };
-        } else {
-          updatedProfiles.push({
-            id: Math.random().toString(36).substring(2, 11),
-            garment_type_id: item.garment_type_id,
-            garment_name: item.type,
-            values: item.measurement_snapshot,
-            styling_preferences: item.styling_snapshot,
-            created_at: nowStr,
-            updated_at: nowStr
-          });
-        }
-      });
-
-      // Update customer measurements
       const profileUpdateRes = await fetch(`/api/customers/${customer.id}/measurements`, {
         method: 'PUT',
         headers: {
@@ -898,6 +919,8 @@ export default function OrdersSection({
         throw new Error(pErr.error || 'Failed to update customer measurement profiles.');
       }
 
+      setCustomerProfiles(updatedProfiles);
+
       // Calculate totals
       const totalAmountVal = bookingItems.reduce((sum, item) => sum + (Number(item.price) || 0) * (item.quantity || 1), 0);
       const overallDueDate = bookingItems.reduce((max, item) => {
@@ -910,7 +933,7 @@ export default function OrdersSection({
       const discountAmountVal = applyDiscount ? discountAmount : 0;
       const finalTotalVal = applyDiscount ? finalTotal : totalAmountVal;
 
-      // 2. Insert order
+      // 2. Insert order — item snapshots are a freeze for print/history; profile remains source of truth
       const res = await fetch('/api/orders', {
         method: 'POST',
         headers: {
@@ -1758,7 +1781,11 @@ export default function OrdersSection({
 
                     <button
                       type="submit"
-                      className="btn-success w-full"
+                      disabled={!!validateGarmentMeasurementsCompleted(
+                        garmentTypes.find(g => g.id === newCustGarmentTypeId),
+                        newCustMeasurements
+                      )}
+                      className="btn-success w-full disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Save & Continue
                     </button>

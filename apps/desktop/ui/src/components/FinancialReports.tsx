@@ -22,6 +22,11 @@ interface FinancialData {
 
 type DateFilter = 'Today' | 'ThisWeek' | 'ThisMonth' | 'ThisYear' | 'Custom';
 
+/** Order value after discount — falls back to total_amount for older rows. */
+function orderValue(o: Pick<Order, 'final_total' | 'total_amount'>): number {
+  return Number(o.final_total ?? o.total_amount) || 0;
+}
+
 export default function FinancialReports({ token, currency }: FinancialReportsProps) {
   const [data, setData] = useState<FinancialData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -89,7 +94,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
   const stats = useMemo(() => {
     let totalRevenue = 0, totalCollected = 0, pendingCount = 0, activeCount = 0, deliveredCount = 0;
     filteredOrders.forEach(o => {
-      const rev = Number(o.total_amount) || 0;
+      const rev = orderValue(o);
       const col = Number(o.paid_amount) || 0;
       totalRevenue += rev; totalCollected += col;
       if (col < rev) pendingCount++;
@@ -115,7 +120,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
 
   const previousStats = useMemo(() => {
     let rev = 0, col = 0;
-    previousPeriodOrders.forEach(o => { rev += Number(o.total_amount) || 0; col += Number(o.paid_amount) || 0; });
+    previousPeriodOrders.forEach(o => { rev += orderValue(o); col += Number(o.paid_amount) || 0; });
     return { totalOrders: previousPeriodOrders.length, totalRevenue: rev, totalCollected: col };
   }, [previousPeriodOrders]);
 
@@ -133,7 +138,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
     const stages = (data?.settings?.pipeline_stages || []).filter((s: PipelineStage) => s.enabled);
     return stages.map((stage: PipelineStage) => {
       const so = filteredOrders.filter(o => o.status === stage.id);
-      const value = so.reduce((s, o) => s + (Number(o.total_amount) || 0), 0);
+      const value = so.reduce((s, o) => s + orderValue(o), 0);
       const collected = so.reduce((s, o) => s + (Number(o.paid_amount) || 0), 0);
       return { id: stage.id, name: stage.name, count: so.length, value, collected, remaining: value - collected };
     });
@@ -147,7 +152,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
       if (!map[o.customer_id]) {
         map[o.customer_id] = { id: o.customer_id, name: o.customer_name || 'Unknown', phone: o.customer_phone || '', totalBookings: 0, totalPaid: 0, outstanding: 0, ordersCount: 0 };
       }
-      const rev = Number(o.total_amount) || 0;
+      const rev = orderValue(o);
       const col = Number(o.paid_amount) || 0;
       map[o.customer_id].totalBookings += rev;
       map[o.customer_id].totalPaid += col;
@@ -172,7 +177,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
     filteredOrders.forEach(o => {
       const key = formatKey(o.created_at);
       if (!grouped[key]) grouped[key] = { label: key, revenue: 0, collected: 0, count: 0, date: new Date(o.created_at) };
-      grouped[key].revenue += Number(o.total_amount) || 0;
+      grouped[key].revenue += orderValue(o);
       grouped[key].collected += Number(o.paid_amount) || 0;
       grouped[key].count += 1;
     });
@@ -183,7 +188,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
     let fullyPaid = 0, partiallyPaid = 0, unpaid = 0;
     let fullyVal = 0, partiallyVal = 0, unpaidVal = 0;
     filteredOrders.forEach(o => {
-      const rev = Number(o.total_amount) || 0;
+      const rev = orderValue(o);
       const col = Number(o.paid_amount) || 0;
       if (col >= rev && rev > 0) { fullyPaid++; fullyVal += rev; }
       else if (col > 0) { partiallyPaid++; partiallyVal += rev; }
@@ -195,12 +200,15 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
   const handleExportCSV = () => {
     if (!filteredOrders.length) return;
     const headers = ['Order #','Customer','Phone','Date','Due','Status','Value','Paid','Balance'];
-    const rows = filteredOrders.map(o => [
-      o.order_number, o.customer_name || '', o.customer_phone || '',
-      new Date(o.created_at).toLocaleDateString('en-CA'), o.due_date, o.status,
-      Number(o.total_amount) || 0, Number(o.paid_amount) || 0,
-      (Number(o.total_amount) || 0) - (Number(o.paid_amount) || 0)
-    ]);
+    const rows = filteredOrders.map(o => {
+      const rev = orderValue(o);
+      const paid = Number(o.paid_amount) || 0;
+      return [
+        o.order_number, o.customer_name || '', o.customer_phone || '',
+        new Date(o.created_at).toLocaleDateString('en-CA'), o.due_date, o.status,
+        rev, paid, rev - paid
+      ];
+    });
     const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -566,7 +574,8 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                 <tr><td colSpan={7} className="py-4 text-center text-slate-400 font-semibold text-3xs uppercase">No records.</td></tr>
               ) : (
                 filteredOrders.map(o => {
-                  const bal = (Number(o.final_total ?? o.total_amount) || 0) - (Number(o.paid_amount) || 0);
+                  const value = orderValue(o);
+                  const bal = value - (Number(o.paid_amount) || 0);
                   return (
                     <tr key={o.id} className="hover:bg-slate-50 transition-colors">
                       <td className="py-2 px-3 font-bold text-slate-900 uppercase text-3xs">{o.order_number}</td>
@@ -579,7 +588,7 @@ export default function FinancialReports({ token, currency }: FinancialReportsPr
                           : 'bg-amber-50 text-amber-700'
                         }`}>{o.status}</span>
                       </td>
-                      <td className="py-2 px-3 text-right font-semibold text-slate-800">{currency}{(Number(o.total_amount)||0).toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right font-semibold text-slate-800">{currency}{value.toLocaleString()}</td>
                       <td className="py-2 px-3 text-right font-semibold text-slate-800">{currency}{(Number(o.paid_amount)||0).toLocaleString()}</td>
                       <td className={`py-2 px-3 text-right font-bold ${bal <= 0 ? 'text-emerald-600' : 'text-amber-500'}`}>{currency}{bal.toLocaleString()}</td>
                     </tr>

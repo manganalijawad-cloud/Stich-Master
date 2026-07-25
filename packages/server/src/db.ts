@@ -16,7 +16,10 @@ export let db: any;
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS shops (
   id TEXT PRIMARY KEY,
-  name TEXT NOT NULL DEFAULT '',
+  shop_name TEXT NOT NULL DEFAULT '',
+  address TEXT NOT NULL DEFAULT '',
+  owner_name TEXT NOT NULL DEFAULT '',
+  mobile_number TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   created_by TEXT,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -82,7 +85,7 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 
 CREATE TABLE IF NOT EXISTS shop_settings (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id TEXT PRIMARY KEY,
   shop_id TEXT REFERENCES shops(id),
   key TEXT NOT NULL,
   value TEXT NOT NULL DEFAULT '',
@@ -205,6 +208,8 @@ export function initDatabase(dbPath?: string): void {
 
   migrateAuditLogsSchema();
   migrateOrdersSchema();
+  migrateShopsSchema();
+  migrateShopSettingsSchema();
 
   seedSyncMetadata();
 }
@@ -463,8 +468,22 @@ export function deleteOrder(id: string, createdBy: string): boolean {
  * Archive closed orders only (Delivered → Archived).
  * Never touches active pipeline work. Optional beforeDate filters by
  * COALESCE(delivered_at, created_at) so undated deliveries still qualify.
+ * Returns ids of orders that were archived (for sync enqueue).
  */
-export function archiveOrders(createdBy: string, beforeDate?: string): number {
+export function archiveOrders(createdBy: string, beforeDate?: string): { count: number; ids: string[] } {
+  let selectSql = `
+    SELECT id FROM orders
+    WHERE created_by = ?
+      AND status = 'Delivered'
+  `;
+  const selectParams: any[] = [createdBy];
+  if (beforeDate) {
+    selectSql += " AND COALESCE(delivered_at, created_at) < ?";
+    selectParams.push(beforeDate);
+  }
+  const ids = (db.prepare(selectSql).all(...selectParams) as { id: string }[]).map(r => r.id);
+  if (ids.length === 0) return { count: 0, ids: [] };
+
   let sql = `
     UPDATE orders
     SET status = 'Archived', updated_at = ?
@@ -477,7 +496,7 @@ export function archiveOrders(createdBy: string, beforeDate?: string): number {
     params.push(beforeDate);
   }
   const result = db.prepare(sql).run(...params);
-  return result.changes;
+  return { count: result.changes, ids };
 }
 
 // ---------------------------------------------------------------------------
@@ -485,7 +504,7 @@ export function archiveOrders(createdBy: string, beforeDate?: string): number {
 // ---------------------------------------------------------------------------
 export function getDashboardStats(createdBy: string, shopId?: string): {
   totalCustomers: number; totalOrders: number; activeOrders: number;
-  deliveredOrders: number; pendingAmount: number; revenue: number;
+  deliveredOrders: number; pendingAmount: number; revenue: number; received: number;
 } {
   const params: any[] = [createdBy];
   if (shopId) { params.push(shopId); }
@@ -506,12 +525,15 @@ export function getDashboardStats(createdBy: string, shopId?: string): {
     `SELECT COUNT(*) as c FROM orders WHERE created_by = ? AND status = 'Delivered'${shopId ? " AND shop_id = ?" : ""}`
   ).get(...params) as { c: number }).c;
 
-  const revenueRow = db.prepare(
-    `SELECT COALESCE(SUM(paid_amount), 0) as rev FROM orders WHERE created_by = ? AND status = 'Delivered'${shopId ? " AND shop_id = ?" : ""}`
-  ).get(...params) as { rev: number };
+  const moneyRow = db.prepare(
+    `SELECT COALESCE(SUM(COALESCE(final_total, total_amount)), 0) as rev,
+            COALESCE(SUM(paid_amount), 0) as received
+     FROM orders WHERE created_by = ?${shopId ? " AND shop_id = ?" : ""}`
+  ).get(...params) as { rev: number; received: number };
 
   const pendingRow = db.prepare(
-    `SELECT COALESCE(SUM(total_amount - paid_amount), 0) as pend FROM orders WHERE created_by = ? AND status NOT IN ('Archived','Delivered')${shopId ? " AND shop_id = ?" : ""}`
+    `SELECT COALESCE(SUM(COALESCE(final_total, total_amount) - paid_amount), 0) as pend
+     FROM orders WHERE created_by = ? AND status NOT IN ('Archived','Delivered')${shopId ? " AND shop_id = ?" : ""}`
   ).get(...params) as { pend: number };
 
   return {
@@ -520,7 +542,8 @@ export function getDashboardStats(createdBy: string, shopId?: string): {
     activeOrders,
     deliveredOrders,
     pendingAmount: pendingRow.pend,
-    revenue: revenueRow.rev,
+    revenue: moneyRow.rev,
+    received: moneyRow.received,
   };
 }
 
@@ -536,18 +559,19 @@ export function getFinancialReport(createdBy: string, fromDate?: string, toDate?
   if (shopId) params.push(shopId);
 
   const totals = db.prepare(`
-    SELECT COALESCE(SUM(o.total_amount), 0) as rev, COALESCE(SUM(o.paid_amount), 0) as col,
+    SELECT COALESCE(SUM(COALESCE(o.final_total, o.total_amount)), 0) as rev,
+           COALESCE(SUM(o.paid_amount), 0) as col,
            COUNT(*) as cnt FROM orders o WHERE o.created_by = ?${dateFilter}${shopFilter}
   `).get(...params) as { rev: number; col: number; cnt: number };
 
   const pending = db.prepare(`
-    SELECT COALESCE(SUM(o.total_amount - o.paid_amount), 0) as pend FROM orders o
+    SELECT COALESCE(SUM(COALESCE(o.final_total, o.total_amount) - o.paid_amount), 0) as pend FROM orders o
     WHERE o.created_by = ? AND o.status NOT IN ('Archived','Delivered')${dateFilter}${shopFilter}
   `).get(...params) as { pend: number };
 
   const chartRows = db.prepare(`
     SELECT SUBSTR(o.created_at, 1, 7) as label,
-           COALESCE(SUM(o.total_amount), 0) as revenue,
+           COALESCE(SUM(COALESCE(o.final_total, o.total_amount)), 0) as revenue,
            COALESCE(SUM(o.paid_amount), 0) as collected
     FROM orders o WHERE o.created_by = ?${dateFilter}${shopFilter}
     GROUP BY label ORDER BY label ASC
@@ -595,15 +619,41 @@ export function deleteProfile(userId: string): boolean {
 // ---------------------------------------------------------------------------
 // SHOP HELPERS
 // ---------------------------------------------------------------------------
-export function createShop(name: string, createdBy: string): { id: string; name: string } {
+export function createShop(
+  name: string,
+  createdBy: string,
+  extras?: { address?: string; owner_name?: string; mobile_number?: string }
+): { id: string; name: string; shop_name: string } {
   const id = uuidv4();
   const now = nowISO();
-  db.prepare("INSERT INTO shops (id, name, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(id, name, createdBy, now, now);
-  return { id, name };
+  const shopName = name || "";
+  db.prepare(`
+    INSERT INTO shops (id, shop_name, address, owner_name, mobile_number, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    shopName,
+    extras?.address || "",
+    extras?.owner_name || "",
+    extras?.mobile_number || "",
+    createdBy,
+    now,
+    now
+  );
+  // Legacy DBs may still have a `name` column — keep it in sync when present
+  try {
+    db.prepare("UPDATE shops SET name = ? WHERE id = ?").run(shopName, id);
+  } catch {
+    /* column may not exist on new installs */
+  }
+  return { id, name: shopName, shop_name: shopName };
 }
 
-export function getShop(shopId: string): { id: string; name: string } | undefined {
-  return db.prepare("SELECT id, name FROM shops WHERE id = ?").get(shopId) as any | undefined;
+export function getShop(shopId: string): { id: string; name: string; shop_name: string } | undefined {
+  const row = db.prepare("SELECT * FROM shops WHERE id = ?").get(shopId) as any;
+  if (!row) return undefined;
+  const display = row.shop_name || row.name || "";
+  return { id: row.id, name: display, shop_name: display };
 }
 
 // ---------------------------------------------------------------------------
@@ -614,20 +664,35 @@ export function getSettings(userId: string): Record<string, any> {
     userId, `${userId}:%`
   ) as { key: string; value: string }[];
   const result: Record<string, any> = {};
+  const prefix = `${userId}:`;
   for (const row of rows) {
-    try { result[row.key] = JSON.parse(row.value); } catch { result[row.key] = row.value; }
+    let key = row.key;
+    if (key.startsWith(prefix)) key = key.slice(prefix.length);
+    try { result[key] = JSON.parse(row.value); } catch { result[key] = row.value; }
   }
   return result;
 }
 
-export function saveSetting(key: string, value: any, userId: string, updatedBy?: string): void {
+export function saveSetting(key: string, value: any, userId: string, updatedBy?: string): { id: string; key: string; user_id: string } {
   const now = nowISO();
   const strVal = typeof value === "string" ? value : JSON.stringify(value);
+  const existing = db.prepare(
+    "SELECT id FROM shop_settings WHERE key = ? AND user_id = ?"
+  ).get(key, userId) as { id: string | number } | undefined;
+
+  if (existing) {
+    db.prepare(`
+      UPDATE shop_settings SET value = ?, updated_at = ?, updated_by = ? WHERE key = ? AND user_id = ?
+    `).run(strVal, now, updatedBy || userId, key, userId);
+    return { id: String(existing.id), key, user_id: userId };
+  }
+
+  const id = uuidv4();
   db.prepare(`
-    INSERT INTO shop_settings (key, value, user_id, updated_at, updated_by)
-    VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(key, user_id) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, updated_by = excluded.updated_by
-  `).run(key, strVal, userId, now, updatedBy || userId);
+    INSERT INTO shop_settings (id, key, value, user_id, updated_at, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(id, key, strVal, userId, now, updatedBy || userId);
+  return { id, key, user_id: userId };
 }
 
 // ---------------------------------------------------------------------------
@@ -841,6 +906,96 @@ function migrateOrdersStatusCheckConstraint(): void {
 
   rebuild();
   console.log("Migrated orders table: removed hard-coded status CHECK for configurable pipeline stages.");
+}
+
+/** Align local shops with Supabase: shop_name, address, owner_name, mobile_number. */
+function migrateShopsSchema(): void {
+  const newColumns: [string, string][] = [
+    ["shop_name", "TEXT NOT NULL DEFAULT ''"],
+    ["address", "TEXT NOT NULL DEFAULT ''"],
+    ["owner_name", "TEXT NOT NULL DEFAULT ''"],
+    ["mobile_number", "TEXT NOT NULL DEFAULT ''"],
+    ["updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))"],
+  ];
+  for (const [col, def] of newColumns) {
+    try {
+      db.exec(`ALTER TABLE shops ADD COLUMN ${col} ${def}`);
+    } catch {
+      /* already exists */
+    }
+  }
+
+  // Copy legacy `name` into shop_name when shop_name is empty
+  try {
+    const cols = db.prepare("PRAGMA table_info(shops)").all() as { name: string }[];
+    const hasName = cols.some(c => c.name === "name");
+    const hasShopName = cols.some(c => c.name === "shop_name");
+    if (hasName && hasShopName) {
+      db.prepare(`
+        UPDATE shops
+        SET shop_name = name
+        WHERE (shop_name IS NULL OR shop_name = '')
+          AND name IS NOT NULL
+          AND name != ''
+      `).run();
+    }
+  } catch (err: any) {
+    console.warn("shops name→shop_name backfill skipped:", err?.message || err);
+  }
+}
+
+/** Align local shop_settings id with cloud: TEXT UUID instead of INTEGER AUTOINCREMENT. */
+function migrateShopSettingsSchema(): void {
+  const row = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'shop_settings'"
+  ).get() as { sql: string } | undefined;
+
+  if (!row?.sql) return;
+  // Already TEXT / UUID-style primary key
+  if (!/INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT/i.test(row.sql)) {
+    return;
+  }
+
+  const rebuild = db.transaction(() => {
+    db.exec(`
+      CREATE TABLE shop_settings_migrated (
+        id TEXT PRIMARY KEY,
+        shop_id TEXT REFERENCES shops(id),
+        key TEXT NOT NULL,
+        value TEXT NOT NULL DEFAULT '',
+        user_id TEXT,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_by TEXT,
+        UNIQUE(key, user_id)
+      );
+    `);
+
+    const oldRows = db.prepare("SELECT * FROM shop_settings").all() as any[];
+    const insert = db.prepare(`
+      INSERT INTO shop_settings_migrated (id, shop_id, key, value, user_id, updated_at, updated_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const r of oldRows) {
+      insert.run(
+        uuidv4(),
+        r.shop_id || null,
+        r.key,
+        r.value ?? "",
+        r.user_id || null,
+        r.updated_at || nowISO(),
+        r.updated_by || null
+      );
+    }
+
+    db.exec(`
+      DROP TABLE shop_settings;
+      ALTER TABLE shop_settings_migrated RENAME TO shop_settings;
+      CREATE INDEX IF NOT EXISTS idx_shop_settings_key ON shop_settings(key);
+    `);
+  });
+
+  rebuild();
+  console.log("Migrated shop_settings: id column is now TEXT UUID (aligned with Supabase).");
 }
 
 export function logAction(

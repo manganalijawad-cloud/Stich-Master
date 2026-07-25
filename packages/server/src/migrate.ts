@@ -7,6 +7,7 @@ ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS owner_name TEXT NOT NULL DEFAU
 ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS mobile_number TEXT NOT NULL DEFAULT '';
 ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL;
 ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS created_by UUID;
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL;
 
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS owner_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS mobile_number TEXT NOT NULL DEFAULT '';

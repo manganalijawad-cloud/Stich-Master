@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS public.shops (
     owner_name TEXT NOT NULL DEFAULT '',
     mobile_number TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     created_by UUID REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid()
 );
 
