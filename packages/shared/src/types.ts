@@ -43,7 +43,8 @@ export interface Measurements {
   updated_by: string;
 }
 
-export type OrderStatus = 'Pending' | 'Cutting' | 'Stitching' | 'Fitting' | 'Ready' | 'Ready to Deliver' | 'Delivered' | 'Archived';
+/** Order pipeline status id — built-ins (Pending, Delivered, …) or custom stage_* ids from shop settings. */
+export type OrderStatus = string;
 
 export interface OrderItem {
   type: string;

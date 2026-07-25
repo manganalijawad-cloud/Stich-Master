@@ -4,6 +4,8 @@ import type { ExtendedUserProfile } from '../lib/auth';
 import { signOut as authSignOut, checkSubscription } from '../lib/auth';
 import { useOnlineStatus } from '../lib/useOnlineStatus';
 
+const PROFILE_CACHE_KEY = 'hellodarzi-profile-cache';
+
 interface AuthContextValue {
   user: ExtendedUserProfile | null;
   token: string | null;
@@ -17,6 +19,34 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function readCachedProfile(userId: string): ExtendedUserProfile | null {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_KEY);
+    if (!raw) return null;
+    const cached = JSON.parse(raw) as ExtendedUserProfile;
+    if (cached?.id !== userId) return null;
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedProfile(profile: ExtendedUserProfile): void {
+  try {
+    localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+function clearCachedProfile(): void {
+  try {
+    localStorage.removeItem(PROFILE_CACHE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<ExtendedUserProfile | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -29,11 +59,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setToken(null);
     setSubscriptionStatus(null);
+    clearCachedProfile();
   }, []);
 
   const setSession = useCallback((newUser: ExtendedUserProfile, newToken: string) => {
     setUser(newUser);
     setToken(newToken);
+    writeCachedProfile(newUser);
     if (newUser.subscription_status) {
       setSubscriptionStatus(newUser.subscription_status);
     }
@@ -69,6 +101,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         new Promise<T>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
       ]);
 
+    const applyProfile = (extProfile: ExtendedUserProfile) => {
+      setSubscriptionStatus(extProfile.subscription_status || 'active');
+      setUser(extProfile);
+      writeCachedProfile(extProfile);
+    };
+
     const loadProfile = async (authUser: { id: string; email?: string; user_metadata?: Record<string, unknown> }) => {
       let profile: any = null;
       try {
@@ -98,7 +136,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           subStatus = await withTimeout(checkSubscription(authUser.id), 5000);
         } catch {
-          subStatus = 'active';
+          const cached = readCachedProfile(authUser.id);
+          subStatus = cached?.subscription_status || 'active';
         }
         const extProfile: ExtendedUserProfile = {
           id: profile.id,
@@ -114,19 +153,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           updated_at: profile.updated_at,
           subscription_status: subStatus,
         };
-        setSubscriptionStatus(subStatus);
-        setUser(extProfile);
-      } else {
-        const fallback: ExtendedUserProfile = {
-          id: authUser.id,
-          email: authUser.email || '',
-          name: (authUser.user_metadata?.name as string) || authUser.email?.split('@')[0] || 'Owner',
-          role: 'Owner',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
-        setUser(fallback);
+        applyProfile(extProfile);
+        return;
       }
+
+      // Offline or profile unreachable: reuse last successful profile for this user
+      const cached = readCachedProfile(authUser.id);
+      if (cached) {
+        applyProfile(cached);
+        return;
+      }
+
+      // No network profile and no cache — stay signed in with session identity.
+      // Prefer metadata role when present; otherwise Owner (single-account V1 default).
+      const minimal: ExtendedUserProfile = {
+        id: authUser.id,
+        email: authUser.email || '',
+        name: (authUser.user_metadata?.name as string) || authUser.email?.split('@')[0] || 'User',
+        role: (authUser.user_metadata?.role as 'Owner' | 'Worker') || 'Owner',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        subscription_status: 'active',
+      };
+      setUser(minimal);
+      setSubscriptionStatus('active');
     };
 
     const restoreSession = async () => {
@@ -136,7 +186,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (session && mounted) {
           setToken(session.access_token);
 
-          const { data: { user: authUser } } = await withTimeout(supabase.auth.getUser(), 8000);
+          let authUser = session.user;
+          try {
+            const { data: { user: verified } } = await withTimeout(supabase.auth.getUser(), 8000);
+            if (verified) authUser = verified;
+          } catch {
+            // Offline: persisted session.user is enough for local-first restore
+          }
+
           if (authUser && mounted) {
             await loadProfile(authUser);
           }
@@ -163,7 +220,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             if (event === 'SIGNED_IN') {
               try {
-                const { data: { user: authUser } } = await withTimeout(supabase.auth.getUser(), 8000);
+                let authUser = session.user;
+                try {
+                  const { data: { user: verified } } = await withTimeout(supabase.auth.getUser(), 8000);
+                  if (verified) authUser = verified;
+                } catch {
+                  // use session.user
+                }
                 if (authUser && mountedRef.current) {
                   await loadProfile(authUser);
                 }

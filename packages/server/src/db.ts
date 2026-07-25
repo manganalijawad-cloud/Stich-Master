@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS orders (
   shop_id TEXT REFERENCES shops(id),
   order_number TEXT NOT NULL,
   customer_id TEXT NOT NULL REFERENCES customers(id),
-  status TEXT NOT NULL DEFAULT 'Pending' CHECK(status IN ('Pending','Cutting','Stitching','Fitting','Ready','Ready to Deliver','Delivered','Archived')),
+  status TEXT NOT NULL DEFAULT 'Pending',
   items TEXT NOT NULL DEFAULT '[]',
   total_amount REAL NOT NULL DEFAULT 0,
   discount_type TEXT CHECK(discount_type IN ('fixed','percentage')),
@@ -459,17 +459,21 @@ export function deleteOrder(id: string, createdBy: string): boolean {
   return result.changes > 0;
 }
 
-export function archiveOrders(createdBy: string, beforeDate?: string, status?: string): number {
-  let sql = "UPDATE orders SET status = 'Archived', updated_at = ? WHERE created_by = ?";
+/**
+ * Archive closed orders only (Delivered → Archived).
+ * Never touches active pipeline work. Optional beforeDate filters by
+ * COALESCE(delivered_at, created_at) so undated deliveries still qualify.
+ */
+export function archiveOrders(createdBy: string, beforeDate?: string): number {
+  let sql = `
+    UPDATE orders
+    SET status = 'Archived', updated_at = ?
+    WHERE created_by = ?
+      AND status = 'Delivered'
+  `;
   const params: any[] = [nowISO(), createdBy];
-  if (status) {
-    sql += " AND status = ?";
-    params.push(status);
-  } else {
-    sql += " AND status NOT IN ('Archived','Delivered')";
-  }
   if (beforeDate) {
-    sql += " AND created_at < ?";
+    sql += " AND COALESCE(delivered_at, created_at) < ?";
     params.push(beforeDate);
   }
   const result = db.prepare(sql).run(...params);
@@ -773,6 +777,70 @@ function migrateOrdersSchema(): void {
     } catch {
     }
   }
+
+  // Pipeline stages are configurable (PROJECT.md §10). Existing DBs may still have a
+  // hard-coded status CHECK that rejects custom stage_* ids — rebuild without it.
+  migrateOrdersStatusCheckConstraint();
+}
+
+function migrateOrdersStatusCheckConstraint(): void {
+  const row = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'orders'"
+  ).get() as { sql: string } | undefined;
+
+  if (!row?.sql || !/CHECK\s*\(\s*status\s+IN/i.test(row.sql)) {
+    return;
+  }
+
+  const rebuild = db.transaction(() => {
+    db.exec(`
+      CREATE TABLE orders_migrated (
+        id TEXT PRIMARY KEY,
+        shop_id TEXT REFERENCES shops(id),
+        order_number TEXT NOT NULL,
+        customer_id TEXT NOT NULL REFERENCES customers(id),
+        status TEXT NOT NULL DEFAULT 'Pending',
+        items TEXT NOT NULL DEFAULT '[]',
+        total_amount REAL NOT NULL DEFAULT 0,
+        discount_type TEXT CHECK(discount_type IN ('fixed','percentage')),
+        discount_value REAL DEFAULT 0,
+        discount_amount REAL DEFAULT 0,
+        final_total REAL,
+        paid_amount REAL NOT NULL DEFAULT 0,
+        due_date TEXT,
+        measurement_snapshot TEXT DEFAULT '{}',
+        delivered_at TEXT,
+        created_by TEXT NOT NULL,
+        updated_by TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      INSERT INTO orders_migrated (
+        id, shop_id, order_number, customer_id, status, items,
+        total_amount, discount_type, discount_value, discount_amount, final_total,
+        paid_amount, due_date, measurement_snapshot, delivered_at,
+        created_by, updated_by, created_at, updated_at
+      )
+      SELECT
+        id, shop_id, order_number, customer_id, status, items,
+        total_amount, discount_type, discount_value, discount_amount, final_total,
+        paid_amount, due_date, measurement_snapshot, delivered_at,
+        created_by, updated_by, created_at, updated_at
+      FROM orders;
+
+      DROP TABLE orders;
+      ALTER TABLE orders_migrated RENAME TO orders;
+
+      CREATE INDEX IF NOT EXISTS idx_orders_created_by ON orders(created_by);
+      CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON orders(customer_id);
+      CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+      CREATE INDEX IF NOT EXISTS idx_orders_updated_at ON orders(updated_at);
+    `);
+  });
+
+  rebuild();
+  console.log("Migrated orders table: removed hard-coded status CHECK for configurable pipeline stages.");
 }
 
 export function logAction(

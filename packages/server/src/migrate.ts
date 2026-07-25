@@ -33,11 +33,15 @@ END;
 $$;
 `;
 
-async function runViaPg(databaseUrl: string): Promise<boolean> {
+/** Always-safe: pipeline stages are configurable (PROJECT.md §10). */
+const DROP_ORDERS_STATUS_CHECK_SQL = `
+ALTER TABLE public.orders DROP CONSTRAINT IF EXISTS orders_status_check;
+`;
+
+async function runViaPg(databaseUrl: string, sql: string): Promise<boolean> {
   const pool = new pg.Pool({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false } });
   try {
-    await pool.query(MIGRATIONS_SQL);
-    console.log("  All migrations applied successfully via direct DB connection.");
+    await pool.query(sql);
     return true;
   } catch (err: any) {
     console.warn("  Direct DB migration failed:", err.message);
@@ -47,13 +51,12 @@ async function runViaPg(databaseUrl: string): Promise<boolean> {
   }
 }
 
-async function runViaSupabaseRpc(supabaseAdmin: any): Promise<boolean> {
-  const { error } = await supabaseAdmin.rpc("exec_sql", { query: MIGRATIONS_SQL });
+async function runViaSupabaseRpc(supabaseAdmin: any, sql: string): Promise<boolean> {
+  const { error } = await supabaseAdmin.rpc("exec_sql", { query: sql });
   if (error) {
     console.warn("  exec_sql RPC failed:", error.message);
     return false;
   }
-  console.log("  All migrations applied successfully via exec_sql RPC.");
   return true;
 }
 
@@ -80,28 +83,53 @@ async function checkViaSupabase(supabaseAdmin: any): Promise<string[]> {
   return missing;
 }
 
+async function applySql(supabaseAdmin: any, databaseUrl: string, sql: string, label: string): Promise<boolean> {
+  if (databaseUrl) {
+    const ok = await runViaPg(databaseUrl, sql);
+    if (ok) {
+      console.log(`  ${label} applied via direct DB connection.`);
+      return true;
+    }
+  }
+  const ok = await runViaSupabaseRpc(supabaseAdmin, sql);
+  if (ok) {
+    console.log(`  ${label} applied via exec_sql RPC.`);
+    return true;
+  }
+  return false;
+}
+
 export async function runMigrations(supabaseAdmin: any): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL || "";
   const missing = await checkViaSupabase(supabaseAdmin);
 
   if (missing.length === 0) {
-    console.log("Schema is up to date.");
-    return;
+    console.log("Schema columns are up to date.");
+  } else {
+    console.warn(`Missing columns detected: ${missing.join(", ")}`);
+    console.log("Attempting to apply column migrations...");
+
+    const ok = await applySql(supabaseAdmin, databaseUrl, MIGRATIONS_SQL, "Column migrations");
+    if (!ok) {
+      console.error(
+        "MIGRATION FAILED. To fix manually, run schema.sql in Supabase SQL Editor, " +
+        "or set DATABASE_URL in your environment (get it from Supabase Dashboard → Project Settings → Database)."
+      );
+      return;
+    }
   }
 
-  console.warn(`Missing columns detected: ${missing.join(", ")}`);
-  console.log("Attempting to apply migrations...");
-
-  if (databaseUrl) {
-    const ok = await runViaPg(databaseUrl);
-    if (ok) return;
-  }
-
-  const ok = await runViaSupabaseRpc(supabaseAdmin);
-  if (ok) return;
-
-  console.error(
-    "MIGRATION FAILED. To fix manually, run schema.sql in Supabase SQL Editor, " +
-    "or set DATABASE_URL in your environment (get it from Supabase Dashboard → Project Settings → Database)."
+  // Always drop hard-coded status check so custom pipeline stage ids can sync.
+  const dropped = await applySql(
+    supabaseAdmin,
+    databaseUrl,
+    DROP_ORDERS_STATUS_CHECK_SQL,
+    "orders_status_check drop"
   );
+  if (!dropped) {
+    console.warn(
+      "Could not drop orders_status_check automatically. If custom pipeline stages fail on Supabase, run:\n" +
+      "ALTER TABLE public.orders DROP CONSTRAINT IF EXISTS orders_status_check;"
+    );
+  }
 }

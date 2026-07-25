@@ -92,14 +92,19 @@ function AuthWrapper() {
     }
   }, []);
 
-  const [activeMode, setActiveMode] = useState<'Manager' | 'Owner'>(() => {
-    const stored = localStorage.getItem('tailor_active_role');
-    return stored === 'Owner' ? 'Owner' : 'Manager';
-  });
+  // Owner mode is session-only (PROJECT.md §5): require password unlock every
+  // app load. Never restore Owner from localStorage — that skipped re-auth and
+  // left the UI in Owner while the server had no grantOwnerMode.
+  const [activeMode, setActiveMode] = useState<'Manager' | 'Owner'>('Manager');
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [ownerPassword, setOwnerPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
+
+  useEffect(() => {
+    // Clear legacy persisted Owner flag from older builds
+    localStorage.removeItem('tailor_active_role');
+  }, []);
 
   const switchToOwner = () => {
     if (!token) return;
@@ -108,7 +113,7 @@ function AuthWrapper() {
 
   const switchToManager = () => {
     setActiveMode('Manager');
-    localStorage.setItem('tailor_active_role', 'Manager');
+    localStorage.removeItem('tailor_active_role');
     if (token) {
       fetch('/api/auth/exit-owner-mode', {
         method: 'POST',
@@ -134,8 +139,8 @@ function AuthWrapper() {
         body: JSON.stringify({ password: ownerPassword }),
       });
       if (res.ok) {
+        // Keep Owner in memory only; server grant is set by verify-password
         setActiveMode('Owner');
-        localStorage.setItem('tailor_active_role', 'Owner');
         setShowPasswordModal(false);
         setOwnerPassword('');
       } else {
@@ -240,6 +245,7 @@ function AuthWrapper() {
     localStorage.removeItem('tailor_token');
     localStorage.removeItem('tailor_user');
     localStorage.removeItem('hellodarzi-auth');
+    localStorage.removeItem('hellodarzi-profile-cache');
   };
 
   const handleSettingsUpdated = () => {

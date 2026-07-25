@@ -492,11 +492,148 @@ interface AuthenticatedRequest extends Request {
   token?: string;
 }
 
-const authCache = new Map<string, { profile: any; expiresAt: number }>();
+const authCache = new Map<string, { profile: AuthenticatedRequest["user"]; expiresAt: number }>();
 const ownerModeCache = new Map<string, number>();
 const OWNER_MODE_TTL_MS = 8 * 60 * 60 * 1000;
+/** Prefer re-validating online about every 5 minutes when the network works. */
+const AUTH_CACHE_ONLINE_MS = 5 * 60 * 1000;
+/** Bound offline/cache reuse so a very long-lived JWT is still rechecked periodically when online. */
+const AUTH_CACHE_OFFLINE_MAX_MS = 24 * 60 * 60 * 1000;
+const AUTH_ONLINE_TIMEOUT_MS = 5_000;
 
 let syncEngineStarted = false;
+
+type JwtAccessPayload = {
+  sub?: string;
+  email?: string;
+  exp?: number;
+  role?: string;
+};
+
+function decodeAccessToken(token: string): JwtAccessPayload | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const json = Buffer.from(parts[1], "base64url").toString("utf8");
+    return JSON.parse(json) as JwtAccessPayload;
+  } catch {
+    return null;
+  }
+}
+
+function isAccessTokenUnexpired(payload: JwtAccessPayload, skewMs = 30_000): boolean {
+  if (!payload.exp || typeof payload.exp !== "number") return false;
+  return payload.exp * 1000 > Date.now() - skewMs;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timeout")), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
+function toAuthUser(profile: {
+  id: string;
+  email: string;
+  name?: string;
+  role?: string;
+  shop_id?: string | null;
+}): NonNullable<AuthenticatedRequest["user"]> {
+  return {
+    id: profile.id,
+    email: profile.email,
+    name: profile.name || profile.email,
+    role: (profile.role === "Worker" ? "Worker" : "Owner"),
+    shop_id: profile.shop_id || "default-shop",
+  };
+}
+
+function persistLocalProfile(user: NonNullable<AuthenticatedRequest["user"]>): void {
+  if (!useLocalDb()) return;
+  try {
+    db.upsertProfile({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      shop_id: user.shop_id === "default-shop" ? undefined : user.shop_id,
+      created_by: user.id,
+    });
+  } catch (err: any) {
+    console.warn("Failed to persist local auth profile:", err?.message || err);
+  }
+}
+
+function resolveOfflineAuthUser(
+  token: string,
+  staleProfile?: AuthenticatedRequest["user"]
+): NonNullable<AuthenticatedRequest["user"]> | null {
+  const payload = decodeAccessToken(token);
+  if (!payload?.sub || !isAccessTokenUnexpired(payload)) {
+    return null;
+  }
+
+  if (useLocalDb()) {
+    const local = db.getProfile(payload.sub);
+    if (local) {
+      return toAuthUser({
+        id: local.id,
+        email: local.email || payload.email || "",
+        name: local.name,
+        role: local.role,
+        shop_id: local.shop_id,
+      });
+    }
+  }
+
+  // Non-Electron or first-time without local row: reuse last validated cache if JWT still valid
+  if (staleProfile && staleProfile.id === payload.sub) {
+    return staleProfile;
+  }
+
+  return null;
+}
+
+function cacheAuthUser(
+  token: string,
+  profile: NonNullable<AuthenticatedRequest["user"]>,
+  mode: "online" | "offline"
+): void {
+  const payload = decodeAccessToken(token);
+  const jwtExpiresAt = payload?.exp ? payload.exp * 1000 : Date.now() + AUTH_CACHE_ONLINE_MS;
+  const maxByMode =
+    mode === "online"
+      ? Date.now() + AUTH_CACHE_ONLINE_MS
+      : Math.min(jwtExpiresAt, Date.now() + AUTH_CACHE_OFFLINE_MAX_MS);
+
+  authCache.set(token, {
+    profile,
+    expiresAt: Math.min(maxByMode, jwtExpiresAt),
+  });
+}
+
+function ensureSyncEngine(userId: string, token: string): void {
+  if (!useLocalDb()) return;
+  try {
+    sync.updateSyncToken(token);
+    if (!syncEngineStarted) {
+      sync.startSyncEngine(userId, token);
+      syncEngineStarted = true;
+    }
+  } catch (syncErr: any) {
+    console.error("Failed to start sync engine:", syncErr.message);
+  }
+}
 
 function grantOwnerMode(token: string) {
   ownerModeCache.set(token, Date.now() + OWNER_MODE_TTL_MS);
@@ -533,68 +670,110 @@ async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextF
   const token = authHeader.split(" ")[1];
 
   const nowTime = Date.now();
+  let staleProfile: AuthenticatedRequest["user"] | undefined;
   if (authCache.has(token)) {
     const cached = authCache.get(token)!;
     if (cached.expiresAt > nowTime) {
       req.user = cached.profile;
       req.token = token;
+      ensureSyncEngine(cached.profile!.id, token);
       return next();
-    } else {
-      authCache.delete(token);
     }
+    // Keep last-known profile for offline fallback after TTL; do not delete yet
+    staleProfile = cached.profile;
   }
 
+  // Fast-reject clearly expired JWTs without waiting on the network
+  const payload = decodeAccessToken(token);
+  if (payload && !isAccessTokenUnexpired(payload)) {
+    authCache.delete(token);
+    return res.status(401).json({ error: "Session expired or invalid token." });
+  }
+
+  let networkFailed = false;
+
   try {
-    const result = await supabaseAnon.auth.getUser(token);
+    const result = await withTimeout(supabaseAnon.auth.getUser(token), AUTH_ONLINE_TIMEOUT_MS);
     if (!result.data?.user) {
+      // May be an invalid token OR a soft network/Auth failure — try offline before rejecting
+      const offlineUser = resolveOfflineAuthUser(token, staleProfile);
+      if (offlineUser) {
+        req.user = offlineUser;
+        req.token = token;
+        persistLocalProfile(offlineUser);
+        ensureSyncEngine(offlineUser.id, token);
+        cacheAuthUser(token, offlineUser, "offline");
+        return next();
+      }
+      authCache.delete(token);
       return res.status(401).json({ error: "Session expired or invalid token." });
     }
 
     const user = result.data.user;
-    const { data: profile, error: profError } = await supabaseAdmin
-      .from("profiles")
-      .select("*")
-      .eq("id", user.id)
-      .single();
+    let profileRow: any = null;
 
-    if (profError || !profile) {
+    try {
+      const { data: profile, error: profError } = await withTimeout(
+        supabaseAdmin.from("profiles").select("*").eq("id", user.id).single(),
+        AUTH_ONLINE_TIMEOUT_MS
+      );
+      if (!profError && profile) {
+        profileRow = profile;
+      }
+    } catch {
+      networkFailed = true;
+    }
+
+    if (!profileRow && useLocalDb()) {
+      profileRow = db.getProfile(user.id) || null;
+    }
+
+    if (!profileRow && staleProfile && staleProfile.id === user.id) {
+      profileRow = staleProfile;
+    }
+
+    if (!profileRow) {
       return res.status(401).json({
-        error: "Account not fully set up. Please sign in again to complete your profile."
+        error: "Account not fully set up. Please sign in again to complete your profile.",
       });
     }
 
-    req.user = {
-      id: profile.id,
-      email: profile.email,
-      name: profile.name,
-      role: profile.role || "Owner",
-      shop_id: profile.shop_id || "default-shop"
-    };
-    req.token = token;
-
-    if (useLocalDb() && !syncEngineStarted) {
-      try {
-        sync.updateSyncToken(token);
-        sync.startSyncEngine(profile.id, token);
-        syncEngineStarted = true;
-      } catch (syncErr: any) {
-        console.error("Failed to start sync engine:", syncErr.message);
-      }
-    }
-
-    authCache.set(token, {
-      profile: req.user,
-      expiresAt: Date.now() + 300000
+    const authUser = toAuthUser({
+      id: profileRow.id || user.id,
+      email: profileRow.email || user.email || "",
+      name: profileRow.name,
+      role: profileRow.role,
+      shop_id: profileRow.shop_id,
     });
 
+    req.user = authUser;
+    req.token = token;
+    persistLocalProfile(authUser);
+    ensureSyncEngine(authUser.id, token);
+    cacheAuthUser(token, authUser, "online");
     return next();
   } catch (err: any) {
-    console.error("Auth verification error:", err?.message || err);
-    return res.status(500).json({
-      error: "Internal security validation error.",
-      details: err?.message || String(err)
-    });
+    networkFailed = true;
+    console.warn("Auth online verification unavailable:", err?.message || err);
   }
+
+  // Offline / network failure: trust unexpired JWT + local (or stale) profile
+  if (networkFailed) {
+    const offlineUser = resolveOfflineAuthUser(token, staleProfile);
+    if (offlineUser) {
+      req.user = offlineUser;
+      req.token = token;
+      persistLocalProfile(offlineUser);
+      ensureSyncEngine(offlineUser.id, token);
+      cacheAuthUser(token, offlineUser, "offline");
+      return next();
+    }
+  }
+
+  authCache.delete(token);
+  return res.status(401).json({
+    error: "Session expired or offline profile unavailable. Sign in while online once, then retry.",
+  });
 }
 
 function requireRole(roles: Array<"Owner" | "Worker">) {
@@ -639,7 +818,7 @@ function handleSupabaseError(err: any, res: Response) {
 
   if (errCode === "23514" || errMsg.includes("violates check constraint")) {
     return res.status(400).json({
-      error: `Supabase Check Constraint Violation: ${errMsg}.\n\nTo resolve this:\nALTER TABLE public.orders DROP CONSTRAINT IF EXISTS orders_status_check;\nALTER TABLE public.orders ADD CONSTRAINT orders_status_check CHECK (status IN ('Pending', 'Cutting', 'Stitching', 'Fitting', 'Ready', 'Ready to Deliver', 'Delivered', 'Archived'));`
+      error: `Supabase Check Constraint Violation: ${errMsg}.\n\nPipeline stages are configurable — drop any hard-coded status check:\nALTER TABLE public.orders DROP CONSTRAINT IF EXISTS orders_status_check;`
     });
   }
   
@@ -1331,7 +1510,7 @@ app.get("/api/orders", requireAuth, async (req: AuthenticatedRequest, res: Respo
       if (autoArchiveDays > 0) {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - autoArchiveDays);
-        db.archiveOrders(req.user!.id, cutoffDate.toISOString(), "Delivered");
+        db.archiveOrders(req.user!.id, cutoffDate.toISOString());
       }
       let data;
       if (statusFilter && statusFilter !== "All") {
@@ -2961,20 +3140,28 @@ app.post("/api/archive-orders", requireAuth, requireRole(["Owner"]), async (req:
   }
 
   const cutoff = new Date(beforeDate);
+  if (Number.isNaN(cutoff.getTime())) {
+    return res.status(400).json({ error: "Invalid cutoff date." });
+  }
 
   try {
     if (useLocalDb()) {
-      db.archiveOrders(req.user!.id, cutoff.toISOString());
-      db.logAction("ARCHIVE_ORDERS", req.user!.id, req.user!.email, req.user!.shop_id, { beforeDate });
-      return res.json({ success: true });
+      // Only Delivered (closed) orders — never active pipeline stages
+      const count = db.archiveOrders(req.user!.id, cutoff.toISOString());
+      db.logAction("ARCHIVE_ORDERS", req.user!.id, req.user!.email, req.user!.shop_id, {
+        beforeDate,
+        archivedCount: count,
+      });
+      return res.json({ success: true, archivedCount: count });
     }
     const userSupabase = getSupabaseClient(req.token);
+    // Match local + auto-archive: Delivered (closed) only — never Ready / in-progress
     const { error } = await userSupabase
       .from("orders")
-      .update({ status: "Archived" })
+      .update({ status: "Archived", updated_at: new Date().toISOString() })
       .eq("created_by", req.user!.id)
-      .lt("created_at", cutoff.toISOString())
-      .in("status", ["Delivered", "Ready"]);
+      .eq("status", "Delivered")
+      .lt("created_at", cutoff.toISOString());
 
     if (error) throw error;
     await logAction(req.user!, "ARCHIVE_ORDERS", { beforeDate }, req.token);
