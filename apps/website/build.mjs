@@ -37,7 +37,13 @@ async function fetchLatestRelease() {
   const release = await res.json();
   const tag = release.tag_name;
   const version = tag.replace(/^v/, '');
-  const exeAsset = release.assets.find(a => a.name.endsWith('.exe') && a.content_type === 'application/x-msdownload');
+  // electron-builder may upload as application/x-msdownload or application/octet-stream
+  const exeAsset = release.assets.find(
+    (a) =>
+      typeof a.name === 'string' &&
+      a.name.endsWith('.exe') &&
+      !a.name.endsWith('.exe.blockmap')
+  );
 
   if (!exeAsset) {
     console.warn('No .exe asset found in latest release ' + tag);
