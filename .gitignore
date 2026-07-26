@@ -9,13 +9,13 @@ config/
 !.env.example
 .dev-server-port
 
-# Electron build output
-release/
-release-*/
-out/
-data/
+# Electron build output (repo root only — do not ignore apps/website/release/)
+/release/
+/release-*/
+/out/
+/data/
 
-# Website release artifacts (synced by scripts/sync-release.mjs)
+# Website release artifacts (synced by scripts/sync-release.mjs / build.mjs)
 /apps/website/release/*
 !/apps/website/release/.gitkeep
 !/apps/website/release/manifest.json

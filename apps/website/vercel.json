@@ -20,6 +20,12 @@
       "headers": [
         { "key": "Content-Type", "value": "application/xml" }
       ]
+    },
+    {
+      "source": "/release/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=60, must-revalidate" }
+      ]
     }
   ],
   "redirects": [
