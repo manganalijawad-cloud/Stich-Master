@@ -126,23 +126,55 @@ function AuthWrapper() {
     setIsVerifyingPassword(true);
     setPasswordError(null);
     try {
-      const res = await fetch('/api/auth/verify-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ password: ownerPassword }),
-      });
-      if (res.ok) {
-        // Keep Owner in memory only; server grant is set by verify-password
-        setActiveMode('Owner');
-        setShowPasswordModal(false);
-        setOwnerPassword('');
-      } else {
-        const data = await res.json();
+      const attemptVerify = async () =>
+        fetch('/api/auth/verify-password', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ password: ownerPassword }),
+        });
+
+      let res = await attemptVerify();
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({} as { error?: string }));
+        const missingVerifier =
+          typeof data.error === 'string' &&
+          data.error.toLowerCase().includes('no password verifier');
+
+        // Accounts created via shop-setup before verifier caching: prove password
+        // online once, store the local unlock verifier, then retry.
+        if (missingVerifier && user?.email) {
+          try {
+            const { getSupabase } = await import('./lib/supabaseClient');
+            const { cacheOwnerUnlockPassword } = await import('./lib/auth');
+            const { error: authError } = await getSupabase().auth.signInWithPassword({
+              email: user.email,
+              password: ownerPassword,
+            });
+            if (!authError) {
+              await cacheOwnerUnlockPassword(token, ownerPassword);
+              res = await attemptVerify();
+              if (res.ok) {
+                setActiveMode('Owner');
+                setShowPasswordModal(false);
+                setOwnerPassword('');
+                return;
+              }
+            }
+          } catch {
+            // fall through to original error
+          }
+        }
+
         setPasswordError(data.error || 'Incorrect password.');
+        return;
       }
+
+      setActiveMode('Owner');
+      setShowPasswordModal(false);
+      setOwnerPassword('');
     } catch {
       setPasswordError('Connection failed. Try again.');
     } finally {

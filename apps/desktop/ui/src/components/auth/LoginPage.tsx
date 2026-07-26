@@ -39,6 +39,8 @@ export default function LoginPage() {
 
   const [shopName, setShopName] = useState('');
   const [shopNameError, setShopNameError] = useState<string | undefined>();
+  /** Keep the access token from the sign-in that triggered shop setup (AuthContext may lag). */
+  const [setupToken, setSetupToken] = useState<string | null>(null);
 
   useEffect(() => {
     if (isPasswordRecovery) {
@@ -47,6 +49,7 @@ export default function LoginPage() {
       return;
     }
     if (needsShopSetup && token) {
+      setSetupToken(token);
       setMode('shop-setup');
     }
   }, [needsShopSetup, token, isPasswordRecovery]);
@@ -89,6 +92,7 @@ export default function LoginPage() {
       return;
     }
     if (result.needsShopSetup && result.token) {
+      setSetupToken(result.token);
       setMode('shop-setup');
       return;
     }
@@ -163,14 +167,18 @@ export default function LoginPage() {
       setShopNameError('Shop name is required');
       return;
     }
-    if (!token) {
+    const accessToken = setupToken || token;
+    if (!accessToken) {
       setError('Session expired. Please sign in again.');
       setMode('signin');
       return;
     }
 
     setIsLoading(true);
-    const result = await completeShopSetup(token, shopName);
+    const result = await completeShopSetup(accessToken, shopName, {
+      // Password from the sign-in that opened this dialog — enables Owner unlock.
+      password: password || undefined,
+    });
     setIsLoading(false);
 
     if (result.error) {
@@ -179,7 +187,8 @@ export default function LoginPage() {
     }
     if (result.user) {
       completeShopSetupSession(result.user);
-      setSession(result.user, token);
+      setSession(result.user, accessToken);
+      setSetupToken(null);
     }
   };
 

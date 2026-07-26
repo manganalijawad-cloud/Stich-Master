@@ -333,6 +333,9 @@ app.post("/api/auth/ensure-profile", requireAuth, (req: AuthenticatedRequest, re
         shop_id: shop.id,
         created_by: supabaseUserId,
       });
+      // Persist to shop_settings so bootstrap/sidebar pick up the name immediately
+      // (GET /api/settings already falls back to shops.shop_name; bootstrap did not).
+      db.saveSetting("shop_name", shopNameInput, supabaseUserId, supabaseUserId);
       profile = db.getProfile(supabaseUserId);
       db.logAction("ACCOUNT_SETUP", supabaseUserId, email, shop.id, { shop_name: shopNameInput });
     } else if (email && email !== profile.email) {
@@ -505,6 +508,12 @@ app.get("/api/bootstrap", requireAuth, async (req: AuthenticatedRequest, res: Re
     const userId = req.user!.id;
     const shopId = req.user!.shop_id;
     const settingsMap = db.getSettings(userId);
+    const shop = shopId ? db.getShop(shopId) : undefined;
+    const shopNameFromShop = shop?.shop_name || shop?.name || "";
+    const shopName =
+      (typeof settingsMap.shop_name === "string" && settingsMap.shop_name.trim())
+        ? settingsMap.shop_name.trim()
+        : shopNameFromShop;
     const customers = db.getCustomers(userId);
     const measurements = db.getAllMeasurements(userId).map(normalizeMeasurementRow);
     const garmentTypes = db.getGarmentTypes(userId, shopId).map(normalizeGarmentTypeRow);
@@ -518,6 +527,7 @@ app.get("/api/bootstrap", requireAuth, async (req: AuthenticatedRequest, res: Re
       settings: {
         ...DEFAULT_SHOP_SETTINGS,
         ...settingsMap,
+        shop_name: shopName,
         updated_at: new Date().toISOString(),
         updated_by: userId,
       },

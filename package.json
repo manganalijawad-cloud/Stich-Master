@@ -1,7 +1,7 @@
 {
   "name": "hello-darzi",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.4",
   "type": "module",
   "workspaces": [
     "packages/*",
@@ -23,7 +23,8 @@
     "build": "npm run build:ui",
     "build:all": "npm run build:ui && npm run build:server",
     "start": "node dist/server.cjs",
-    "electron:build": "node scripts/prepare-desktop-env.cjs && npm run build:all && cd apps/desktop && npx electron-builder --win --x64 --config electron-builder.json",
+    "electron:rebuild-native": "cd apps/desktop && npx @electron/rebuild -f -w better-sqlite3 -v 43.1.1",
+    "electron:build": "node scripts/prepare-desktop-env.cjs && npm run build:all && npm run electron:rebuild-native && cd apps/desktop && npx electron-builder --win --x64 --config electron-builder.json",
     "clean": "node -e \"const fs=require('fs');['dist','release','out'].forEach(p=>{try{fs.rmSync(p,{recursive:true,force:true})}catch{}})\"",
     "lint": "tsc --noEmit"
   },

@@ -68,8 +68,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const mountedRef = useRef(true);
   const hydratingRef = useRef(false);
+  /** True once a local profile is attached — blocks stale needsShopSetup hydrates. */
+  const hasProfileRef = useRef(false);
 
   const clearSession = useCallback(() => {
+    hasProfileRef.current = false;
     setUser(null);
     setToken(null);
     setNeedsShopSetup(false);
@@ -85,6 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setSession = useCallback((newUser: ExtendedUserProfile, newToken: string) => {
+    hasProfileRef.current = true;
     setUser((prev) => {
       if (prev && prev.id !== newUser.id) {
         localDataStore.clear();
@@ -100,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const completeShopSetupSession = useCallback((newUser: ExtendedUserProfile) => {
+    hasProfileRef.current = true;
     setUser(newUser);
     setNeedsShopSetup(false);
     writeCachedProfile(newUser);
@@ -126,6 +131,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!mountedRef.current) return;
 
       if (result.needsShopSetup) {
+        // Ignore stale in-flight hydrates that finish after shop setup completed.
+        if (hasProfileRef.current) return;
         setToken(accessToken);
         setNeedsShopSetup(true);
         setUser(null);

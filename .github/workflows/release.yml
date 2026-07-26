@@ -41,6 +41,9 @@ jobs:
       - name: Build UI and server
         run: npm run build:all
 
+      - name: Rebuild native modules for Electron
+        run: npm run electron:rebuild-native
+
       - name: Prepare packaged Auth env
         run: node scripts/prepare-desktop-env.cjs
 

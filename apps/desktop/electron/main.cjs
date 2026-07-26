@@ -202,13 +202,19 @@ if (!isDev && autoUpdater && log) {
 
   autoUpdater.on('error', (err) => {
     log.error('Auto-updater error:', err.message);
-    if (err.message && (
-      err.message.includes('net_error') ||
-      err.message.includes('ERR_INTERNET_DISCONNECTED') ||
-      err.message.includes('ERR_NETWORK_CHANGED') ||
-      err.message.includes('ERR_CONNECTION') ||
-      err.message.includes('ERR_NAME_NOT_RESOLVED')
-    )) {
+    const msg = err.message || '';
+    // Missing feed / offline / transient network — not a user-facing "Update Error"
+    if (
+      msg.includes('net_error') ||
+      msg.includes('ERR_INTERNET_DISCONNECTED') ||
+      msg.includes('ERR_NETWORK_CHANGED') ||
+      msg.includes('ERR_CONNECTION') ||
+      msg.includes('ERR_NAME_NOT_RESOLVED') ||
+      msg.includes('Cannot find latest.yml') ||
+      msg.includes('latest.yml') ||
+      msg.includes('404') ||
+      msg.includes('ENOTFOUND')
+    ) {
       mainWindow?.webContents.send('update-not-available');
     } else {
       mainWindow?.webContents.send('update-error', { message: err.message });
@@ -256,15 +262,26 @@ ipcMain.handle('check-for-updates', async () => {
   if (!autoUpdater) return { updateAvailable: false, error: 'Auto-updater not available' };
   try {
     const result = await autoUpdater.checkForUpdates();
-    if (result?.updateInfo?.version) {
-      // Start downloading
-      await autoUpdater.downloadUpdate(result.updateInfo);
+    const available = !!(result && (result.isUpdateAvailable || result.downloadPromise));
+    if (available && result?.updateInfo?.version) {
+      // downloadUpdate() takes an optional CancellationToken — not updateInfo
+      await autoUpdater.downloadUpdate();
       return { updateAvailable: true, version: result.updateInfo.version };
     }
     return { updateAvailable: false };
   } catch (err) {
     const msg = err.message || String(err);
-    if (msg.includes('net_error') || msg.includes('ERR_INTERNET_DISCONNECTED') || msg.includes('ERR_NETWORK') || msg.includes('ERR_CONNECTION') || msg.includes('ERR_NAME')) {
+    if (
+      msg.includes('net_error') ||
+      msg.includes('ERR_INTERNET_DISCONNECTED') ||
+      msg.includes('ERR_NETWORK') ||
+      msg.includes('ERR_CONNECTION') ||
+      msg.includes('ERR_NAME') ||
+      msg.includes('Cannot find latest.yml') ||
+      msg.includes('latest.yml') ||
+      msg.includes('404') ||
+      msg.includes('ENOTFOUND')
+    ) {
       return { updateAvailable: false, offline: true };
     }
     return { updateAvailable: false, error: msg };

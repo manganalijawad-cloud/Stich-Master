@@ -121,8 +121,17 @@ export async function signInWithPassword(email: string, password: string): Promi
 }
 
 /** Complete first-run local shop naming after Supabase sign-in. */
-export async function completeShopSetup(accessToken: string, shopName: string): Promise<AuthResult> {
-  return ensureLocalProfile(accessToken, { shopName: shopName.trim() });
+export async function completeShopSetup(
+  accessToken: string,
+  shopName: string,
+  opts?: { password?: string }
+): Promise<AuthResult> {
+  const result = await ensureLocalProfile(accessToken, { shopName: shopName.trim() });
+  // Shop-setup path skipped verifier cache during sign-in — store it now.
+  if (result.user && opts?.password) {
+    void cacheOwnerUnlockPassword(accessToken, opts.password);
+  }
+  return result;
 }
 
 /** Send a password-reset magic link (requires internet). */

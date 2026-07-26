@@ -120,6 +120,11 @@ class LocalDataStore {
     this.hydratePromise = null;
     this.hydrateGeneration += 1;
     this.lastToken = null;
+    try {
+      localStorage.removeItem(SETTINGS_CACHE_KEY);
+    } catch {
+      // ignore
+    }
     this.emit();
   }
 
