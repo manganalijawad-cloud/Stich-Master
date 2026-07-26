@@ -124,9 +124,12 @@
 })();
 
 (function () {
+  var REPO_OWNER = 'manganalijawad-cloud';
+  var REPO_NAME = 'Stich-Master';
   var downloadBtns = document.querySelectorAll('#download-btn');
   var versionEl = document.getElementById('download-version');
   var downloadUrl = null;
+  var listenersBound = false;
 
   function setLoading(btn, text) {
     btn.classList.add('loading');
@@ -178,11 +181,14 @@
 
     downloadBtns.forEach(function (btn) {
       setReady(btn);
-      btn.addEventListener('click', function (e) {
-        e.preventDefault();
-        triggerDownload(btn);
-      });
+      if (!listenersBound) {
+        btn.addEventListener('click', function (e) {
+          e.preventDefault();
+          triggerDownload(btn);
+        });
+      }
     });
+    listenersBound = true;
 
     if (versionEl) {
       var ver = manifest.version || '';
@@ -199,32 +205,84 @@
     }
   }
 
-  showLoading();
-
-  if (window.__RELEASE_MANIFEST__) {
-    initDownload(window.__RELEASE_MANIFEST__);
-    return;
+  function manifestFromRelease(release) {
+    if (!release || !release.tag_name || !Array.isArray(release.assets)) return null;
+    var exeAsset = release.assets.find(function (a) {
+      return typeof a.name === 'string' &&
+        a.name.endsWith('.exe') &&
+        !a.name.endsWith('.exe.blockmap');
+    });
+    if (!exeAsset || !exeAsset.browser_download_url) return null;
+    return {
+      version: String(release.tag_name).replace(/^v/, ''),
+      downloadUrl: exeAsset.browser_download_url,
+    };
   }
 
-  var script = document.createElement('script');
-  script.src = 'release/version.js';
-  script.onload = function () {
-    if (window.__RELEASE_MANIFEST__) {
-      initDownload(window.__RELEASE_MANIFEST__);
-    } else {
-      fetch('release/manifest.json')
-        .then(function (r) { if (!r.ok) throw Error('status ' + r.status); return r.json(); })
-        .then(initDownload)
-        .catch(showError);
+  /** Always prefer the live GitHub release so new tags update the button without a site redeploy. */
+  function fetchLatestReleaseManifest() {
+    var url = 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/releases/latest';
+    return fetch(url, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+      },
+    }).then(function (res) {
+      if (!res.ok) throw new Error('GitHub release status ' + res.status);
+      return res.json();
+    }).then(function (release) {
+      var manifest = manifestFromRelease(release);
+      if (!manifest) throw new Error('No installer asset on latest release');
+      return manifest;
+    });
+  }
+
+  function loadStaticFallback() {
+    if (window.__RELEASE_MANIFEST__ && window.__RELEASE_MANIFEST__.downloadUrl) {
+      return Promise.resolve(window.__RELEASE_MANIFEST__);
     }
-  };
-  script.onerror = function () {
-    fetch('release/manifest.json')
-      .then(function (r) { if (!r.ok) throw Error('status ' + r.status); return r.json(); })
-      .then(initDownload)
-      .catch(showError);
-  };
-  document.head.appendChild(script);
+    return new Promise(function (resolve, reject) {
+      var script = document.createElement('script');
+      script.src = 'release/version.js?t=' + Date.now();
+      script.onload = function () {
+        if (window.__RELEASE_MANIFEST__ && window.__RELEASE_MANIFEST__.downloadUrl) {
+          resolve(window.__RELEASE_MANIFEST__);
+        } else {
+          fetch('release/manifest.json?t=' + Date.now())
+            .then(function (r) { if (!r.ok) throw new Error('status ' + r.status); return r.json(); })
+            .then(resolve)
+            .catch(reject);
+        }
+      };
+      script.onerror = function () {
+        fetch('release/manifest.json?t=' + Date.now())
+          .then(function (r) { if (!r.ok) throw new Error('status ' + r.status); return r.json(); })
+          .then(resolve)
+          .catch(reject);
+      };
+      document.head.appendChild(script);
+    });
+  }
+
+  showLoading();
+
+  // Paint quickly from build-time fallback, then replace with live latest release.
+  loadStaticFallback()
+    .then(function (manifest) {
+      initDownload(manifest);
+    })
+    .catch(function () {
+      // Live fetch below may still succeed.
+    });
+
+  fetchLatestReleaseManifest()
+    .then(function (manifest) {
+      initDownload(manifest);
+    })
+    .catch(function () {
+      if (!downloadUrl) {
+        loadStaticFallback().then(initDownload).catch(showError);
+      }
+    });
 })();
 
 (function () {

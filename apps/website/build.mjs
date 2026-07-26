@@ -52,6 +52,7 @@ async function fetchLatestRelease() {
 
   return {
     version,
+    filename: exeAsset.name,
     downloadUrl: exeAsset.browser_download_url,
   };
 }
@@ -70,9 +71,26 @@ async function writeReleaseManifest() {
     return;
   }
 
-  const js = 'window.__RELEASE_MANIFEST__ = ' + JSON.stringify(manifest, null, 2) + ';';
+  const publicManifest = {
+    version: manifest.version,
+    downloadUrl: manifest.downloadUrl,
+  };
+  const js = 'window.__RELEASE_MANIFEST__ = ' + JSON.stringify(publicManifest, null, 2) + ';';
   const versionJsPath = resolve(releaseDir, 'version.js');
   writeFileSync(versionJsPath, js, 'utf8');
+
+  const manifestJson = {
+    version: manifest.version,
+    filename: manifest.filename,
+    downloadUrl: manifest.downloadUrl,
+    updatedAt: new Date().toISOString(),
+  };
+  writeFileSync(
+    resolve(releaseDir, 'manifest.json'),
+    JSON.stringify(manifestJson, null, 2) + '\n',
+    'utf8'
+  );
+
   console.log('✓ Wrote ' + versionJsPath + ' — version ' + manifest.version);
   console.log('  Download URL: ' + manifest.downloadUrl);
 }
