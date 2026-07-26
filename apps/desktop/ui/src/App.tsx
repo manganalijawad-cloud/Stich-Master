@@ -664,6 +664,7 @@ function AuthWrapper() {
               <FinancialReports
                 token={token}
                 currency={currency}
+                shopName={displayName}
               />
             )}
 

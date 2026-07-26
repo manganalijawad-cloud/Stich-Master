@@ -1117,19 +1117,36 @@ svg.lucide,
     box-shadow: none !important;
   }
 
-  #print-slips-container, #print-slips-container * {
+  #print-slips-container, #print-slips-container *,
+  #print-customer-sheet, #print-customer-sheet *,
+  #print-finances-report, #print-finances-report * {
     visibility: visible;
   }
 
-  #print-slips-container {
+  #print-slips-container,
+  #print-customer-sheet,
+  #print-finances-report {
     position: absolute;
     left: 0;
     top: 0;
     width: 100%;
     margin: 0;
-    padding: 0;
     background-color: white !important;
     color: black !important;
+  }
+
+  #print-slips-container {
+    padding: 0;
+  }
+
+  #print-customer-sheet {
+    padding: 8mm 10mm;
+    max-width: none;
+  }
+
+  #print-finances-report {
+    padding: 8mm 10mm;
+    max-width: none;
   }
 
   .page-break {

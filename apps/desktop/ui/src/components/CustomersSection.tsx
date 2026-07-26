@@ -237,21 +237,32 @@ export default function CustomersSection({
     }
   };
 
-  // Auto-load measurements from local cache when customer selected
+  const selectedCustomerIdKey = selectedCustomer?.id ?? null;
+
+  // Reset panel chrome only when the selected customer changes (not on cache version bumps)
   useEffect(() => {
-    if (!selectedCustomer) {
+    setMeasSuccess(false);
+    setMeasError(null);
+    setShowHistory(false);
+    setIsAddingProfile(false);
+    setEditingProfileId(null);
+    setEditingProfileMeasurements({});
+    setEditingCustomer(false);
+    setPrintProfileId(null);
+  }, [selectedCustomerIdKey]);
+
+  // Auto-load measurements + order history when customer selected
+  useEffect(() => {
+    if (!selectedCustomerIdKey) {
       setProfiles([]);
       setActiveProfileId(null);
       setMeasurementsUpdatedAt(null);
       setOrderHistory([]);
-      setShowHistory(false);
-      setIsAddingProfile(false);
-      setEditingProfileId(null);
-      setEditingProfileMeasurements({});
-      setEditingCustomer(false);
-      setPrintProfileId(null);
       return;
     }
+
+    const customerId = selectedCustomerIdKey;
+    let cancelled = false;
 
     const applyMeasurementPayload = (data: any) => {
       const rawData = data?.data || {};
@@ -274,35 +285,34 @@ export default function CustomersSection({
           ];
         }
       }
+      if (cancelled) return;
       setProfiles(parsedProfiles);
       setActiveProfileId(parsedProfiles.length > 0 ? parsedProfiles[0].id : null);
       setMeasurementsUpdatedAt(data?.updated_at || null);
     };
 
-    const cached = localDataStore.getMeasurements(selectedCustomer.id);
+    const cached = localDataStore.getMeasurements(customerId);
     if (cached) {
       applyMeasurementPayload(cached);
     } else {
-      // Empty placeholder until API (or later hydrate) fills it
       setProfiles([]);
       setActiveProfileId(null);
       setMeasurementsUpdatedAt(null);
       void (async () => {
         try {
-          const res = await fetch(`/api/customers/${selectedCustomer.id}/measurements`, {
+          const res = await fetch(`/api/customers/${customerId}/measurements`, {
             headers: { Authorization: `Bearer ${token}` },
           });
-          if (res.ok) {
-            const data = await res.json();
-            cacheMeasurements(selectedCustomer.id, {
-              id: data.id,
-              customer_id: selectedCustomer.id,
-              data: data.data || {},
-              created_at: data.created_at,
-              updated_at: data.updated_at,
-            });
-            applyMeasurementPayload(data);
-          }
+          if (!res.ok || cancelled) return;
+          const data = await res.json();
+          cacheMeasurements(customerId, {
+            id: data.id,
+            customer_id: customerId,
+            data: data.data || {},
+            created_at: data.created_at,
+            updated_at: data.updated_at,
+          });
+          applyMeasurementPayload(data);
         } catch (err) {
           console.error('Error fetching measurements:', err);
         }
@@ -310,43 +320,36 @@ export default function CustomersSection({
     }
 
     const fetchOrderHistory = async () => {
-      // Paint from offline cache immediately
-      const cachedOrders = localDataStore.getOrdersForCustomer(selectedCustomer.id);
+      const cachedOrders = localDataStore.getOrdersForCustomer(customerId);
       if (cachedOrders.length > 0) {
-        setOrderHistory(cachedOrders);
-        setHistoryLoading(false);
-      } else {
+        if (!cancelled) {
+          setOrderHistory(cachedOrders);
+          setHistoryLoading(false);
+        }
+      } else if (!cancelled) {
         setHistoryLoading(true);
       }
       try {
-        const res = await fetch(`/api/customers/${selectedCustomer.id}/orders`, {
+        const res = await fetch(`/api/customers/${customerId}/orders`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (res.ok) {
-          const data = await res.json();
-          setOrderHistory(data);
-          if (Array.isArray(data)) {
-            for (const o of data) cacheOrder(o);
-          }
-        }
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (!Array.isArray(data)) return;
+        if (!cancelled) setOrderHistory(data);
+        for (const o of data) cacheOrder(o);
       } catch (err) {
         console.error('Error fetching order history:', err);
-        // Keep cached history if API fails
       } finally {
-        setHistoryLoading(false);
+        if (!cancelled) setHistoryLoading(false);
       }
     };
 
-    fetchOrderHistory();
-    setMeasSuccess(false);
-    setMeasError(null);
-    setShowHistory(false);
-    setIsAddingProfile(false);
-    setEditingProfileId(null);
-    setEditingProfileMeasurements({});
-    setEditingCustomer(false);
-    setPrintProfileId(null);
-  }, [selectedCustomer, token, garmentTypes, localData.version]);
+    void fetchOrderHistory();
+    return () => { cancelled = true; };
+    // Intentionally omit localData.version: caching orders/measurements bumps it and would
+    // re-run this effect, reset the Orders panel, and loop network fetches.
+  }, [selectedCustomerIdKey, token, garmentTypes]);
 
   // Handle Customer Creation with first Measurement Profile automatically created
   const handleCreateCustomer = async (e: React.SyntheticEvent) => {
@@ -865,8 +868,8 @@ export default function CustomersSection({
           )}
         </div>
 
-        {/* "Show More" Button - Always visible at the bottom of the Left Column except when creating customer */}
-        {!isCreating && (
+        {/* "Show More" only when more customers exist than the recent preview list */}
+        {!isCreating && localData.customers.length > recentCustomers.length && (
           <div className="pt-2 border-t border-slate-100 shrink-0">
             <button
               onClick={() => {
@@ -1540,9 +1543,9 @@ export default function CustomersSection({
         )}
       </div>
 
-      {/* PRINT MEASUREMENT SHEET CONTAINER - HIDDEN BY DEFAULT EXCEPT IN PRINT */}
+      {/* PRINT MEASUREMENT SHEET — id required by @media print visibility rules in index.css */}
       {selectedCustomer && (
-        <div className="hidden print:block bg-white text-slate-900 p-8 space-y-6 max-w-2xl mx-auto">
+        <div id="print-customer-sheet" className="hidden print:block bg-white text-slate-900 p-8 space-y-6 max-w-2xl mx-auto">
           <div className="text-center space-y-2 border-b-2 border-slate-900 pb-5">
             {shopLogo && (
               <img src={shopLogo} alt="Logo" className="h-16 w-auto mx-auto mb-2 object-contain" />

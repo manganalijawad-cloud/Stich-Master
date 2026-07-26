@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit2, Save, ArrowUp, ArrowDown, GripVertical, Check, X, Sparkles, CheckSquare, Square, Info, Sliders, Ruler, HelpCircle, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Edit2, ArrowUp, ArrowDown, GripVertical, Check, X, Sparkles, Info, Sliders, Ruler, HelpCircle, AlertTriangle } from 'lucide-react';
 import { GarmentType, MeasurementField, StylingCategory, StylingOption } from '../types';
 import { localDataStore } from '../lib/localDataStore';
 
@@ -71,10 +71,10 @@ export default function GarmentConfiguration({ token }: GarmentConfigurationProp
   // Measurement Form Builder States
   const [builderFields, setBuilderFields] = useState<MeasurementField[]>([]);
   const [newFieldName, setNewFieldName] = useState('');
-  const [newFieldRequired, setNewFieldRequired] = useState(false);
   const [editingFieldIndex, setEditingFieldIndex] = useState<number | null>(null);
   const [editingFieldName, setEditingFieldName] = useState('');
   const [saveFieldsSuccess, setSaveFieldsSuccess] = useState(false);
+  const measurementSaveGenRef = React.useRef(0);
 
   // Styling Library States
   const [stylingCategories, setStylingCategories] = useState<StylingCategory[]>([]);
@@ -89,6 +89,7 @@ export default function GarmentConfiguration({ token }: GarmentConfigurationProp
   const [editingOptionIndex, setEditingOptionIndex] = useState<number | null>(null);
   const [editingOptionName, setEditingOptionName] = useState('');
   const [saveOptionsSuccess, setSaveOptionsSuccess] = useState(false);
+  const optionsSaveGenRef = React.useRef(0);
 
   // Drag and Drop States
   const [draggedTypeIdx, setDraggedTypeIdx] = useState<number | null>(null);
@@ -108,14 +109,15 @@ export default function GarmentConfiguration({ token }: GarmentConfigurationProp
     setSuccess(null);
     if (selectedType) {
       setSelectedTypePrice(selectedType.price !== undefined ? selectedType.price : 0);
-      // Synchronize measurement form builder
+      // Synchronize measurement form builder (all measurement fields are required)
       setBuilderFields(
-        [...(selectedType.measurement_fields || [])].sort((a, b) => a.display_order - b.display_order)
+        [...(selectedType.measurement_fields || [])]
+          .map((f) => ({ ...f, required: true }))
+          .sort((a, b) => a.display_order - b.display_order)
       );
       setSaveFieldsSuccess(false);
       setEditingFieldIndex(null);
       setNewFieldName('');
-      setNewFieldRequired(false);
 
       // Fetch styling categories for this garment type
       fetchStylingCategories(selectedType.id);
@@ -229,11 +231,13 @@ export default function GarmentConfiguration({ token }: GarmentConfigurationProp
 
   const handleSavePrice = async () => {
     if (!selectedType || selectedTypePrice === null) return;
+
+    const priceToSave = selectedTypePrice === '' ? 0 : Number(selectedTypePrice);
+    if (priceToSave === (selectedType.price || 0)) return;
+
     setError(null);
     setSuccess(null);
     setSavingPrice(true);
-
-    const priceToSave = selectedTypePrice === '' ? 0 : Number(selectedTypePrice);
 
     try {
       const res = await fetch(`/api/garment-types/${selectedType.id}`, {
@@ -249,7 +253,7 @@ export default function GarmentConfiguration({ token }: GarmentConfigurationProp
 
       const data = await res.json();
       if (res.ok) {
-        setSuccess(`Base price for "${selectedType.name}" updated to Rs. ${priceToSave} successfully.`);
+        setSuccess(`Base price for "${selectedType.name}" updated to Rs. ${priceToSave}.`);
         // Update local list + offline booking cache
         setGarmentTypes(prev => {
           const next = prev.map(gt => {
@@ -455,6 +459,63 @@ Do you absolutely want to proceed with deletion?`;
   // -------------------------------------------------------------------------
   // SECTION 2: MEASUREMENT FORM BUILDER LOGIC
   // -------------------------------------------------------------------------
+  const persistMeasurementFields = async (fields: MeasurementField[]) => {
+    if (!selectedType) return;
+    const saveGen = ++measurementSaveGenRef.current;
+    const fieldsToSave = fields.map((f, idx) => ({
+      ...f,
+      required: true,
+      display_order: idx
+    }));
+    setError(null);
+    setSaveFieldsSuccess(false);
+
+    try {
+      const res = await fetch(`/api/garment-types/${selectedType.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          measurement_fields: fieldsToSave
+        }),
+      });
+
+      const data = await res.json();
+      if (saveGen !== measurementSaveGenRef.current) return;
+      if (res.ok) {
+        setSaveFieldsSuccess(true);
+        // Update local list + offline booking cache
+        setGarmentTypes(prev => {
+          const next = prev.map(gt => {
+            if (gt.id === selectedType.id) {
+              return { ...gt, measurement_fields: fieldsToSave };
+            }
+            return gt;
+          });
+          localDataStore.setGarmentTypes(next);
+          return next;
+        });
+        setSelectedType(prev => prev ? { ...prev, measurement_fields: fieldsToSave } : null);
+      } else {
+        setError(data.error || 'Failed to save measurement form layout.');
+      }
+    } catch (err) {
+      if (saveGen !== measurementSaveGenRef.current) return;
+      setError('Connection failed.');
+    }
+  };
+
+  const applyMeasurementFields = (getNext: (prev: MeasurementField[]) => MeasurementField[]) => {
+    let nextFields: MeasurementField[] = [];
+    setBuilderFields(prev => {
+      nextFields = getNext(prev);
+      return nextFields;
+    });
+    void persistMeasurementFields(nextFields);
+  };
+
   const handleAddField = (e: React.FormEvent) => {
     e.preventDefault();
     const fieldName = newFieldName.trim();
@@ -467,33 +528,24 @@ Do you absolutely want to proceed with deletion?`;
 
     const newField: MeasurementField = {
       name: fieldName,
-      required: newFieldRequired,
+      required: true,
       display_order: builderFields.length
     };
 
-    setBuilderFields([...builderFields, newField]);
+    applyMeasurementFields(prev => [...prev, { ...newField, display_order: prev.length }]);
     setNewFieldName('');
-    setNewFieldRequired(false);
-    setSaveFieldsSuccess(false);
   };
 
   const handleRemoveField = (index: number) => {
-    const updated = builderFields.filter((_, idx) => idx !== index).map((f, idx) => ({
-      ...f,
-      display_order: idx
-    }));
-    setBuilderFields(updated);
-    setSaveFieldsSuccess(false);
+    applyMeasurementFields(prev =>
+      prev.filter((_, idx) => idx !== index).map((f, idx) => ({
+        ...f,
+        display_order: idx
+      }))
+    );
     if (editingFieldIndex === index) {
       setEditingFieldIndex(null);
     }
-  };
-
-  const handleToggleFieldRequired = (index: number) => {
-    const updated = [...builderFields];
-    updated[index] = { ...updated[index], required: !updated[index].required };
-    setBuilderFields(updated);
-    setSaveFieldsSuccess(false);
   };
 
   const handleSaveFieldName = (index: number) => {
@@ -505,29 +557,26 @@ Do you absolutely want to proceed with deletion?`;
       return;
     }
 
-    const updated = [...builderFields];
-    updated[index] = { ...updated[index], name: newName };
-    setBuilderFields(updated);
+    applyMeasurementFields(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], name: newName };
+      return updated;
+    });
     setEditingFieldIndex(null);
-    setSaveFieldsSuccess(false);
   };
 
   const handleMoveField = (index: number, direction: 'up' | 'down') => {
     if (direction === 'up' && index === 0) return;
     if (direction === 'down' && index === builderFields.length - 1) return;
 
-    const updated = [...builderFields];
     const targetIdx = direction === 'up' ? index - 1 : index + 1;
-
-    // Swap
-    const temp = updated[index];
-    updated[index] = updated[targetIdx];
-    updated[targetIdx] = temp;
-
-    // Recompute display orders
-    const sorted = updated.map((f, idx) => ({ ...f, display_order: idx }));
-    setBuilderFields(sorted);
-    setSaveFieldsSuccess(false);
+    applyMeasurementFields(prev => {
+      const updated = [...prev];
+      const temp = updated[index];
+      updated[index] = updated[targetIdx];
+      updated[targetIdx] = temp;
+      return updated.map((f, idx) => ({ ...f, display_order: idx }));
+    });
   };
 
   const handleDragStartField = (idx: number) => {
@@ -542,56 +591,15 @@ Do you absolutely want to proceed with deletion?`;
     e.preventDefault();
     if (draggedFieldIdx === null || draggedFieldIdx === idx) return;
 
-    const reordered = [...builderFields];
-    const draggedItem = reordered[draggedFieldIdx];
-    reordered.splice(draggedFieldIdx, 1);
-    reordered.splice(idx, 0, draggedItem);
-
-    const sorted = reordered.map((f, idx) => ({ ...f, display_order: idx }));
-    setBuilderFields(sorted);
+    const fromIdx = draggedFieldIdx;
+    applyMeasurementFields(prev => {
+      const reordered = [...prev];
+      const draggedItem = reordered[fromIdx];
+      reordered.splice(fromIdx, 1);
+      reordered.splice(idx, 0, draggedItem);
+      return reordered.map((f, orderIdx) => ({ ...f, display_order: orderIdx }));
+    });
     setDraggedFieldIdx(null);
-    setSaveFieldsSuccess(false);
-  };
-
-  const handleSaveMeasurementForm = async () => {
-    if (!selectedType) return;
-    setError(null);
-    setSuccess(null);
-    setSaveFieldsSuccess(false);
-
-    try {
-      const res = await fetch(`/api/garment-types/${selectedType.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          measurement_fields: builderFields
-        }),
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        setSaveFieldsSuccess(true);
-        // Update local list + offline booking cache
-        setGarmentTypes(prev => {
-          const next = prev.map(gt => {
-            if (gt.id === selectedType.id) {
-              return { ...gt, measurement_fields: builderFields };
-            }
-            return gt;
-          });
-          localDataStore.setGarmentTypes(next);
-          return next;
-        });
-        setSelectedType(prev => prev ? { ...prev, measurement_fields: builderFields } : null);
-      } else {
-        setError(data.error || 'Failed to save measurement form layout.');
-      }
-    } catch (err) {
-      setError('Connection failed.');
-    }
   };
 
 
@@ -830,6 +838,62 @@ Do you absolutely want to proceed with deletion?`;
   // -------------------------------------------------------------------------
   // OPTIONS BUILDER LOGIC FOR SELECTED STYLE CATEGORY
   // -------------------------------------------------------------------------
+  const persistCategoryOptions = async (options: StylingOption[]) => {
+    if (!selectedStylingCategory || !selectedType) return;
+    const saveGen = ++optionsSaveGenRef.current;
+    setError(null);
+    setSaveOptionsSuccess(false);
+
+    try {
+      const res = await fetch(`/api/styling-categories/${selectedStylingCategory.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          options
+        }),
+      });
+
+      const data = await res.json();
+      if (saveGen !== optionsSaveGenRef.current) return;
+      if (res.ok) {
+        setSaveOptionsSuccess(true);
+        // Sync local list + offline booking cache
+        setStylingCategories(prev => {
+          const next = prev.map(sc => {
+            if (sc.id === selectedStylingCategory.id) {
+              return { ...sc, options };
+            }
+            return sc;
+          });
+          const others = localDataStore
+            .getSnapshot()
+            .stylingCategories
+            .filter((c) => c.garment_type_id !== selectedType.id);
+          localDataStore.setStylingCategories([...others, ...next]);
+          return next;
+        });
+        setSelectedStylingCategory(prev => prev ? { ...prev, options } : null);
+      } else {
+        setError(data.error || 'Failed to save styling options.');
+      }
+    } catch (err) {
+      if (saveGen !== optionsSaveGenRef.current) return;
+      setError('Connection failed.');
+    }
+  };
+
+  const applyCategoryOptions = (getNext: (prev: StylingOption[]) => StylingOption[]) => {
+    let nextOptions: StylingOption[] = [];
+    setBuilderOptions(prev => {
+      nextOptions = getNext(prev);
+      return nextOptions;
+    });
+    void persistCategoryOptions(nextOptions);
+  };
+
   const handleAddOption = (e: React.FormEvent) => {
     e.preventDefault();
     const optName = newOptionName.trim();
@@ -847,28 +911,28 @@ Do you absolutely want to proceed with deletion?`;
       display_order: builderOptions.length
     };
 
-    setBuilderOptions([...builderOptions, newOpt]);
+    applyCategoryOptions(prev => [...prev, { ...newOpt, display_order: prev.length }]);
     setNewOptionName('');
-    setSaveOptionsSuccess(false);
   };
 
   const handleRemoveOption = (index: number) => {
-    const updated = builderOptions.filter((_, idx) => idx !== index).map((o, idx) => ({
-      ...o,
-      display_order: idx
-    }));
-    setBuilderOptions(updated);
-    setSaveOptionsSuccess(false);
+    applyCategoryOptions(prev =>
+      prev.filter((_, idx) => idx !== index).map((o, idx) => ({
+        ...o,
+        display_order: idx
+      }))
+    );
     if (editingOptionIndex === index) {
       setEditingOptionIndex(null);
     }
   };
 
   const handleToggleOptionEnable = (index: number) => {
-    const updated = [...builderOptions];
-    updated[index] = { ...updated[index], enabled: !updated[index].enabled };
-    setBuilderOptions(updated);
-    setSaveOptionsSuccess(false);
+    applyCategoryOptions(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], enabled: !updated[index].enabled };
+      return updated;
+    });
   };
 
   const handleSaveOptionName = (index: number) => {
@@ -880,28 +944,26 @@ Do you absolutely want to proceed with deletion?`;
       return;
     }
 
-    const updated = [...builderOptions];
-    updated[index] = { ...updated[index], name: newName };
-    setBuilderOptions(updated);
+    applyCategoryOptions(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], name: newName };
+      return updated;
+    });
     setEditingOptionIndex(null);
-    setSaveOptionsSuccess(false);
   };
 
   const handleMoveOption = (index: number, direction: 'up' | 'down') => {
     if (direction === 'up' && index === 0) return;
     if (direction === 'down' && index === builderOptions.length - 1) return;
 
-    const updated = [...builderOptions];
     const targetIdx = direction === 'up' ? index - 1 : index + 1;
-
-    // Swap
-    const temp = updated[index];
-    updated[index] = updated[targetIdx];
-    updated[targetIdx] = temp;
-
-    const sorted = updated.map((o, idx) => ({ ...o, display_order: idx }));
-    setBuilderOptions(sorted);
-    setSaveOptionsSuccess(false);
+    applyCategoryOptions(prev => {
+      const updated = [...prev];
+      const temp = updated[index];
+      updated[index] = updated[targetIdx];
+      updated[targetIdx] = temp;
+      return updated.map((o, idx) => ({ ...o, display_order: idx }));
+    });
   };
 
   const handleDragStartOption = (idx: number) => {
@@ -916,60 +978,15 @@ Do you absolutely want to proceed with deletion?`;
     e.preventDefault();
     if (draggedOptionIdx === null || draggedOptionIdx === idx) return;
 
-    const reordered = [...builderOptions];
-    const draggedItem = reordered[draggedOptionIdx];
-    reordered.splice(draggedOptionIdx, 1);
-    reordered.splice(idx, 0, draggedItem);
-
-    const sorted = reordered.map((o, idx) => ({ ...o, display_order: idx }));
-    setBuilderOptions(sorted);
+    const fromIdx = draggedOptionIdx;
+    applyCategoryOptions(prev => {
+      const reordered = [...prev];
+      const draggedItem = reordered[fromIdx];
+      reordered.splice(fromIdx, 1);
+      reordered.splice(idx, 0, draggedItem);
+      return reordered.map((o, orderIdx) => ({ ...o, display_order: orderIdx }));
+    });
     setDraggedOptionIdx(null);
-    setSaveOptionsSuccess(false);
-  };
-
-  const handleSaveCategoryOptions = async () => {
-    if (!selectedStylingCategory || !selectedType) return;
-    setError(null);
-    setSuccess(null);
-    setSaveOptionsSuccess(false);
-
-    try {
-      const res = await fetch(`/api/styling-categories/${selectedStylingCategory.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          options: builderOptions
-        }),
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        setSaveOptionsSuccess(true);
-        // Sync local list + offline booking cache
-        setStylingCategories(prev => {
-          const next = prev.map(sc => {
-            if (sc.id === selectedStylingCategory.id) {
-              return { ...sc, options: builderOptions };
-            }
-            return sc;
-          });
-          const others = localDataStore
-            .getSnapshot()
-            .stylingCategories
-            .filter((c) => c.garment_type_id !== selectedType.id);
-          localDataStore.setStylingCategories([...others, ...next]);
-          return next;
-        });
-        setSelectedStylingCategory(prev => prev ? { ...prev, options: builderOptions } : null);
-      } else {
-        setError(data.error || 'Failed to save styling options.');
-      }
-    } catch (err) {
-      setError('Connection failed.');
-    }
   };
 
 
@@ -1223,16 +1240,18 @@ Do you absolutely want to proceed with deletion?`;
                           const val = e.target.value;
                           setSelectedTypePrice(val === '' ? '' : Number(val));
                         }}
+                        onBlur={() => { void handleSavePrice(); }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.currentTarget.blur();
+                          }
+                        }}
+                        disabled={savingPrice}
                         className="input-base w-full max-w-24"
                       />
-                      <button
-                        type="button"
-                        onClick={handleSavePrice}
-                        disabled={savingPrice || selectedTypePrice === null}
-                        className="btn-primary shrink-0"
-                      >
-                        {savingPrice ? 'Saving...' : 'Save Price'}
-                      </button>
+                      {savingPrice && (
+                        <span className="text-3xs font-semibold text-slate-400 uppercase tracking-wider shrink-0">Saving...</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1277,7 +1296,7 @@ Do you absolutely want to proceed with deletion?`;
                         Measurements for {selectedType.name}
                       </h4>
                       <p className="text-caption text-slate-400 leading-normal mt-0.5">
-                        Choose which measurements to take when a customer orders a {selectedType.name}. Add fields like Chest or Sleeve, set the order, and mark which ones are required.
+                        Choose which measurements to take when a customer orders a {selectedType.name}. Add fields like Chest or Sleeve and set the order. Every measurement is required. Changes save automatically.
                       </p>
                     </div>
 
@@ -1293,21 +1312,6 @@ Do you absolutely want to proceed with deletion?`;
                           placeholder="e.g. Chest Circumference, Sleeve"
                           className="input-base"
                         />
-                      </div>
-
-                      <div className="flex items-center gap-2 h-9">
-                        <button
-                          type="button"
-                          onClick={() => setNewFieldRequired(!newFieldRequired)}
-                          className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 transition-colors cursor-pointer select-none"
-                        >
-                          {newFieldRequired ? (
-                            <CheckSquare className="icon-xs text-brand-sky shrink-0" />
-                          ) : (
-                            <Square className="icon-xs text-slate-300 shrink-0" />
-                          )}
-                          <span>Required</span>
-                        </button>
                       </div>
 
                       <button
@@ -1396,14 +1400,7 @@ Do you absolutely want to proceed with deletion?`;
                                         </button>
                                       </div>
                                     ) : (
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-xs font-extrabold text-slate-800">{field.name}</span>
-                                        {field.required && (
-                                          <span className="text-3xs font-extrabold text-red-500 uppercase tracking-wider bg-red-50 border border-red-100 rounded px-1">
-                                            Required
-                                          </span>
-                                        )}
-                                      </div>
+                                      <span className="text-xs font-extrabold text-slate-800">{field.name}</span>
                                     )}
                                   </div>
                                 </div>
@@ -1411,17 +1408,6 @@ Do you absolutely want to proceed with deletion?`;
                                 {/* Field actions */}
                                 {!isFieldEditing && (
                                   <div className="flex items-center gap-1 shrink-0 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleToggleFieldRequired(idx)}
-                                      className={`px-2 py-1 text-3xs font-semibold rounded uppercase cursor-pointer ${
-                                        field.required 
-                                          ? 'bg-red-50 text-red-600 hover:bg-red-100' 
-                                          : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                                      }`}
-                                    >
-                                      {field.required ? 'Required' : 'Optional'}
-                                    </button>
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -1450,25 +1436,15 @@ Do you absolutely want to proceed with deletion?`;
                       )}
                     </div>
 
-                    {/* Save Button for layouts */}
-                    <div className="flex items-center justify-between border-t border-slate-100 pt-4 mt-2">
-                      <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
-                        {saveFieldsSuccess && (
-                          <span className="text-emerald-600 flex items-center gap-1 animate-fade-in">
-                            <Check className="icon-xs text-emerald-500" />
-                            Layout persisted successfully
-                          </span>
-                        )}
+                    {/* Auto-save status for measurement layout */}
+                    {saveFieldsSuccess && (
+                      <div className="flex items-center justify-end border-t border-slate-100 pt-4 mt-2">
+                        <span className="text-emerald-600 text-xs font-semibold flex items-center gap-1 animate-fade-in">
+                          <Check className="icon-xs text-emerald-500" />
+                          Measurements saved
+                        </span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={handleSaveMeasurementForm}
-                        className="btn-primary"
-                      >
-                        <Save className="icon-sm text-brand-sky" />
-                        Save Form Layout
-                      </button>
-                    </div>
+                    )}
                   </div>
                 )}
 
@@ -1481,7 +1457,7 @@ Do you absolutely want to proceed with deletion?`;
                         Style choices for {selectedType.name}
                       </h4>
                       <p className="text-caption text-slate-400 leading-normal mt-0.5">
-                        Add style groups (collar, cuff, pocket) for {selectedType.name}, then add the options customers can choose.
+                        Add style groups (collar, cuff, pocket) for {selectedType.name}, then add the options customers can choose. Changes save automatically.
                       </p>
                     </div>
 
@@ -1768,24 +1744,15 @@ Do you absolutely want to proceed with deletion?`;
                               )}
                             </div>
 
-                            {/* Save options CTA */}
-                            <div className="flex justify-between items-center border-t border-slate-100 pt-3 mt-1.5">
-                              <div>
-                                {saveOptionsSuccess && (
-                                  <span className="text-emerald-600 text-3xs font-extrabold uppercase flex items-center gap-0.5 animate-fade-in">
-                                    <Check className="icon-xs text-emerald-500" />
-                                    Saved successfully
-                                  </span>
-                                )}
+                            {/* Auto-save status for options */}
+                            {saveOptionsSuccess && (
+                              <div className="flex justify-end items-center border-t border-slate-100 pt-3 mt-1.5">
+                                <span className="text-emerald-600 text-3xs font-extrabold uppercase flex items-center gap-0.5 animate-fade-in">
+                                  <Check className="icon-xs text-emerald-500" />
+                                  Options saved
+                                </span>
                               </div>
-                              <button
-                                type="button"
-                                onClick={handleSaveCategoryOptions}
-                                className="btn-primary"
-                              >
-                                Save Option Layout
-                              </button>
-                            </div>
+                            )}
                           </div>
                         ) : (
                           <div className="p-8 border border-dashed border-slate-200 rounded-xl text-center text-slate-400 text-3xs font-extrabold uppercase tracking-wider bg-white">

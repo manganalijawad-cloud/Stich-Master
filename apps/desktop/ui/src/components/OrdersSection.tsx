@@ -1481,7 +1481,7 @@ export default function OrdersSection({
             </button>
           </div>
 
-          {/* Status Filters - Only shown in Active view mode */}
+          {/* Status Filters — open stages on Active; Delivered/Archived on Finished */}
           {viewMode === 'Active' ? (
             <div className="filter-group justify-center shrink-0">
               {['All', ...activeQueueStages.map(s => s.id)].map((tabId) => {
@@ -1501,8 +1501,25 @@ export default function OrdersSection({
               })}
             </div>
           ) : (
-            <div className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-center text-secondary text-xs font-semibold uppercase tracking-wider shrink-0">
-              Showing delivered and archived orders
+            <div className="filter-group justify-center shrink-0">
+              {([
+                { id: 'finished', name: 'All' },
+                { id: 'Delivered', name: stagesList.find(s => s.id === 'Delivered')?.name || 'Delivered' },
+                { id: 'Archived', name: stagesList.find(s => s.id === 'Archived')?.name || 'Archived' },
+              ] as const).map((tab) => {
+                const isSelected = activeFilter === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveFilter(tab.id)}
+                    className={`filter-tab ${isSelected ? 'filter-tab-solid' : ''}`}
+                    title={tab.name}
+                  >
+                    {tab.name}
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -2703,11 +2720,11 @@ export default function OrdersSection({
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Progress</span>
-                            <span className="text-3xs font-semibold text-slate-400 uppercase tracking-wider">— {activeQueueStages.map((s, i) => {
+                            <span className="text-3xs font-semibold text-slate-400 uppercase tracking-wider">— {activeWorkflowStages.map((s, i) => {
                               const isCurrent = selectedOrder.status === s.id;
                               return (
                                 <span key={s.id} className={isCurrent ? 'text-brand-sky font-semibold' : ''}>
-                                  {i > 0 && ' → '}{isCurrent ? s.name : s.name}
+                                  {i > 0 && ' → '}{s.name}
                                 </span>
                               );
                             })}</span>
