@@ -29,6 +29,24 @@ function profileHasSavedMeasurements(profile: MeasurementProfile): boolean {
   return Object.values(profile.values || {}).some(v => String(v ?? '').trim() !== '');
 }
 
+/** Merge API order payloads without letting raw JSON-string `items` wipe the array (white-screen crash). */
+function mergeOrderFromApi(existing: Order, data: Partial<Order> & Record<string, unknown>): Order {
+  const merged: Order = { ...existing, ...data } as Order;
+  if (!Array.isArray(merged.items)) {
+    if (typeof (data as any).items === 'string') {
+      try {
+        const parsed = JSON.parse((data as any).items);
+        merged.items = Array.isArray(parsed) ? parsed : existing.items || [];
+      } catch {
+        merged.items = existing.items || [];
+      }
+    } else {
+      merged.items = existing.items || [];
+    }
+  }
+  return merged;
+}
+
 interface OrdersSectionProps {
   token: string;
   currency: string;
@@ -387,7 +405,7 @@ export default function OrdersSection({
         alert(data.error || 'Failed to update order status.');
         return null;
       }
-      const mergedOrder: Order = { ...order, ...data, status: newStatus as OrderStatus };
+      const mergedOrder = mergeOrderFromApi(order, { ...data, status: newStatus as OrderStatus });
       setOrders(prev => prev.map(o => o.id === order.id ? mergedOrder : o));
       setSelectedOrder(prev => prev?.id === order.id ? mergedOrder : prev);
       cacheOrder(mergedOrder);
@@ -1044,7 +1062,7 @@ export default function OrdersSection({
       throw new Error(data.error || `Failed to update payment for order ${order.order_number}.`);
     }
     const updatedOrder = await res.json();
-    const merged = { ...order, ...updatedOrder, paid_amount: newPaidAmount };
+    const merged = mergeOrderFromApi(order, { ...updatedOrder, paid_amount: newPaidAmount });
     setOrders(prev => prev.map(o => o.id === merged.id ? merged : o));
     setSelectedOrder(prev => prev?.id === merged.id ? merged : prev);
     cacheOrder(merged);

@@ -911,12 +911,8 @@ app.put("/api/orders/:id/status", requireAuth, async (req: AuthenticatedRequest,
     }
 
     const c = db.getCustomerById(order.customer_id, req.user!.id);
-    return res.json({
-      ...order,
-      customer_name: c?.name || "Unknown Customer",
-      customer_phone: c?.phone || "N/A",
-      customer_address: c?.address || null
-    });
+    // Normalize so items/snapshots are objects — raw SQLite JSON strings crash the UI on .map().
+    return res.json(normalizeOrderRow(order, c));
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -977,12 +973,7 @@ app.put("/api/orders/:id/payment", requireAuth, async (req: AuthenticatedRequest
     }
 
     const c = db.getCustomerById(order.customer_id, req.user!.id);
-    return res.json({
-      ...order,
-      customer_name: c?.name || "Unknown Customer",
-      customer_phone: c?.phone || "N/A",
-      customer_address: c?.address || null
-    });
+    return res.json(normalizeOrderRow(order, c));
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
@@ -1071,12 +1062,7 @@ app.put("/api/orders/:id", requireAuth, requireRole(["Owner"]), requireOwnerMode
     }
 
     const c = db.getCustomerById(order.customer_id, req.user!.id);
-    return res.json({
-      ...order,
-      customer_name: c?.name || "Unknown Customer",
-      customer_phone: c?.phone || "N/A",
-      customer_address: c?.address || null
-    });
+    return res.json(normalizeOrderRow(order, c));
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
   }
