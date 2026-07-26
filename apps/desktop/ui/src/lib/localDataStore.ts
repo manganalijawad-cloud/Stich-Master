@@ -1,7 +1,7 @@
 /**
  * In-memory offline-first data store.
  * Hydrated once from /api/bootstrap (local SQLite in Electron).
- * UI reads here for instant search, measurements, and reference data.
+ * UI reads here for instant search, measurements, orders, and reference data.
  * Mutations update the store after successful local API writes; sync remains server-side.
  */
 
@@ -9,6 +9,7 @@ import type {
   Customer,
   GarmentType,
   MeasurementProfile,
+  Order,
   ShopSettings,
   StylingCategory,
 } from '../types';
@@ -28,6 +29,7 @@ export interface BootstrapPayload {
   settings: Partial<ShopSettings> & Record<string, unknown>;
   customers: Customer[];
   measurements: MeasurementCacheEntry[];
+  orders?: Order[];
   garmentTypes: GarmentType[];
   stylingCategories: StylingCategory[];
   hydratedAt?: string;
@@ -39,6 +41,7 @@ export interface LocalDataSnapshot {
   hydrating: boolean;
   error: string | null;
   customers: Customer[];
+  orders: Order[];
   measurementsByCustomerId: Record<string, MeasurementCacheEntry>;
   garmentTypes: GarmentType[];
   stylingCategories: StylingCategory[];
@@ -57,6 +60,7 @@ function emptySnapshot(): LocalDataSnapshot {
     hydrating: false,
     error: null,
     customers: [],
+    orders: [],
     measurementsByCustomerId: {},
     garmentTypes: [],
     stylingCategories: [],
@@ -70,6 +74,7 @@ class LocalDataStore {
   private snapshot: LocalDataSnapshot = emptySnapshot();
   private listeners = new Set<Listener>();
   private hydratePromise: Promise<boolean> | null = null;
+  private hydrateGeneration = 0;
   private lastToken: string | null = null;
 
   subscribe = (listener: Listener): (() => void) => {
@@ -113,6 +118,7 @@ class LocalDataStore {
   clear() {
     this.snapshot = emptySnapshot();
     this.hydratePromise = null;
+    this.hydrateGeneration += 1;
     this.lastToken = null;
     this.emit();
   }
@@ -132,6 +138,7 @@ class LocalDataStore {
       hydrating: false,
       error: null,
       customers: Array.isArray(payload.customers) ? payload.customers : [],
+      orders: Array.isArray(payload.orders) ? payload.orders : [],
       measurementsByCustomerId,
       garmentTypes: Array.isArray(payload.garmentTypes) ? payload.garmentTypes : [],
       stylingCategories: Array.isArray(payload.stylingCategories) ? payload.stylingCategories : [],
@@ -154,13 +161,31 @@ class LocalDataStore {
     ) {
       return true;
     }
-    if (this.hydratePromise && this.lastToken === token && !options?.force) {
-      return this.hydratePromise;
+
+    // Serialize hydrates: reuse in-flight for same token; if force/token change, wait then run fresh.
+    if (this.hydratePromise) {
+      if (!options?.force && this.lastToken === token) {
+        return this.hydratePromise;
+      }
+      try {
+        await this.hydratePromise;
+      } catch {
+        // ignore prior failure — we may still retry below
+      }
+      if (
+        !options?.force &&
+        this.snapshot.ready &&
+        this.lastToken === token &&
+        !this.snapshot.hydrating
+      ) {
+        return true;
+      }
     }
 
     this.lastToken = token;
     this.setPartial({ hydrating: true, error: null });
 
+    const generation = ++this.hydrateGeneration;
     this.hydratePromise = (async () => {
       try {
         const res = await fetch('/api/bootstrap', {
@@ -172,11 +197,17 @@ class LocalDataStore {
           throw new Error(errBody.error || `Bootstrap failed (${res.status})`);
         }
         const payload = (await res.json()) as BootstrapPayload;
+        // Ignore stale responses if a newer hydrate was scheduled after this one.
+        if (generation !== this.hydrateGeneration) {
+          return this.snapshot.ready;
+        }
         this.hydrateFromPayload(payload);
         return true;
       } catch (err) {
+        if (generation !== this.hydrateGeneration) {
+          return this.snapshot.ready;
+        }
         const message = err instanceof Error ? err.message : 'Bootstrap failed';
-        // Keep prior cache if we already hydrated once
         this.setPartial({
           hydrating: false,
           error: this.snapshot.ready ? null : message,
@@ -185,7 +216,9 @@ class LocalDataStore {
         console.error('Local data hydrate failed:', err);
         return this.snapshot.ready;
       } finally {
-        this.hydratePromise = null;
+        if (generation === this.hydrateGeneration) {
+          this.hydratePromise = null;
+        }
       }
     })();
 
@@ -227,6 +260,56 @@ class LocalDataStore {
     );
   }
 
+  filterOrders(opts: {
+    status?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): { orders: Order[]; hasMore: boolean } {
+    const status = opts.status || 'All';
+    const q = (opts.search || '').trim().toLowerCase();
+    const page = opts.page || 1;
+    const limit = opts.limit || 50;
+
+    let list = [...this.snapshot.orders];
+    if (status && status !== 'All') {
+      if (status === 'active') {
+        list = list.filter((o) => o.status !== 'Archived' && o.status !== 'Delivered');
+      } else if (status === 'finished') {
+        list = list.filter((o) => o.status === 'Delivered' || o.status === 'Archived');
+      } else {
+        list = list.filter((o) => o.status === status);
+      }
+    } else {
+      // Default list matches API: active (not Delivered/Archived)
+      list = list.filter((o) => o.status !== 'Archived' && o.status !== 'Delivered');
+    }
+
+    if (q) {
+      list = list.filter((o) => {
+        const num = (o.order_number || '').toLowerCase();
+        const name = (o.customer_name || '').toLowerCase();
+        const phone = (o.customer_phone || '').toLowerCase();
+        return num.includes(q) || name.includes(q) || phone.includes(q);
+      });
+    }
+
+    list.sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const offset = (page - 1) * limit;
+    const sliced = list.slice(offset, offset + limit);
+    return { orders: sliced, hasMore: offset + sliced.length < list.length };
+  }
+
+  getOrderById(id: string): Order | undefined {
+    return this.snapshot.orders.find((o) => o.id === id);
+  }
+
+  getOrdersForCustomer(customerId: string): Order[] {
+    return this.snapshot.orders
+      .filter((o) => o.customer_id === customerId)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+
   getMeasurements(customerId: string): MeasurementCacheEntry | null {
     return this.snapshot.measurementsByCustomerId[customerId] || null;
   }
@@ -253,7 +336,27 @@ class LocalDataStore {
     this.setPartial({
       customers: this.snapshot.customers.filter((c) => c.id !== customerId),
       measurementsByCustomerId: rest,
+      orders: this.snapshot.orders.filter((o) => o.customer_id !== customerId),
     });
+  }
+
+  upsertOrder(order: Order) {
+    const idx = this.snapshot.orders.findIndex((o) => o.id === order.id);
+    const orders =
+      idx >= 0
+        ? this.snapshot.orders.map((o, i) => (i === idx ? { ...o, ...order } : o))
+        : [order, ...this.snapshot.orders];
+    this.setPartial({ orders });
+  }
+
+  removeOrder(orderId: string) {
+    this.setPartial({
+      orders: this.snapshot.orders.filter((o) => o.id !== orderId),
+    });
+  }
+
+  setOrders(orders: Order[]) {
+    this.setPartial({ orders });
   }
 
   upsertMeasurements(customerId: string, entry: MeasurementCacheEntry) {

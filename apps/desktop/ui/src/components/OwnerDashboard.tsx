@@ -6,13 +6,15 @@ import DataImport from './DataImport';
 import ShopProfile from './admin/ShopProfile';
 import PrintSettings from './admin/PrintSettings';
 import PipelineSettings from './admin/PipelineSettings';
+import { localDataStore } from '../lib/localDataStore';
 
 interface OwnerDashboardProps {
   token: string;
   onSettingsUpdated: () => void;
+  onOwnerModeRequired?: () => void;
 }
 
-export default function OwnerDashboard({ token, onSettingsUpdated }: OwnerDashboardProps) {
+export default function OwnerDashboard({ token, onSettingsUpdated, onOwnerModeRequired }: OwnerDashboardProps) {
   const [activeTab, setActiveTab] = useState<'ShopProfile' | 'Documents' | 'Pipeline' | 'GarmentTypes' | 'Backup' | 'Import'>('ShopProfile');
 
   const [archiveCutoff, setArchiveCutoff] = useState('');
@@ -48,7 +50,13 @@ export default function OwnerDashboard({ token, onSettingsUpdated }: OwnerDashbo
       });
 
       const backup = await res.json();
-      if (!res.ok) throw new Error(backup.error);
+      if (!res.ok) {
+        if (res.status === 403 && /owner mode required/i.test(backup.error || '')) {
+          onOwnerModeRequired?.();
+          return;
+        }
+        throw new Error(backup.error);
+      }
 
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -91,9 +99,18 @@ export default function OwnerDashboard({ token, onSettingsUpdated }: OwnerDashbo
         });
 
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
+        if (!res.ok) {
+          if (res.status === 403 && /owner mode required/i.test(data.error || '')) {
+            onOwnerModeRequired?.();
+            return;
+          }
+          throw new Error(data.error);
+        }
 
-        setRestoreSuccess('Backup restored. Please refresh the app.');
+        setRestoreSuccess('Backup restored. Data refresh in progress…');
+        await localDataStore.hydrate(token, { force: true });
+        setRestoreSuccess('Backup restored successfully.');
+        onSettingsUpdated();
       } catch (err: any) {
         setRestoreError(err.message || 'Failed to parse JSON file.');
       }
@@ -120,9 +137,16 @@ export default function OwnerDashboard({ token, onSettingsUpdated }: OwnerDashbo
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) {
+        if (res.status === 403 && /owner mode required/i.test(data.error || '')) {
+          onOwnerModeRequired?.();
+          return;
+        }
+        throw new Error(data.error);
+      }
 
       setArchiveSuccess('Orders archived successfully!');
+      await localDataStore.hydrate(token, { force: true });
     } catch (err: any) {
       alert('Archiving failed: ' + err.message);
     }
@@ -162,15 +186,15 @@ export default function OwnerDashboard({ token, onSettingsUpdated }: OwnerDashbo
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-hidden">
 
         {activeTab === 'ShopProfile' && (
-          <ShopProfile token={token} onSettingsUpdated={onSettingsUpdated} />
+          <ShopProfile token={token} onSettingsUpdated={onSettingsUpdated} onOwnerModeRequired={onOwnerModeRequired} />
         )}
 
         {activeTab === 'Documents' && (
-          <PrintSettings token={token} onSettingsUpdated={onSettingsUpdated} />
+          <PrintSettings token={token} onSettingsUpdated={onSettingsUpdated} onOwnerModeRequired={onOwnerModeRequired} />
         )}
 
         {activeTab === 'Pipeline' && (
-          <PipelineSettings token={token} onSettingsUpdated={onSettingsUpdated} />
+          <PipelineSettings token={token} onSettingsUpdated={onSettingsUpdated} onOwnerModeRequired={onOwnerModeRequired} />
         )}
 
         {activeTab === 'GarmentTypes' && (

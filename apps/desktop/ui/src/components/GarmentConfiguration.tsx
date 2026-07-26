@@ -101,7 +101,8 @@ export default function GarmentConfiguration({ token }: GarmentConfigurationProp
     fetchGarmentTypes();
   }, [token]);
 
-  // Synchronize measurement fields and fetch styling categories when the selected garment type changes
+  // Synchronize measurement fields and fetch styling categories when the selected garment type changes.
+  // Depend on id only — in-place updates (save layout/price) must not wipe success banners or builder state.
   useEffect(() => {
     setError(null);
     setSuccess(null);
@@ -124,9 +125,9 @@ export default function GarmentConfiguration({ token }: GarmentConfigurationProp
       setStylingCategories([]);
       setSelectedStylingCategory(null);
     }
-  }, [selectedType]);
+  }, [selectedType?.id]);
 
-  // Synchronize styling option builder when styling category changes
+  // Synchronize styling option builder when styling category changes (id only — same reason as above)
   useEffect(() => {
     if (selectedStylingCategory) {
       setBuilderOptions(
@@ -138,7 +139,7 @@ export default function GarmentConfiguration({ token }: GarmentConfigurationProp
     } else {
       setBuilderOptions([]);
     }
-  }, [selectedStylingCategory]);
+  }, [selectedStylingCategory?.id]);
 
   // -------------------------------------------------------------------------
   // SECTION 1: GARMENT TYPES API LOGIC
@@ -210,7 +211,13 @@ export default function GarmentConfiguration({ token }: GarmentConfigurationProp
         setSuccess(`Garment type "${name}" created successfully.`);
         setNewTypeName('');
         setNewTypePrice('');
-        // This will reload the list and preserve selection
+        // Show immediately; refetch keeps list in sync with server
+        setGarmentTypes(prev => {
+          const next = prev.some(gt => gt.id === data.id) ? prev : [...prev, data];
+          localDataStore.setGarmentTypes(next);
+          return next;
+        });
+        setSelectedType(data);
         fetchGarmentTypes();
       } else {
         setError(data.error || 'Failed to add garment type.');
@@ -243,13 +250,17 @@ export default function GarmentConfiguration({ token }: GarmentConfigurationProp
       const data = await res.json();
       if (res.ok) {
         setSuccess(`Base price for "${selectedType.name}" updated to Rs. ${priceToSave} successfully.`);
-        // Update local list
-        setGarmentTypes(prev => prev.map(gt => {
-          if (gt.id === selectedType.id) {
-            return { ...gt, price: priceToSave };
-          }
-          return gt;
-        }));
+        // Update local list + offline booking cache
+        setGarmentTypes(prev => {
+          const next = prev.map(gt => {
+            if (gt.id === selectedType.id) {
+              return { ...gt, price: priceToSave };
+            }
+            return gt;
+          });
+          localDataStore.setGarmentTypes(next);
+          return next;
+        });
         setSelectedType(prev => prev ? { ...prev, price: priceToSave } : null);
       } else {
         setError(data.error || 'Failed to update base price.');
@@ -563,13 +574,17 @@ Do you absolutely want to proceed with deletion?`;
       const data = await res.json();
       if (res.ok) {
         setSaveFieldsSuccess(true);
-        // Update local list
-        setGarmentTypes(prev => prev.map(gt => {
-          if (gt.id === selectedType.id) {
-            return { ...gt, measurement_fields: builderFields };
-          }
-          return gt;
-        }));
+        // Update local list + offline booking cache
+        setGarmentTypes(prev => {
+          const next = prev.map(gt => {
+            if (gt.id === selectedType.id) {
+              return { ...gt, measurement_fields: builderFields };
+            }
+            return gt;
+          });
+          localDataStore.setGarmentTypes(next);
+          return next;
+        });
         setSelectedType(prev => prev ? { ...prev, measurement_fields: builderFields } : null);
       } else {
         setError(data.error || 'Failed to save measurement form layout.');
@@ -933,13 +948,21 @@ Do you absolutely want to proceed with deletion?`;
       const data = await res.json();
       if (res.ok) {
         setSaveOptionsSuccess(true);
-        // Sync local list
-        setStylingCategories(prev => prev.map(sc => {
-          if (sc.id === selectedStylingCategory.id) {
-            return { ...sc, options: builderOptions };
-          }
-          return sc;
-        }));
+        // Sync local list + offline booking cache
+        setStylingCategories(prev => {
+          const next = prev.map(sc => {
+            if (sc.id === selectedStylingCategory.id) {
+              return { ...sc, options: builderOptions };
+            }
+            return sc;
+          });
+          const others = localDataStore
+            .getSnapshot()
+            .stylingCategories
+            .filter((c) => c.garment_type_id !== selectedType.id);
+          localDataStore.setStylingCategories([...others, ...next]);
+          return next;
+        });
         setSelectedStylingCategory(prev => prev ? { ...prev, options: builderOptions } : null);
       } else {
         setError(data.error || 'Failed to save styling options.');

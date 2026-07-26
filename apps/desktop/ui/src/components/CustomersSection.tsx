@@ -35,7 +35,7 @@ import {
 } from './ui/ScanValue';
 import { localDataStore } from '../lib/localDataStore';
 import { useLocalData } from '../lib/useLocalData';
-import { cacheCustomer, cacheMeasurements, removeCachedCustomer } from '../lib/useLocalData';
+import { cacheCustomer, cacheMeasurements, cacheOrder, removeCachedCustomer } from '../lib/useLocalData';
 
 interface CustomersSectionProps {
   token: string;
@@ -310,7 +310,14 @@ export default function CustomersSection({
     }
 
     const fetchOrderHistory = async () => {
-      setHistoryLoading(true);
+      // Paint from offline cache immediately
+      const cachedOrders = localDataStore.getOrdersForCustomer(selectedCustomer.id);
+      if (cachedOrders.length > 0) {
+        setOrderHistory(cachedOrders);
+        setHistoryLoading(false);
+      } else {
+        setHistoryLoading(true);
+      }
       try {
         const res = await fetch(`/api/customers/${selectedCustomer.id}/orders`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -318,9 +325,13 @@ export default function CustomersSection({
         if (res.ok) {
           const data = await res.json();
           setOrderHistory(data);
+          if (Array.isArray(data)) {
+            for (const o of data) cacheOrder(o);
+          }
         }
       } catch (err) {
         console.error('Error fetching order history:', err);
+        // Keep cached history if API fails
       } finally {
         setHistoryLoading(false);
       }
@@ -367,7 +378,7 @@ export default function CustomersSection({
       setNewPhone('');
       setNewAddress('');
       setInitialMeasurements({});
-      onBookOrder(result.customer);
+      // Stay on Customers — Book Order is an explicit button, not forced on duplicate.
       return;
     }
 

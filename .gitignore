@@ -2,28 +2,24 @@ node_modules/
 build/
 dist/
 coverage/
+config/
 .DS_Store
 *.log
 .env*
 !.env.example
 .dev-server-port
 
-# Generated production configuration
-/config/
-
 # Electron build output
 release/
+release-*/
 out/
+data/
 
-# Vercel serverless function build artifact
-/api/index.cjs
-
-# Runtime logs
-*.log
-
-# Build artifacts
-dist/
-build/
+# Website release artifacts (synced by scripts/sync-release.mjs)
+/apps/website/release/*
+!/apps/website/release/.gitkeep
+!/apps/website/release/manifest.json
+!/apps/website/release/version.js
 
 # Generated website environment (injected during deployment)
 /apps/website/env.js

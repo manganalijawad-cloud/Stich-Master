@@ -5,82 +5,20 @@ import OrdersSection from './components/OrdersSection';
 import OwnerDashboard from './components/OwnerDashboard';
 import FinancialReports from './components/FinancialReports';
 
-import SyncIndicator from './components/SyncIndicator';
 import TitleBar from './components/TitleBar';
 import VersionInfo from './components/VersionInfo';
 import { Customer, PipelineStage } from './types';
-import { supabase, ensureSupabase } from './lib/supabase';
+import { DEFAULT_PIPELINE_STAGES } from '@hello-darzi/shared';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginPage from './components/auth/LoginPage';
-import ForgotPasswordPage from './components/auth/ForgotPasswordPage';
-import ResetPasswordPage from './components/auth/ResetPasswordPage';
-import OfflineBanner from './components/auth/OfflineBanner';
 
 import { parseOrderQrPayload } from './lib/orderQr';
 import { localDataStore } from './lib/localDataStore';
 import { useLocalData } from './lib/useLocalData';
 
-type AuthPage = 'login' | 'forgot-password' | 'reset-password';
-
-const originalFetch = window.fetch;
-const customFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : '';
-  // Only attach auth for local API calls. Never call getSession() for other URLs —
-  // Supabase auth refresh uses fetch; awaiting getSession here deadlocks token refresh
-  // and leaves the app stuck on "Initializing Workspace...".
-  if (url.startsWith('/api/') || (url.startsWith('http') && url.includes('/api/'))) {
-    const { data: { session } } = await supabase.auth.getSession();
-    const token = session?.access_token;
-    const newInit = { ...init };
-    const headers = new Headers(newInit.headers || {});
-    if (token && !headers.has('Authorization')) {
-      headers.set('Authorization', `Bearer ${token}`);
-    }
-    newInit.headers = headers;
-    return originalFetch(input, newInit);
-  }
-  return originalFetch(input, init);
-};
-
-try {
-  window.fetch = customFetch;
-} catch (e) {
-  Object.defineProperty(window, 'fetch', {
-    value: customFetch,
-    configurable: true,
-    writable: true,
-  });
-}
-
-function AuthPage({ page, onNavigate }: { page: AuthPage; onNavigate: (p: AuthPage) => void }) {
-  switch (page) {
-    case 'forgot-password':
-      return <ForgotPasswordPage onNavigateLogin={() => onNavigate('login')} />;
-    case 'reset-password':
-      return <ResetPasswordPage />;
-    default:
-      return (
-        <LoginPage
-          onNavigateForgotPassword={() => onNavigate('forgot-password')}
-        />
-      );
-  }
-}
-
 function AuthWrapper() {
-  const { user, token, isLoading, isOnline, subscriptionStatus, signOut, setSession } = useAuth();
-  const [authPage, setAuthPage] = useState<AuthPage>('login');
-
-  useEffect(() => { ensureSupabase(); }, []);
-
-  useEffect(() => {
-    const hash = window.location.hash;
-    // Password recovery only — no OAuth/signup callbacks (PROJECT.md §3)
-    if (hash && hash.includes('type=recovery')) {
-      setAuthPage('reset-password');
-    }
-  }, []);
+  const { user, token, isLoading, signOut, needsShopSetup, isPasswordRecovery } = useAuth();
 
   // Owner mode is session-only (PROJECT.md §5): require password unlock every
   // app load. Never restore Owner from localStorage — that skipped re-auth and
@@ -117,9 +55,24 @@ function AuthWrapper() {
     setActiveTab((prev) => (prev === 'Owner' || prev === 'Financials' ? 'Customers' : prev));
   }, [token]);
 
-  // Auto-expire Owner mode after inactivity
+  /** Server grant expired/missing while UI still showed unlocked — re-prompt without leaving Settings. */
+  const handleOwnerModeRequired = useCallback(() => {
+    setActiveMode('Manager');
+    localStorage.removeItem('tailor_active_role');
+    if (token) {
+      fetch('/api/auth/exit-owner-mode', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(err => console.warn('exit-owner-mode failed:', err));
+    }
+    setOwnerPassword('');
+    setPasswordError('Owner mode expired. Enter your password to unlock settings again.');
+    setShowPasswordModal(true);
+  }, [token]);
+
+  // Auto-expire Owner mode after inactivity; heartbeat keeps server grant aligned with UI.
   useEffect(() => {
-    if (activeMode !== 'Owner') return;
+    if (activeMode !== 'Owner' || !token) return;
 
     let idleTimer: ReturnType<typeof setTimeout>;
     const bumpActivity = () => {
@@ -140,11 +93,33 @@ function AuthWrapper() {
     events.forEach((evt) => window.addEventListener(evt, bumpActivity, { passive: true }));
     bumpActivity();
 
+    // Server TTL only refreshes on API traffic; client idle resets on UI events.
+    // Heartbeat bridges that gap so "Settings unlocked" matches the server grant.
+    const OWNER_HEARTBEAT_MS = 4 * 60 * 1000;
+    const syncOwnerGrant = async () => {
+      try {
+        const res = await fetch('/api/auth/owner-mode', {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.active === false) {
+          handleOwnerModeRequired();
+        }
+      } catch {
+        // ignore transient errors — next heartbeat or save will re-check
+      }
+    };
+    syncOwnerGrant();
+    const heartbeat = setInterval(syncOwnerGrant, OWNER_HEARTBEAT_MS);
+
     return () => {
       clearTimeout(idleTimer);
+      clearInterval(heartbeat);
       events.forEach((evt) => window.removeEventListener(evt, bumpActivity));
     };
-  }, [activeMode, switchToManager, OWNER_IDLE_MS]);
+  }, [activeMode, switchToManager, handleOwnerModeRequired, token, OWNER_IDLE_MS]);
 
   const handlePasswordSubmit = async () => {
     if (!ownerPassword || !token) return;
@@ -199,8 +174,6 @@ function AuthWrapper() {
   const [measurementUnit, setMeasurementUnit] = useState<'Inches' | 'Centimeters' | 'Feet'>('Inches');
   const [termsConditions, setTermsConditions] = useState('');
   const [receiptFooterText, setReceiptFooterText] = useState('');
-  const [defaultPrintReceipt, setDefaultPrintReceipt] = useState(true);
-  const [defaultPrintMeasure, setDefaultPrintMeasure] = useState(true);
   const [activeOrderId, setActiveOrderId] = useState<string | undefined>(undefined);
   const [activeItemIdx, setActiveItemIdx] = useState<number | undefined>(undefined);
 
@@ -253,17 +226,10 @@ function AuthWrapper() {
     setShopLogo(settingsData.shop_logo ?? '');
     setTermsConditions(settingsData.terms_conditions ?? '');
     setReceiptFooterText(settingsData.receipt_footer_text ?? '');
-    setDefaultPrintReceipt(settingsData.default_print_receipt !== false);
-    setDefaultPrintMeasure(settingsData.default_print_measure !== false);
     setCurrency(settingsData.currency || '$');
     setMeasurementFields(settingsData.measurement_fields || []);
     setMeasurementUnit(settingsData.measurement_unit || 'Inches');
-    setPipelineStages(settingsData.pipeline_stages || [
-      { id: 'Pending', name: 'Getting Ready', enabled: true },
-      { id: 'Ready to Deliver', name: 'Ready to Deliver', enabled: true },
-      { id: 'Delivered', name: 'Delivered', enabled: true },
-      { id: 'Archived', name: 'Archived', enabled: true }
-    ]);
+    setPipelineStages(settingsData.pipeline_stages || DEFAULT_PIPELINE_STAGES);
   }, []);
 
   // Instant paint from last-known settings (localStorage) before bootstrap returns
@@ -320,6 +286,10 @@ function AuthWrapper() {
     localStorage.removeItem('hellodarzi-auth');
     localStorage.removeItem('hellodarzi-profile-cache');
     localStorage.removeItem('hellodarzi-settings-cache');
+    localStorage.removeItem('hellodarzi-device-token');
+    localStorage.removeItem('hellodarzi-supabase-auth');
+    localStorage.removeItem('hellodarzi-device-pin-ready');
+    localStorage.removeItem('hellodarzi-device-pin-skipped');
   };
 
   const handleSettingsUpdated = () => {
@@ -337,68 +307,19 @@ function AuthWrapper() {
     );
   }
 
-  if (!user || !token) {
+  if (!user || !token || needsShopSetup || isPasswordRecovery) {
     return (
       <div className="h-screen flex flex-col">
         {isElectron && <TitleBar />}
         <div className="flex-1 relative">
-          {!isOnline && <OfflineBanner />}
-          <AuthPage page={authPage} onNavigate={setAuthPage} />
+          <LoginPage />
         </div>
       </div>
     );
   }
 
-  if (subscriptionStatus === 'inactive' || subscriptionStatus === 'expired') {
-    return (
-      <div className="h-screen flex flex-col bg-[#0a0a0a]">
-        {isElectron && <TitleBar />}
-        <div className="flex-1 flex items-center justify-center px-4">
-          <div className="w-full max-w-md text-center animate-fade-in">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-500/10 mb-6">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h1 className="text-2xl font-bold text-white font-display tracking-tight mb-2">
-              Subscription {subscriptionStatus === 'expired' ? 'Expired' : 'Required'}
-            </h1>
-            <p className="text-slate-400 mb-2">
-              {subscriptionStatus === 'expired'
-                ? 'Your subscription has expired. Please renew it to continue using Hello Darzi.'
-                : 'You need an active subscription to use Hello Darzi on desktop.'}
-            </p>
-            <p className="text-sm text-slate-500 mb-8">
-              Please visit the website to manage your subscription.
-            </p>
-            <div className="flex flex-col gap-3 items-center">
-              <button
-                onClick={() => {
-                  const url = `https://${window.location.hostname}/auth.html`;
-                  if (isElectron) {
-                    (window as any).electronAPI?.openExternal(url);
-                  } else {
-                    window.open(url, '_blank');
-                  }
-                }}
-                className="inline-flex items-center justify-center px-6 py-3 bg-white text-[#0a0a0a] font-semibold text-sm rounded-xl hover:bg-neutral-200 transition-colors duration-150 cursor-pointer"
-              >
-                Manage Subscription
-              </button>
-              <button
-                onClick={handleLogout}
-                className="text-sm text-slate-400 hover:text-slate-300 font-medium transition-colors cursor-pointer bg-transparent border-none"
-              >
-                Sign out
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const displayName = user?.shop_name || user?.name || 'My Shop';
+  const displayName = shopName || user?.shop_name || user?.name || 'My Shop';
+  const displayEmail = user?.email || '';
 
   const navItems = [
     {
@@ -435,8 +356,6 @@ function AuthWrapper() {
 
   return (
     <div className="h-screen flex flex-col">
-      {!isOnline && <OfflineBanner />}
-
       {isElectron && <TitleBar />}
 
       <div className="flex flex-1 min-h-0 flex-col md:flex-row font-sans text-slate-800 bg-brand-bg">
@@ -457,8 +376,8 @@ function AuthWrapper() {
             {!isSidebarCollapsed && (
               <div className="overflow-hidden animate-fade-in min-w-0">
                 <span className="text-lg block text-white font-display uppercase font-bold whitespace-normal">{displayName}</span>
-                <span className="text-3xs font-semibold text-slate-500 block uppercase tracking-wider mt-0.5">
-                  Your shop
+                <span className="text-3xs font-semibold text-slate-500 block normal-case tracking-normal mt-0.5 truncate" title={displayEmail || undefined}>
+                  {displayEmail || 'Your shop'}
                 </span>
               </div>
             )}
@@ -529,8 +448,6 @@ function AuthWrapper() {
               )}
             </button>
           )}
-
-          <SyncIndicator token={token} collapsed={isSidebarCollapsed} />
 
           <VersionInfo collapsed={isSidebarCollapsed} />
 
@@ -615,7 +532,6 @@ function AuthWrapper() {
                 <span>Back to Manager</span>
               </button>
             )}
-            <SyncIndicator token={token} collapsed={false} />
             <VersionInfo collapsed={false} />
             <button
               onClick={() => {
@@ -708,8 +624,6 @@ function AuthWrapper() {
                 shopLogo={shopLogo}
                 termsConditions={termsConditions}
                 receiptFooterText={receiptFooterText}
-                defaultPrintReceipt={defaultPrintReceipt}
-                defaultPrintMeasure={defaultPrintMeasure}
                 isOwnerMode={activeMode === 'Owner'}
               />
             )}
@@ -725,6 +639,7 @@ function AuthWrapper() {
               <OwnerDashboard
                 token={token}
                 onSettingsUpdated={handleSettingsUpdated}
+                onOwnerModeRequired={handleOwnerModeRequired}
               />
             )}
 

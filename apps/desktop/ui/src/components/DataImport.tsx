@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { Upload, ArrowRight, ArrowLeft, Check, X, AlertTriangle, FileSpreadsheet, Loader2, Database, ChevronDown, Plus } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import type { GarmentType } from '../types';
+import { localDataStore } from '../lib/localDataStore';
 
 interface DataImportProps {
   token: string;
@@ -320,6 +321,8 @@ export default function DataImport({ token, garmentTypes, onComplete }: DataImpo
     setImportResults(results);
     setImporting(false);
     setStep('done');
+    // Refresh offline cache so Customers/Orders search sees imported rows
+    void localDataStore.hydrate(token, { force: true });
   };
 
   const getPreviewRows = () => rows.slice(0, 5);

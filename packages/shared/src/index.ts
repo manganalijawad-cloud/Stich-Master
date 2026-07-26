@@ -16,3 +16,9 @@ export type {
   StylingOption,
   StylingCategory,
 } from './types';
+
+export {
+  DEFAULT_PIPELINE_STAGES,
+  DEFAULT_SHOP_SETTINGS,
+  createDefaultShopSettings,
+} from './defaults';

@@ -22,7 +22,7 @@ import {
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
 import { localDataStore } from '../lib/localDataStore';
-import { useLocalData, cacheCustomer, cacheMeasurements } from '../lib/useLocalData';
+import { useLocalData, cacheCustomer, cacheMeasurements, cacheOrder, removeCachedOrder } from '../lib/useLocalData';
 
 /** True when a customer profile has at least one non-empty measurement value. */
 function profileHasSavedMeasurements(profile: MeasurementProfile): boolean {
@@ -46,8 +46,6 @@ interface OrdersSectionProps {
   shopLogo?: string;
   termsConditions?: string;
   receiptFooterText?: string;
-  defaultPrintReceipt?: boolean;
-  defaultPrintMeasure?: boolean;
   isOwnerMode?: boolean;
 }
 
@@ -68,8 +66,6 @@ export default function OrdersSection({
   shopLogo,
   termsConditions,
   receiptFooterText,
-  defaultPrintReceipt = true,
-  defaultPrintMeasure = true,
   isOwnerMode = false,
 }: OrdersSectionProps) {
   // Dynamic Pipeline Stages
@@ -80,8 +76,14 @@ export default function OrdersSection({
     { id: 'Archived', name: 'Archived', enabled: true }
   ];
 
-  // Active stages for the queue columns (except Archived and only enabled)
-  const activeQueueStages = stagesList.filter(s => s.enabled && s.id !== 'Archived' && s.name.toLowerCase() !== 'archived');
+  // Active stages for the queue columns (open work — exclude Delivered/Archived)
+  const activeQueueStages = stagesList.filter(s =>
+    s.enabled &&
+    s.id !== 'Archived' &&
+    s.id !== 'Delivered' &&
+    s.name.toLowerCase() !== 'archived' &&
+    s.name.toLowerCase() !== 'delivered'
+  );
   // Progression stages — never auto-advance into Archived from QR/main "next" actions
   const activeWorkflowStages = stagesList.filter(s => s.enabled && s.id !== 'Archived' && s.name.toLowerCase() !== 'archived');
 
@@ -176,40 +178,50 @@ export default function OrdersSection({
   // Load active order if passed from URL query param (e.g. from scanning QR code)
   useEffect(() => {
     if (activeOrderId) {
-      const fetchAndSelectOrder = async () => {
+      const openOrder = async () => {
+        const applyOrder = (fullOrder: Order) => {
+          if (activeItemIdx !== undefined && fullOrder.items && fullOrder.items[activeItemIdx]) {
+            setScannedGarmentItem({
+              order: fullOrder,
+              itemIdx: activeItemIdx,
+            });
+            if (onClearActiveItemIdx) {
+              onClearActiveItemIdx();
+            }
+          } else {
+            setSelectedOrder(fullOrder);
+          }
+          setIsCreating(false);
+          setIsEditing(false);
+          if (onClearActiveOrderId) {
+            onClearActiveOrderId();
+          }
+        };
+
+        // Offline-first: open from bootstrap cache immediately
+        const cached = localDataStore.getOrderById(activeOrderId);
+        if (cached) {
+          applyOrder(cached);
+        }
+
         try {
           const res = await fetch(`/api/orders/${activeOrderId}`, {
             headers: { Authorization: `Bearer ${token}` },
           });
           if (res.ok) {
             const fullOrder = await res.json();
-            
-            // If activeItemIdx is specified, trigger the scanned garment action modal!
-            if (activeItemIdx !== undefined && fullOrder.items && fullOrder.items[activeItemIdx]) {
-              setScannedGarmentItem({
-                order: fullOrder,
-                itemIdx: activeItemIdx,
-              });
-              if (onClearActiveItemIdx) {
-                onClearActiveItemIdx();
-              }
-            } else {
-              setSelectedOrder(fullOrder);
-            }
-            
-            setIsCreating(false);
-            setIsEditing(false);
-            if (onClearActiveOrderId) {
-              onClearActiveOrderId();
-            }
-          } else {
+            cacheOrder(fullOrder);
+            applyOrder(fullOrder);
+          } else if (!cached) {
             console.error('Failed to fetch scanned order. Status:', res.status);
           }
         } catch (err) {
-          console.error('Error fetching scanned order:', err);
+          if (!cached) {
+            console.error('Error fetching scanned order:', err);
+          }
         }
       };
-      fetchAndSelectOrder();
+      openOrder();
     }
   }, [activeOrderId, activeItemIdx, token]);
   
@@ -265,7 +277,7 @@ export default function OrdersSection({
   const [discountType, setDiscountType] = useState<'fixed' | 'percentage'>('fixed');
   const [discountValue, setDiscountValue] = useState('');
 
-  const [printOptions, setPrintOptions] = useState({ receipt: defaultPrintReceipt, measure: defaultPrintMeasure });
+  const [printOptions, setPrintOptions] = useState({ receipt: true, measure: true });
 
   const updateSharedDeliveryDate = (newDate: string) => {
     setSharedDeliveryDate(newDate);
@@ -347,7 +359,8 @@ export default function OrdersSection({
       });
       if (res.ok) {
         setSelectedOrder(null);
-        fetchOrders();
+        removeCachedOrder(order.id);
+        fetchOrders({ background: true });
       } else {
         const data = await res.json();
         alert(data.error || 'Failed to delete order.');
@@ -377,6 +390,13 @@ export default function OrdersSection({
       const mergedOrder: Order = { ...order, ...data, status: newStatus as OrderStatus };
       setOrders(prev => prev.map(o => o.id === order.id ? mergedOrder : o));
       setSelectedOrder(prev => prev?.id === order.id ? mergedOrder : prev);
+      cacheOrder(mergedOrder);
+
+      // Delivered leaves the Open queue — switch to Finished so staff can still find it.
+      if (newStatus === 'Delivered') {
+        setViewMode('Archived');
+        setActiveFilter('finished');
+      }
       return mergedOrder;
     } catch (err) {
       console.error(err);
@@ -385,22 +405,41 @@ export default function OrdersSection({
     }
   };
 
-  // Fetch Orders
-  const fetchOrders = async () => {
-    setLoading(true);
+  // Fetch Orders — paint from local cache instantly, then soft-refresh from API
+  const fetchOrders = async (opts?: { background?: boolean }) => {
+    const fromCache = localDataStore.filterOrders({
+      status: activeFilter === 'All' ? 'All' : activeFilter,
+      search: searchQuery,
+      page: 1,
+      limit: 50,
+    });
+    if (fromCache.orders.length > 0 || localDataStore.getSnapshot().ready) {
+      setOrders(fromCache.orders);
+      setPage(1);
+      setHasMore(fromCache.hasMore);
+      if (!opts?.background) setLoading(false);
+    } else if (!opts?.background) {
+      setLoading(true);
+    }
+
     try {
       const url = `/api/orders?status=${activeFilter}&q=${encodeURIComponent(searchQuery)}&page=1&limit=50`;
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      if (res.ok) {
+      if (res.ok && Array.isArray(data)) {
         setOrders(data);
         setPage(1);
         setHasMore(data.length === 50);
+        // Merge into store without wiping other statuses
+        for (const o of data) {
+          cacheOrder(o);
+        }
       }
     } catch (err) {
       console.error('Error fetching orders:', err);
+      // Keep cached list if API fails
     } finally {
       setLoading(false);
     }
@@ -409,6 +448,22 @@ export default function OrdersSection({
   useEffect(() => {
     fetchOrders();
   }, [activeFilter, searchQuery, token]);
+
+  // Re-apply local filter when bootstrap/sync updates the store
+  useEffect(() => {
+    if (!localData.ready) return;
+    const fromCache = localDataStore.filterOrders({
+      status: activeFilter === 'All' ? 'All' : activeFilter,
+      search: searchQuery,
+      page: 1,
+      limit: 50,
+    });
+    // Only update if we don't already have a fresher API page open with more items
+    if (page === 1) {
+      setOrders(fromCache.orders);
+      setHasMore(fromCache.hasMore);
+    }
+  }, [localData.version]);
 
   const loadMoreOrders = async () => {
     const nextPage = page + 1;
@@ -689,11 +744,11 @@ export default function OrdersSection({
 
     setCustomer(result.customer);
     setCustomerProfiles(
-      result.alreadyExists
-        ? result.firstProfile
+      result.profiles?.length
+        ? result.profiles
+        : result.firstProfile
           ? [result.firstProfile]
-          : []
-        : [result.firstProfile]
+          : localDataStore.getProfiles(result.customer.id)
     );
 
     setNewCustName('');
@@ -917,8 +972,9 @@ export default function OrdersSection({
       setCreateSuccess(true);
       setIsCreating(false);
       setSelectedOrder(data);
+      cacheOrder(data);
       if (onClearActiveCustomer) onClearActiveCustomer();
-      fetchOrders();
+      fetchOrders({ background: true });
     } catch (err: any) {
       setCreateError(err.message);
     }
@@ -991,6 +1047,7 @@ export default function OrdersSection({
     const merged = { ...order, ...updatedOrder, paid_amount: newPaidAmount };
     setOrders(prev => prev.map(o => o.id === merged.id ? merged : o));
     setSelectedOrder(prev => prev?.id === merged.id ? merged : prev);
+    cacheOrder(merged);
     return merged;
   };
 
@@ -998,18 +1055,19 @@ export default function OrdersSection({
     if (!pendingDeliverOrder || collectingPayment) return;
 
     const amountToCollect = Math.max(0, Number(collectAmount) || 0);
-    if (amountToCollect <= 0) {
-      await handleDeliverSkipPayment();
+    const currentDue = getOrderRemaining(pendingDeliverOrder);
+    if (amountToCollect < currentDue) {
+      alert(`Collect at least ${currency}${currentDue} (remaining balance) before delivering.`);
       return;
     }
 
     setCollectingPayment(true);
+    let paymentApplied = false;
     try {
       let remainingPool = amountToCollect;
       const paymentUpdates: { order: Order; newPaid: number }[] = [];
 
       // 1) Apply to the order being delivered first
-      const currentDue = getOrderRemaining(pendingDeliverOrder);
       const toCurrent = Math.min(remainingPool, currentDue);
       remainingPool -= toCurrent;
       let currentNewPaid = (pendingDeliverOrder.paid_amount || 0) + toCurrent;
@@ -1031,31 +1089,34 @@ export default function OrdersSection({
 
       if (currentNewPaid !== (pendingDeliverOrder.paid_amount || 0)) {
         await applyPaidAmountUpdate(pendingDeliverOrder, currentNewPaid);
+        paymentApplied = true;
       }
       for (const update of paymentUpdates) {
         await applyPaidAmountUpdate(update.order, update.newPaid);
+        paymentApplied = true;
       }
 
-      const delivered = await updateOrderStatus(pendingDeliverOrder, 'Delivered');
+      // Refresh order snapshot after payments before status change
+      const latest =
+        localDataStore.getOrderById(pendingDeliverOrder.id) ||
+        pendingDeliverOrder;
+
+      const delivered = await updateOrderStatus(latest, 'Delivered');
       if (delivered) {
         resetPaymentDialog();
-      } else {
-        setCollectingPayment(false);
+      } else if (paymentApplied) {
+        alert(
+          'Payment was recorded, but the order could not be marked Delivered. Check the order and try advancing status again.'
+        );
       }
     } catch (err: any) {
       console.error('Failed to collect payment:', err);
-      alert(err?.message || 'Failed to collect payment. Order was not marked as delivered.');
-      setCollectingPayment(false);
-    }
-  };
-
-  const handleDeliverSkipPayment = async () => {
-    if (!pendingDeliverOrder || collectingPayment) return;
-    setCollectingPayment(true);
-    const delivered = await updateOrderStatus(pendingDeliverOrder, 'Delivered');
-    if (delivered) {
-      resetPaymentDialog();
-    } else {
+      alert(
+        paymentApplied
+          ? (err?.message || 'Payment may have been recorded, but delivery failed. Check the order before retrying.')
+          : (err?.message || 'Failed to collect payment. Order was not marked as delivered.')
+      );
+    } finally {
       setCollectingPayment(false);
     }
   };
@@ -1111,8 +1172,9 @@ export default function OrdersSection({
       }
 
       setSelectedOrder(data);
+      cacheOrder(data);
       setIsEditing(false);
-      fetchOrders();
+      fetchOrders({ background: true });
     } catch (err: any) {
       setEditError(err.message);
     }
@@ -1227,6 +1289,7 @@ export default function OrdersSection({
       }
 
       const { orderId, itemIdx: parsedItemIdx } = parsed;
+      const itemIdx = parsedItemIdx !== undefined ? parsedItemIdx : 0;
 
       // Close scanner modal
       setIsScannerOpen(false);
@@ -1236,20 +1299,34 @@ export default function OrdersSection({
         navigator.vibrate(100);
       }
 
-      // Fetch order details
-      const res = await fetch(`/api/orders/${orderId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const fullOrder = await res.json();
-        const itemIdx = parsedItemIdx !== undefined ? parsedItemIdx : 0;
-
+      const openFromOrder = (fullOrder: Order) => {
         setScannedGarmentItem({
           order: fullOrder,
-          itemIdx: itemIdx,
+          itemIdx,
         });
-      } else {
-        alert('Could not locate the scanned order record.');
+      };
+
+      const cached = localDataStore.getOrderById(orderId);
+      if (cached) {
+        openFromOrder(cached);
+      }
+
+      try {
+        const res = await fetch(`/api/orders/${orderId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const fullOrder = await res.json();
+          cacheOrder(fullOrder);
+          openFromOrder(fullOrder);
+        } else if (!cached) {
+          alert('Could not locate the scanned order record.');
+        }
+      } catch (err) {
+        if (!cached) {
+          console.error('Error handling scanned QR code:', err);
+          alert('Could not locate the scanned order record.');
+        }
       }
     } catch (err) {
       console.error('Error handling scanned QR code:', err);
@@ -1396,7 +1473,7 @@ export default function OrdersSection({
               type="button"
               onClick={() => {
                 setViewMode('Archived');
-                setActiveFilter('Archived');
+                setActiveFilter('finished');
               }}
               className={`filter-tab ${viewMode === 'Archived' ? 'filter-tab-active' : ''}`}
             >
@@ -1425,7 +1502,7 @@ export default function OrdersSection({
             </div>
           ) : (
             <div className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-center text-secondary text-xs font-semibold uppercase tracking-wider shrink-0">
-              Showing finished orders
+              Showing delivered and archived orders
             </div>
           )}
 
@@ -2468,7 +2545,7 @@ export default function OrdersSection({
                         onClick={() => {
                           setEditedItems([...(selectedOrder.items || [])]);
                           setEditedPaid(selectedOrder.paid_amount);
-                          setEditedDueDate(selectedOrder.due_date.split('T')[0]);
+                          setEditedDueDate(selectedOrder.due_date?.split('T')[0] || '');
                           setEditedSnapshot({ ...selectedOrder.measurement_snapshot });
                           setEditedDiscount({
                             apply: !!selectedOrder.discount_type && Number(selectedOrder.discount_amount) > 0,
@@ -3574,10 +3651,10 @@ export default function OrdersSection({
               <button
                 type="button"
                 disabled={collectingPayment}
-                onClick={handleDeliverSkipPayment}
+                onClick={resetPaymentDialog}
                 className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-xl text-xs uppercase tracking-wider cursor-pointer transition-[background-color] disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Deliver Without Collecting
+                Cancel
               </button>
             </div>
           </div>

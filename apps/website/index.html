@@ -75,7 +75,7 @@
       {"@type":"Question","name":"What is tailor shop management software?","acceptedAnswer":{"@type":"Answer","text":"Tailor shop management software is a desktop application that helps tailoring businesses manage their daily operations digitally. Instead of using paper slips, notebooks, or spreadsheets, Hello Darzi lets you store customer records, track stitching orders, save body measurements, generate invoices and receipts, and view financial reports — all in one place."}},
       {"@type":"Question","name":"How can tailor management software help my tailoring business?","acceptedAnswer":{"@type":"Answer","text":"Hello Darzi saves you time and reduces mistakes by replacing paper-based systems with a digital workflow. You can find any customer instantly, never lose measurement data, track which orders are pending or ready, print professional receipts, and see exactly how much your business is earning."}},
       {"@type":"Question","name":"Can I store customer measurements digitally?","acceptedAnswer":{"@type":"Answer","text":"Yes. Hello Darzi lets you save detailed body measurements for every customer. You can create custom measurement fields for different garment types such as shalwar kameez, suits, sherwanis, or western wear."}},
-      {"@type":"Question","name":"What is included in the 30-day free trial?","acceptedAnswer":{"@type":"Answer","text":"The 30-day free trial includes access to ALL features of Hello Darzi with no restrictions. You get unlimited customers, full order pipeline, cloud backup, multi-user support, WhatsApp notifications, and every advanced feature. No credit card is required to start your trial."}},
+      {"@type":"Question","name":"What is included in the 30-day free trial?","acceptedAnswer":{"@type":"Answer","text":"The 30-day free trial includes access to ALL features of Hello Darzi with no restrictions. You get unlimited customers, full order pipeline, local SQLite storage with backup and restore, multi-user support, WhatsApp notifications, and every advanced feature. No credit card is required to start your trial."}},
       {"@type":"Question","name":"Can I upgrade or downgrade my plan?","acceptedAnswer":{"@type":"Answer","text":"Yes. You can upgrade from Basic to Premium at any time. If you downgrade, your data remains safe and accessible. You will only lose access to features that are not included in your new plan."}},
       {"@type":"Question","name":"Can I cancel my subscription?","acceptedAnswer":{"@type":"Answer","text":"Yes. You can cancel your subscription at any time. After cancellation, you will continue to have access until the end of your current billing period. Your data will be preserved and you can export it at any time."}},
       {"@type":"Question","name":"How does the annual billing discount work?","acceptedAnswer":{"@type":"Answer","text":"When you choose annual billing, you pay for 10 months and get 2 months free. This means you save 2 months worth of charges compared to monthly billing. The discount is applied automatically when you select the annual option."}}
@@ -206,8 +206,8 @@
             <div class="w-11 h-11 rounded-xl bg-brand-sky/10 flex items-center justify-center mb-5">
               <svg class="w-5 h-5 text-brand-sky" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             </div>
-            <h3 class="font-display font-bold text-lg text-brand-sidebar mb-2">Cloud Backup</h3>
-            <p class="text-sm text-slate-500 leading-relaxed">Your data is automatically backed up to the cloud. Switch computers, restore data anytime, and never worry about losing customer information.</p>
+            <h3 class="font-display font-bold text-lg text-brand-sidebar mb-2">Local Backup &amp; Restore</h3>
+            <p class="text-sm text-slate-500 leading-relaxed">Your data stays on your computer in SQLite. Use built-in backup and restore tools to keep a copy of your shop data and recover it anytime.</p>
           </div>
         </div>
       </div>
@@ -305,7 +305,7 @@
               </div>
               <div class="mt-4 md:mt-0 md:pt-3">
                 <h3 class="font-display font-bold text-xl text-brand-sidebar mb-2">Sign In to Your Account</h3>
-                <p class="text-slate-500 leading-relaxed">Sign in with the email and password provided for your shop. Your data is stored securely in the cloud.</p>
+                <p class="text-slate-500 leading-relaxed">Sign in with the email and password provided for your shop. Your data is stored securely on your computer with SQLite.</p>
               </div>
             </div>
             <div class="step-item md:flex items-start gap-8 md:pb-16">
@@ -376,7 +376,7 @@
             </div>
             <div>
               <h3 class="font-display font-bold text-lg text-brand-sidebar mb-1.5">Your Data is Safe</h3>
-              <p class="text-sm text-slate-500 leading-relaxed">Cloud backup means you never lose customer information. Even if your computer breaks, your data can be restored.</p>
+              <p class="text-sm text-slate-500 leading-relaxed">Local backup and restore means you never lose customer information. Keep a copy of your shop data and restore it whenever you need to.</p>
             </div>
           </div>
           <div class="flex gap-5">
@@ -446,7 +446,7 @@
                 </li>
                 <li class="flex items-start gap-3 text-sm">
                   <svg class="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                  <span class="text-slate-600">Cloud backup &amp; multi-user</span>
+                  <span class="text-slate-600">Local backup &amp; multi-user</span>
                 </li>
                 <li class="flex items-start gap-3 text-sm">
                   <svg class="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
@@ -537,7 +537,7 @@
                 </li>
                 <li class="flex items-start gap-3 text-sm">
                   <svg class="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                  <span class="text-slate-600">Cloud backup &amp; bidirectional sync</span>
+                  <span class="text-slate-600">Local SQLite storage &amp; backup/restore</span>
                 </li>
                 <li class="flex items-start gap-3 text-sm">
                   <svg class="w-4 h-4 text-green-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
@@ -575,7 +575,7 @@
               <svg class="faq-chevron w-4 h-4 text-slate-400 shrink-0 transition-transform duration-300" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
             </button>
             <div class="faq-answer max-h-0 overflow-hidden transition-all duration-300">
-              <div class="px-6 pb-4 text-sm text-slate-500 leading-relaxed">The 30-day free trial includes access to ALL features of Hello Darzi with no restrictions. You get unlimited customers, full order pipeline, cloud backup, multi-user support, WhatsApp notifications, and every advanced feature. No credit card is required to start your trial.</div>
+              <div class="px-6 pb-4 text-sm text-slate-500 leading-relaxed">The 30-day free trial includes access to ALL features of Hello Darzi with no restrictions. You get unlimited customers, full order pipeline, local SQLite storage with backup and restore, multi-user support, WhatsApp notifications, and every advanced feature. No credit card is required to start your trial.</div>
             </div>
           </div>
           <div class="faq-item border border-slate-200 rounded-xl overflow-hidden">
@@ -712,7 +712,7 @@
             </button>
             <div class="faq-answer max-h-0 overflow-hidden transition-all duration-300">
               <div class="px-6 pb-5 text-sm text-slate-500 leading-relaxed">
-                Absolutely. Hello Darzi uses cloud backup through Supabase, a secure database platform. Your data is automatically synced and stored safely. Even if your computer is lost, you can restore all your data on a new device.
+                Absolutely. Hello Darzi stores everything locally on your computer with SQLite. Use the built-in backup and restore tools to keep a copy of your shop data. There is no cloud sync in V1 — your information stays on your device.
               </div>
             </div>
           </div>
@@ -723,7 +723,7 @@
             </button>
             <div class="faq-answer max-h-0 overflow-hidden transition-all duration-300">
               <div class="px-6 pb-5 text-sm text-slate-500 leading-relaxed">
-                Yes. Hello Darzi is a desktop application that works fully offline. You do not need an internet connection to add customers, create orders, save measurements, or print receipts. Data syncs to the cloud when internet is available.
+                Yes. Hello Darzi is a desktop application that works fully offline. You do not need an internet connection to add customers, create orders, save measurements, or print receipts. Your data stays on your device — use local backup and restore when you need a copy.
               </div>
             </div>
           </div>

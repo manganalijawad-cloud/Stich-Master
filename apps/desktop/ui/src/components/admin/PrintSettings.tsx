@@ -4,13 +4,12 @@ import { Save, Printer } from 'lucide-react';
 interface PrintSettingsProps {
   token: string;
   onSettingsUpdated: () => void;
+  onOwnerModeRequired?: () => void;
 }
 
-export default function PrintSettings({ token, onSettingsUpdated }: PrintSettingsProps) {
+export default function PrintSettings({ token, onSettingsUpdated, onOwnerModeRequired }: PrintSettingsProps) {
   const [receiptFooter, setReceiptFooter] = useState('');
   const [termsConditions, setTermsConditions] = useState('');
-  const [defaultPrintReceipt, setDefaultPrintReceipt] = useState(true);
-  const [defaultPrintMeasure, setDefaultPrintMeasure] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -26,8 +25,6 @@ export default function PrintSettings({ token, onSettingsUpdated }: PrintSetting
       if (res.ok) {
         setReceiptFooter(data.receipt_footer_text ?? '');
         setTermsConditions(data.terms_conditions ?? '');
-        setDefaultPrintReceipt(data.default_print_receipt !== false);
-        setDefaultPrintMeasure(data.default_print_measure !== false);
       }
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
@@ -47,12 +44,16 @@ export default function PrintSettings({ token, onSettingsUpdated }: PrintSetting
         body: JSON.stringify({
           receipt_footer_text: receiptFooter,
           terms_conditions: termsConditions,
-          default_print_receipt: defaultPrintReceipt,
-          default_print_measure: defaultPrintMeasure,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to save.');
+      if (!res.ok) {
+        if (res.status === 403 && /owner mode required/i.test(data.error || '')) {
+          onOwnerModeRequired?.();
+          return;
+        }
+        throw new Error(data.error || 'Failed to save.');
+      }
       setSuccess(true);
       onSettingsUpdated();
     } catch (err: any) {
@@ -75,7 +76,7 @@ export default function PrintSettings({ token, onSettingsUpdated }: PrintSetting
       <div className="px-4 py-3 flex items-center justify-between">
         <div>
           <h2 className="text-base font-bold text-brand-sidebar font-display">Documents & Printing</h2>
-          <p className="text-3xs text-slate-500 mt-0.5">Receipt footer, terms, and default print behavior</p>
+          <p className="text-3xs text-slate-500 mt-0.5">Receipt footer and terms & conditions</p>
         </div>
         <button type="submit" disabled={saving} className="btn-primary py-1.5 px-3 text-xs shrink-0">
           <Save className="icon-xs text-brand-sky" />
@@ -100,16 +101,6 @@ export default function PrintSettings({ token, onSettingsUpdated }: PrintSetting
           <div className="md:col-span-2">
             <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block mb-0.5">Terms & Conditions</label>
             <textarea value={termsConditions} onChange={(e) => setTermsConditions(e.target.value)} rows={2} className="textarea-base text-xs" />
-          </div>
-          <div className="md:col-span-3 flex gap-4">
-            <label className="flex items-center gap-1.5 text-3xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer select-none">
-              <input type="checkbox" checked={defaultPrintReceipt} onChange={(e) => setDefaultPrintReceipt(e.target.checked)} className="w-3.5 h-3.5 rounded border-slate-300 text-emerald-500 cursor-pointer" />
-              Auto-print Customer Receipt
-            </label>
-            <label className="flex items-center gap-1.5 text-3xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer select-none">
-              <input type="checkbox" checked={defaultPrintMeasure} onChange={(e) => setDefaultPrintMeasure(e.target.checked)} className="w-3.5 h-3.5 rounded border-slate-300 text-emerald-500 cursor-pointer" />
-              Auto-print Measurement Slip
-            </label>
           </div>
         </div>
       </section>

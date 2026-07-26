@@ -4,7 +4,7 @@ import {
   type LocalDataSnapshot,
   type MeasurementCacheEntry,
 } from './localDataStore';
-import type { Customer, GarmentType, MeasurementProfile, StylingCategory } from '../types';
+import type { Customer, GarmentType, MeasurementProfile, Order, StylingCategory } from '../types';
 
 export function useLocalData(): LocalDataSnapshot {
   return useSyncExternalStore(localDataStore.subscribe, localDataStore.getSnapshot, localDataStore.getSnapshot);
@@ -24,6 +24,26 @@ export function useLocalCustomers() {
     recent,
     byId,
     nameExists,
+    version: snap.version,
+  };
+}
+
+export function useLocalOrders() {
+  const snap = useLocalData();
+  const filter = useCallback(
+    (opts: { status?: string; search?: string; page?: number; limit?: number }) =>
+      localDataStore.filterOrders(opts),
+    []
+  );
+  const byId = useCallback((id: string) => localDataStore.getOrderById(id), []);
+  const forCustomer = useCallback((customerId: string) => localDataStore.getOrdersForCustomer(customerId), []);
+  return {
+    ready: snap.ready,
+    hydrating: snap.hydrating,
+    orders: snap.orders,
+    filter,
+    byId,
+    forCustomer,
     version: snap.version,
   };
 }
@@ -59,4 +79,12 @@ export function cacheMeasurements(customerId: string, entry: MeasurementCacheEnt
 
 export function removeCachedCustomer(customerId: string) {
   localDataStore.removeCustomer(customerId);
+}
+
+export function cacheOrder(order: Order) {
+  localDataStore.upsertOrder(order);
+}
+
+export function removeCachedOrder(orderId: string) {
+  localDataStore.removeOrder(orderId);
 }

@@ -3,10 +3,15 @@
   "productName": "Hello Darzi",
   "electronVersion": "43.1.1",
   "directories": {
-    "output": "../../release"
+    "output": "../../out/desktop"
   },
   "files": [
     "electron/**/*"
+  ],
+  "asarUnpack": [
+    "**/node_modules/better-sqlite3/**/*",
+    "**/node_modules/bindings/**/*",
+    "**/node_modules/file-uri-to-path/**/*"
   ],
   "extraResources": [
     {
@@ -15,13 +20,22 @@
       "filter": ["**/*"]
     },
     {
-      "from": "../../config",
-      "to": "config",
+      "from": "../../config/desktop.env",
+      "to": ".env"
+    },
+    {
+      "from": "../../node_modules/bindings",
+      "to": "dist/node_modules/bindings",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "../../node_modules/file-uri-to-path",
+      "to": "dist/node_modules/file-uri-to-path",
       "filter": ["**/*"]
     }
   ],
   "win": {
-    "icon": "../../public/icon.ico",
+    "icon": "ui/public/icon.ico",
     "artifactName": "Hello-Darzi-Setup-${version}.${ext}",
     "target": [
       {

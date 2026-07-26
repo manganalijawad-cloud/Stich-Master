@@ -1,11 +1,12 @@
 {
   "name": "hello-darzi",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "workspaces": [
     "packages/*",
-    "apps/*"
+    "apps/*",
+    "apps/desktop/server"
   ],
   "repository": {
     "type": "git",
@@ -14,42 +15,27 @@
   "scripts": {
     "dev": "npm run dev:server",
     "dev:server": "tsx server.ts",
-    "dev:desktop": "concurrently -k \"npm run dev:server\" \"node scripts/wait-and-start-desktop.mjs\"",
+    "dev:desktop": "concurrently -k \"node scripts/dev-server-electron.mjs\" \"node scripts/wait-and-start-desktop.mjs\"",
+    "dev:website": "npm run dev -w @hello-darzi/website",
     "start:desktop": "electron apps/desktop/electron/main.cjs",
-    "build:ui": "vite build",
-    "build:server": "esbuild packages/server/src/index.ts --bundle --platform=node --format=cjs --sourcemap --outfile=dist/server.cjs --external:better-sqlite3",
+    "build:ui": "vite build --config apps/desktop/ui/vite.config.ts",
+    "build:server": "esbuild apps/desktop/server/src/index.ts --bundle --platform=node --format=cjs --sourcemap --outfile=dist/server.cjs --external:better-sqlite3 --external:vite --banner:js=\"var import_meta_url=require('url').pathToFileURL(__filename).href;\" --define:import.meta.url=import_meta_url",
     "build": "npm run build:ui",
     "build:all": "npm run build:ui && npm run build:server",
     "start": "node dist/server.cjs",
-    "electron:build": "npm run build:all && node scripts/bundle-config.cjs && cd apps/desktop && npx electron-builder --win --x64",
-    "clean": "rm -rf dist release config",
+    "electron:build": "node scripts/prepare-desktop-env.cjs && npm run build:all && cd apps/desktop && npx electron-builder --win --x64 --config electron-builder.json",
+    "clean": "node -e \"const fs=require('fs');['dist','release','out'].forEach(p=>{try{fs.rmSync(p,{recursive:true,force:true})}catch{}})\"",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "tsx": "^4.21.0",
     "concurrently": "^10.0.3",
-    "@supabase/supabase-js": "^2.110.1",
-    "jsqr": "^1.4.0",
-    "lucide-react": "^0.546.0",
-    "qrcode": "^1.5.4",
-    "react": "^19.0.1",
-    "react-dom": "^19.0.1",
-    "uuid": "^14.0.1",
-    "xlsx": "^0.18.5"
+    "tsx": "^4.21.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
-    "electron": "^43.1.1",
-    "electron-builder": "^26.15.3",
     "esbuild": "^0.25.0",
     "typescript": "~5.8.2",
-    "wait-on": "^9.0.10",
-    "@tailwindcss/vite": "^4.1.14",
-    "@types/qrcode": "^1.5.6",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^5.0.4",
-    "tailwindcss": "^4.1.14",
-    "vite": "^6.2.3"
+    "vite": "^6.4.3",
+    "wait-on": "^9.0.10"
   }
 }

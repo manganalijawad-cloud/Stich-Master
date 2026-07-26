@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Save, Plus, Trash2, ArrowDown, ArrowUp, ListTodo } from 'lucide-react';
 import { PipelineStage } from '../../types';
+import { DEFAULT_PIPELINE_STAGES } from '@hello-darzi/shared';
 
 interface PipelineSettingsProps {
   token: string;
   onSettingsUpdated: () => void;
+  onOwnerModeRequired?: () => void;
 }
 
-export default function PipelineSettings({ token, onSettingsUpdated }: PipelineSettingsProps) {
+export default function PipelineSettings({ token, onSettingsUpdated, onOwnerModeRequired }: PipelineSettingsProps) {
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [newStageName, setNewStageName] = useState('');
   const [loading, setLoading] = useState(true);
@@ -23,12 +25,7 @@ export default function PipelineSettings({ token, onSettingsUpdated }: PipelineS
       });
       const data = await res.json();
       if (res.ok) {
-        setStages(data.pipeline_stages || [
-          { id: 'Pending', name: 'Getting Ready', enabled: true },
-          { id: 'Ready to Deliver', name: 'Ready to Deliver', enabled: true },
-          { id: 'Delivered', name: 'Delivered', enabled: true },
-          { id: 'Archived', name: 'Archived', enabled: true },
-        ]);
+        setStages(data.pipeline_stages || DEFAULT_PIPELINE_STAGES);
       }
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
@@ -48,7 +45,13 @@ export default function PipelineSettings({ token, onSettingsUpdated }: PipelineS
         body: JSON.stringify({ pipeline_stages: stages }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to save.');
+      if (!res.ok) {
+        if (res.status === 403 && /owner mode required/i.test(data.error || '')) {
+          onOwnerModeRequired?.();
+          return;
+        }
+        throw new Error(data.error || 'Failed to save.');
+      }
       setSuccess(true);
       onSettingsUpdated();
     } catch (err: any) {
@@ -81,10 +84,24 @@ export default function PipelineSettings({ token, onSettingsUpdated }: PipelineS
     setStages(updated);
   };
 
+  const isCoreStage = (stage: { id: string; name: string }) => {
+    const id = stage.id;
+    const name = stage.name.toLowerCase();
+    return (
+      id === 'Pending' ||
+      id === 'Delivered' ||
+      id === 'Archived' ||
+      id === 'Ready to Deliver' ||
+      name === 'archived' ||
+      name === 'delivered' ||
+      name === 'ready to deliver'
+    );
+  };
+
   const deleteStage = (index: number) => {
     const stage = stages[index];
-    if (stage.id === 'Pending' || stage.id === 'Archived' || stage.name.toLowerCase() === 'archived') {
-      alert('The core start and archive stages cannot be deleted to maintain system integrity.');
+    if (isCoreStage(stage)) {
+      alert('Core stages (Getting Ready, Ready to Deliver, Delivered, Archived) cannot be deleted.');
       return;
     }
     if (confirm('Are you sure you want to delete the "' + stage.name + '" stage?')) {
@@ -143,7 +160,7 @@ export default function PipelineSettings({ token, onSettingsUpdated }: PipelineS
 
         <div className="space-y-2 max-w-xl">
           {stages.map((stage, idx) => {
-            const isCore = stage.id === 'Pending' || stage.id === 'Archived' || stage.name.toLowerCase() === 'archived';
+            const isCore = isCoreStage(stage);
             return (
               <div key={stage.id} className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl hover:border-slate-300 transition-colors">
                 <div className="flex flex-col gap-0.5">

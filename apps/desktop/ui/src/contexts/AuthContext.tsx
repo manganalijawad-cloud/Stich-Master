@@ -1,8 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import { supabase } from '../lib/supabase';
 import type { ExtendedUserProfile } from '../lib/auth';
-import { signOut as authSignOut, checkSubscription } from '../lib/auth';
-import { useOnlineStatus } from '../lib/useOnlineStatus';
+import { ensureLocalProfile, signOut as supabaseSignOut } from '../lib/auth';
+import { getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { localDataStore } from '../lib/localDataStore';
 
 const PROFILE_CACHE_KEY = 'hellodarzi-profile-cache';
@@ -11,11 +10,15 @@ interface AuthContextValue {
   user: ExtendedUserProfile | null;
   token: string | null;
   isLoading: boolean;
-  isOnline: boolean;
+  needsShopSetup: boolean;
+  isPasswordRecovery: boolean;
   subscriptionStatus: 'active' | 'inactive' | 'expired' | null;
   signOut: () => Promise<void>;
   setSession: (user: ExtendedUserProfile, token: string) => void;
   clearSession: () => void;
+  clearPasswordRecovery: () => void;
+  /** After first-run shop naming, attach the local profile to the live session. */
+  completeShopSetupSession: (user: ExtendedUserProfile) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -48,245 +51,204 @@ function clearCachedProfile(): void {
   }
 }
 
+function clearLegacyDeviceToken(): void {
+  try {
+    localStorage.removeItem('hellodarzi-device-token');
+  } catch {
+    // ignore
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<ExtendedUserProfile | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [needsShopSetup, setNeedsShopSetup] = useState(false);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState<'active' | 'inactive' | 'expired' | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const isOnline = useOnlineStatus();
   const mountedRef = useRef(true);
+  const hydratingRef = useRef(false);
 
   const clearSession = useCallback(() => {
     setUser(null);
     setToken(null);
+    setNeedsShopSetup(false);
+    setIsPasswordRecovery(false);
     setSubscriptionStatus(null);
     clearCachedProfile();
+    clearLegacyDeviceToken();
     localDataStore.clear();
   }, []);
 
+  const clearPasswordRecovery = useCallback(() => {
+    setIsPasswordRecovery(false);
+  }, []);
+
   const setSession = useCallback((newUser: ExtendedUserProfile, newToken: string) => {
-    setUser(newUser);
+    setUser((prev) => {
+      if (prev && prev.id !== newUser.id) {
+        localDataStore.clear();
+      }
+      return newUser;
+    });
     setToken(newToken);
+    setNeedsShopSetup(false);
+    setIsPasswordRecovery(false);
     writeCachedProfile(newUser);
-    if (newUser.subscription_status) {
-      setSubscriptionStatus(newUser.subscription_status);
-    }
+    clearLegacyDeviceToken();
+    setSubscriptionStatus(newUser.subscription_status || 'active');
+  }, []);
+
+  const completeShopSetupSession = useCallback((newUser: ExtendedUserProfile) => {
+    setUser(newUser);
+    setNeedsShopSetup(false);
+    writeCachedProfile(newUser);
+    setSubscriptionStatus(newUser.subscription_status || 'active');
   }, []);
 
   const handleSignOut = useCallback(async () => {
-    await authSignOut();
+    try {
+      await supabaseSignOut();
+    } catch {
+      // local clear still proceeds
+    }
     clearSession();
   }, [clearSession]);
 
-  const wasOffline = useRef(false);
-  useEffect(() => {
-    if (!isOnline && user && token) {
-      wasOffline.current = true;
+  const hydrateFromAccessToken = useCallback(async (
+    accessToken: string,
+    opts?: { allowOfflineCache?: boolean; force?: boolean }
+  ) => {
+    if (hydratingRef.current && !opts?.force) return;
+    hydratingRef.current = true;
+    try {
+      const result = await ensureLocalProfile(accessToken);
+      if (!mountedRef.current) return;
+
+      if (result.needsShopSetup) {
+        setToken(accessToken);
+        setNeedsShopSetup(true);
+        setUser(null);
+        return;
+      }
+
+      if (result.user) {
+        setSession(result.user, accessToken);
+        return;
+      }
+    } catch {
+      // fall through to offline cache
+    } finally {
+      hydratingRef.current = false;
     }
-    if (isOnline && wasOffline.current && user && token) {
-      wasOffline.current = false;
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session && session.access_token !== token) {
-          setToken(session.access_token);
+
+    if (opts?.allowOfflineCache) {
+      try {
+        const { data } = await getSupabase().auth.getSession();
+        const sessionUser = data.session?.user;
+        const uid = sessionUser?.id;
+        const sessionEmail = (sessionUser?.email || '').trim().toLowerCase();
+        if (uid) {
+          const cached = readCachedProfile(uid);
+          const cachedEmail = (cached?.email || '').trim().toLowerCase();
+          // Ignore a cached profile that belongs to a different Auth email.
+          if (
+            cached &&
+            mountedRef.current &&
+            (!sessionEmail || !cachedEmail || cachedEmail === sessionEmail)
+          ) {
+            setSession(cached, accessToken);
+            return;
+          }
         }
-      }).catch(() => {});
-      // Re-hydrate local cache after reconnect so pulled cloud changes appear
-      void localDataStore.hydrate(token, { force: true });
+      } catch {
+        // ignore
+      }
     }
-  });
+
+    if (mountedRef.current) {
+      setToken(accessToken);
+    }
+  }, [setSession]);
 
   useEffect(() => {
     let mounted = true;
     mountedRef.current = true;
+    clearLegacyDeviceToken();
 
-    const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> =>
-      Promise.race([
-        promise,
-        new Promise<T>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
-      ]);
+    if (!isSupabaseConfigured()) {
+      setIsLoading(false);
+      return;
+    }
 
-    const applyProfile = (extProfile: ExtendedUserProfile) => {
-      setSubscriptionStatus(extProfile.subscription_status || 'active');
-      setUser(extProfile);
-      writeCachedProfile(extProfile);
-    };
+    const supabase = getSupabase();
+    let subscription: { unsubscribe: () => void } | null = null;
 
-    const loadProfile = async (
-      authUser: { id: string; email?: string; user_metadata?: Record<string, unknown> },
-      opts?: { background?: boolean }
-    ) => {
-      // Instant path: prefer cached profile so UI never waits on the network
-      const cached = readCachedProfile(authUser.id);
-      if (cached && !opts?.background) {
-        applyProfile(cached);
-      }
-
-      let profile: any = null;
-      try {
-        const joined = await withTimeout(
-          supabase.from('profiles').select('*, shops(shop_name, address)').eq('id', authUser.id).single(),
-          8000
-        );
-        if (!joined.error) profile = joined.data;
-      } catch {
-        // join may fail if shops columns are missing — fall back to profile-only
-      }
-
-      if (!profile) {
+    const restore = async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          const plain = await withTimeout(
-            supabase.from('profiles').select('*').eq('id', authUser.id).single(),
-            5000
-          );
-          if (!plain.error) profile = plain.data;
+          const { data } = await supabase.auth.getSession();
+          const session = data.session;
+          if (session?.access_token && mounted) {
+            await hydrateFromAccessToken(session.access_token, { allowOfflineCache: true });
+          }
+          break;
         } catch {
-          // ignore
+          if (attempt < 2) {
+            await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+            continue;
+          }
         }
       }
 
-      if (profile) {
-        let subStatus: 'active' | 'inactive' | 'expired' = 'active';
-        try {
-          subStatus = await withTimeout(checkSubscription(authUser.id), 5000);
-        } catch {
-          const cachedAgain = readCachedProfile(authUser.id);
-          subStatus = cachedAgain?.subscription_status || 'active';
-        }
-        const extProfile: ExtendedUserProfile = {
-          id: profile.id,
-          email: profile.email,
-          name: profile.name,
-          owner_name: profile.owner_name || '',
-          mobile_number: profile.mobile_number || '',
-          role: profile.role,
-          shop_id: profile.shop_id,
-          shop_name: profile.shops?.shop_name || '',
-          address: profile.shops?.address || '',
-          created_at: profile.created_at,
-          updated_at: profile.updated_at,
-          subscription_status: subStatus,
-        };
-        if (mounted) applyProfile(extProfile);
-        return;
-      }
-
-      if (cached) {
-        if (mounted && opts?.background) applyProfile(cached);
-        return;
-      }
-
-      // No network profile and no cache — stay signed in with session identity.
-      const minimal: ExtendedUserProfile = {
-        id: authUser.id,
-        email: authUser.email || '',
-        name: (authUser.user_metadata?.name as string) || authUser.email?.split('@')[0] || 'User',
-        role: (authUser.user_metadata?.role as 'Owner' | 'Worker') || 'Owner',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        subscription_status: 'active',
-      };
-      if (mounted) {
-        setUser(minimal);
-        setSubscriptionStatus('active');
-      }
+      if (mounted) setIsLoading(false);
     };
 
-    const restoreSession = async () => {
-      try {
-        const { data: { session } } = await withTimeout(supabase.auth.getSession(), 3000);
+    const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mountedRef.current) return;
 
-        if (session && mounted) {
+      if (event === 'SIGNED_OUT' || !session?.access_token) {
+        if (event === 'SIGNED_OUT') clearSession();
+        return;
+      }
+
+      if (event === 'PASSWORD_RECOVERY') {
+        setToken(session.access_token);
+        setIsPasswordRecovery(true);
+        setUser(null);
+        setNeedsShopSetup(false);
+        return;
+      }
+
+      if (
+        event === 'SIGNED_IN' ||
+        event === 'TOKEN_REFRESHED' ||
+        event === 'USER_UPDATED'
+      ) {
+        if (event !== 'TOKEN_REFRESHED') {
+          setIsPasswordRecovery(false);
+        }
+        // Avoid double-hydrate on cold start (getSession + INITIAL_SESSION)
+        if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+          await hydrateFromAccessToken(session.access_token, {
+            allowOfflineCache: false,
+            force: true,
+          });
+        } else if (event === 'TOKEN_REFRESHED') {
           setToken(session.access_token);
-
-          const authUser = session.user;
-          // Unblock UI immediately from local session + profile cache
-          const cached = authUser ? readCachedProfile(authUser.id) : null;
-          if (cached) {
-            applyProfile(cached);
-            if (mounted) setIsLoading(false);
-          } else if (authUser) {
-            // Minimal identity so local API auth can proceed while profile loads
-            const minimal: ExtendedUserProfile = {
-              id: authUser.id,
-              email: authUser.email || '',
-              name: (authUser.user_metadata?.name as string) || authUser.email?.split('@')[0] || 'User',
-              role: (authUser.user_metadata?.role as 'Owner' | 'Worker') || 'Owner',
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-              subscription_status: 'active',
-            };
-            setUser(minimal);
-            setSubscriptionStatus('active');
-            if (mounted) setIsLoading(false);
-          }
-
-          // Soft network refresh — never blocks startup
-          if (authUser) {
-            void (async () => {
-              try {
-                let verified = authUser;
-                try {
-                  const { data: { user: remote } } = await withTimeout(supabase.auth.getUser(), 8000);
-                  if (remote) verified = remote;
-                } catch {
-                  // Offline: persisted session.user is enough
-                }
-                if (mounted) await loadProfile(verified, { background: true });
-              } catch {
-                // ignore background failures
-              }
-            })();
-          }
-        }
-      } catch {
-        // Session restore failed or timed out — show login rather than hang
-      } finally {
-        if (mounted) setIsLoading(false);
-      }
-    };
-
-    restoreSession();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!mountedRef.current) return;
-
-        if (event === 'SIGNED_OUT') {
-          clearSession();
-          setIsLoading(false);
-        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          if (session) {
-            setToken(session.access_token);
-
-            if (event === 'SIGNED_IN') {
-              try {
-                let authUser = session.user;
-                try {
-                  const { data: { user: verified } } = await withTimeout(supabase.auth.getUser(), 8000);
-                  if (verified) authUser = verified;
-                } catch {
-                  // use session.user
-                }
-                if (authUser && mountedRef.current) {
-                  await loadProfile(authUser);
-                }
-              } catch (err) {
-                console.error('Failed to fetch profile after sign in:', err);
-              } finally {
-                if (mountedRef.current) setIsLoading(false);
-              }
-            }
-          }
         }
       }
-    );
+    });
+    subscription = data.subscription;
+
+    void restore();
 
     return () => {
       mounted = false;
       mountedRef.current = false;
-      subscription.unsubscribe();
+      subscription?.unsubscribe();
     };
-  }, [clearSession]);
+  }, [clearSession, hydrateFromAccessToken]);
 
   return (
     <AuthContext.Provider
@@ -294,11 +256,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user,
         token,
         isLoading,
-        isOnline,
+        needsShopSetup,
+        isPasswordRecovery,
         subscriptionStatus,
         signOut: handleSignOut,
         setSession,
         clearSession,
+        clearPasswordRecovery,
+        completeShopSetupSession,
       }}
     >
       {children}

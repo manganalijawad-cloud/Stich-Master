@@ -1,16 +1,21 @@
-import { supabase } from './supabase';
+/**
+ * Authentication API — Supabase Auth only.
+ * Business data stays in the local SQLite database via /api/*.
+ */
+
+import { getAuthRedirectUrl, getSupabase, isSupabaseConfigured } from './supabaseClient';
 
 export interface AuthResult {
   user: ExtendedUserProfile | null;
   token: string | null;
   error: string | null;
+  needsShopSetup?: boolean;
 }
 
 export interface ExtendedUserProfile {
   id: string;
   email: string;
   name: string;
-  owner_name?: string;
   mobile_number?: string;
   role: 'Owner' | 'Worker';
   shop_id?: string;
@@ -21,71 +26,140 @@ export interface ExtendedUserProfile {
   subscription_status?: 'active' | 'inactive' | 'expired';
 }
 
-export async function signInWithEmail(
-  email: string,
-  password: string
+function mapEnsureResponse(data: {
+  user?: ExtendedUserProfile;
+  needsShopSetup?: boolean;
+  error?: string;
+}, token: string): AuthResult {
+  if (data.needsShopSetup) {
+    return { user: null, token, error: null, needsShopSetup: true };
+  }
+  if (data.user) {
+    return { user: data.user, token, error: null };
+  }
+  return { user: null, token: null, error: data.error || 'Could not load local profile.' };
+}
+
+/** Link / create the local shop profile for the authenticated Supabase user. */
+export async function ensureLocalProfile(
+  accessToken: string,
+  opts?: { shopName?: string }
 ): Promise<AuthResult> {
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim().toLowerCase(),
-      password,
+    const res = await fetch('/api/auth/ensure-profile', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ shopName: opts?.shopName }),
     });
-
-    if (error) return { user: null, token: null, error: error.message };
-    if (!data.session) return { user: null, token: null, error: 'No session returned. Please try again.' };
-
-    const profile = await fetchProfile(data.session.access_token);
-    if (!profile) {
-      return { user: null, token: null, error: 'Failed to load your profile. Please contact support.' };
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { user: null, token: null, error: data.error || 'Failed to set up local profile.' };
     }
-
-    await cacheOwnerUnlockPassword(data.session.access_token, password);
-
-    return { user: profile, token: data.session.access_token, error: null };
+    return mapEnsureResponse(data, accessToken);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'An unexpected error occurred';
     return { user: null, token: null, error: message };
   }
 }
 
-export async function sendPasswordResetEmail(
-  email: string
-): Promise<{ error: string | null }> {
-  try {
-    const { error } = await supabase.auth.resetPasswordForEmail(
-      email.trim().toLowerCase(),
-      {
-        redirectTo: window.location.origin + '/auth/reset-password',
-      }
-    );
-
-    if (error) return { error: error.message };
-    return { error: null };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Failed to send reset email';
-    return { error: message };
+/** Invite-only email/password sign-in via Supabase Auth (requires internet). */
+export async function signInWithPassword(email: string, password: string): Promise<AuthResult> {
+  if (!isSupabaseConfigured()) {
+    return { user: null, token: null, error: 'Supabase Auth is not configured.' };
   }
-}
 
-export async function updatePassword(
-  newPassword: string
-): Promise<{ error: string | null }> {
   try {
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) return { error: error.message };
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData.session?.access_token;
-    if (token) {
-      await cacheOwnerUnlockPassword(token, newPassword);
+    const supabase = getSupabase();
+    // Always drop prior session + cached profile before a fresh password login.
+    // Otherwise preview/Electron restores the previous Auth user and it looks
+    // like "the old account" even when new credentials were submitted.
+    try {
+      await supabase.auth.signOut({ scope: 'local' });
+    } catch {
+      // ignore — sign-in below still replaces the session
     }
+    try {
+      localStorage.removeItem('hellodarzi-profile-cache');
+      localStorage.removeItem('hellodarzi-supabase-auth');
+    } catch {
+      // ignore
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+
+    if (error) {
+      return { user: null, token: null, error: error.message || 'Sign in failed.' };
+    }
+
+    const accessToken = data.session?.access_token;
+    if (!accessToken) {
+      return { user: null, token: null, error: 'No session returned. Please try again.' };
+    }
+
+    const profileResult = await ensureLocalProfile(accessToken);
+
+    // Best-effort: cache password for offline Owner-mode unlock (local verifier only).
+    if (profileResult.user && !profileResult.needsShopSetup) {
+      void cacheOwnerUnlockPassword(accessToken, password);
+    }
+
+    return profileResult;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'An unexpected error occurred';
+    const offline =
+      typeof navigator !== 'undefined' && navigator.onLine === false
+        ? ' Internet connection is required to sign in.'
+        : '';
+    return { user: null, token: null, error: `${message}${offline}` };
+  }
+}
+
+/** Complete first-run local shop naming after Supabase sign-in. */
+export async function completeShopSetup(accessToken: string, shopName: string): Promise<AuthResult> {
+  return ensureLocalProfile(accessToken, { shopName: shopName.trim() });
+}
+
+/** Send a password-reset magic link (requires internet). */
+export async function requestPasswordReset(email: string): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured()) {
+    return { error: 'Supabase Auth is not configured.' };
+  }
+  try {
+    const supabase = getSupabase();
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: getAuthRedirectUrl(),
+    });
+    if (error) return { error: error.message || 'Could not send reset email.' };
     return { error: null };
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Failed to update password';
+    const message = err instanceof Error ? err.message : 'An unexpected error occurred';
     return { error: message };
   }
 }
 
-/** Best-effort: store salted verifier on the desktop for offline Owner unlock. */
+/** Set a new password after opening the recovery magic link. */
+export async function updatePassword(newPassword: string): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured()) {
+    return { error: 'Supabase Auth is not configured.' };
+  }
+  try {
+    const supabase = getSupabase();
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) return { error: error.message || 'Could not update password.' };
+    return { error: null };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'An unexpected error occurred';
+    return { error: message };
+  }
+}
+
+/** Best-effort: (re)store the salted verifier used for offline Owner unlock. */
 export async function cacheOwnerUnlockPassword(token: string, password: string): Promise<void> {
   try {
     await fetch('/api/auth/store-unlock-verifier', {
@@ -97,120 +171,35 @@ export async function cacheOwnerUnlockPassword(token: string, password: string):
       body: JSON.stringify({ password }),
     });
   } catch {
-    // Ignore — online unlock still works; offline unlock needs a successful cache later
+    // Ignore — best-effort cache only
   }
 }
 
-/** Set to true to re-enable subscription gating in the desktop app. */
-const SUBSCRIPTIONS_ENABLED = false;
-
-export async function checkSubscription(userId: string): Promise<'active' | 'inactive' | 'expired'> {
-  // Subscriptions are temporarily disabled — treat every user as active.
-  if (!SUBSCRIPTIONS_ENABLED) return 'active';
-
-  try {
-    const { data, error } = await supabase
-      .from('subscriptions')
-      .select('status')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (error || !data) return 'inactive';
-
-    if (data.status === 'active' || data.status === 'trialing') return 'active';
-    if (data.status === 'past_due') return 'expired';
-
-    return 'inactive';
-  } catch {
-    return 'active';
-  }
-}
-
-async function createShopAndProfile(userId: string, email: string, userName: string): Promise<{ shopId: string; shopName: string } | null> {
-  try {
-    const shopName = `${userName}'s Tailor Shop`;
-    const { data: shop, error: shopError } = await supabase
-      .from('shops')
-      .insert({
-        shop_name: shopName,
-        address: '',
-        owner_name: userName,
-        mobile_number: '',
-        created_by: userId,
-      })
-      .select()
-      .single();
-
-    if (shopError) return null;
-
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({ shop_id: shop.id, name: userName })
-      .eq('id', userId);
-
-    if (profileError) return null;
-
-    return { shopId: shop.id, shopName };
-  } catch {
-    return null;
-  }
-}
-
-async function fetchProfile(accessToken: string): Promise<ExtendedUserProfile | null> {
-  try {
-    const { data: { user } } = await supabase.auth.getUser(accessToken);
-    if (!user) return null;
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*, shops(shop_name, address)')
-      .eq('id', user.id)
-      .single();
-
-    if (!profile) {
-      const fallbackName = user.user_metadata?.name || user.email?.split('@')[0] || 'Owner';
-      const shopResult = await createShopAndProfile(user.id, user.email || '', fallbackName);
-      return {
-        id: user.id,
-        email: user.email || '',
-        name: fallbackName,
-        role: 'Owner',
-        shop_id: shopResult?.shopId,
-        shop_name: shopResult?.shopName,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-    }
-
-    if (!profile.shop_id) {
-      const fallbackName = profile.name || user.email?.split('@')[0] || 'Owner';
-      const shopResult = await createShopAndProfile(user.id, profile.email, fallbackName);
-      if (shopResult) {
-        profile.shop_id = shopResult.shopId;
-      }
-    }
-
-    const subscription_status = await checkSubscription(user.id);
-
-    return {
-      id: profile.id,
-      email: profile.email,
-      name: profile.name,
-      owner_name: profile.owner_name || '',
-      mobile_number: profile.mobile_number || '',
-      role: profile.role,
-      shop_id: profile.shop_id,
-      shop_name: profile.shops?.shop_name || '',
-      address: profile.shops?.address || '',
-      created_at: profile.created_at,
-      updated_at: profile.updated_at,
-      subscription_status,
-    };
-  } catch {
-    return null;
-  }
-}
-
+/** Sign out of Supabase Auth (prefers network; falls back to local clear). */
 export async function signOut(): Promise<void> {
-  await supabase.auth.signOut();
+  if (!isSupabaseConfigured()) return;
+  try {
+    const supabase = getSupabase();
+    const { error } = await supabase.auth.signOut({ scope: 'global' });
+    if (error) {
+      await supabase.auth.signOut({ scope: 'local' });
+    }
+  } catch {
+    try {
+      await getSupabase().auth.signOut({ scope: 'local' });
+    } catch {
+      // ignore
+    }
+  }
+}
+
+/** Load the currently persisted Supabase session (works offline). */
+export async function getPersistedAccessToken(): Promise<string | null> {
+  if (!isSupabaseConfigured()) return null;
+  try {
+    const { data } = await getSupabase().auth.getSession();
+    return data.session?.access_token ?? null;
+  } catch {
+    return null;
+  }
 }

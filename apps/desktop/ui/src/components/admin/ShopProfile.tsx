@@ -4,9 +4,10 @@ import { Save, Shield } from 'lucide-react';
 interface ShopProfileProps {
   token: string;
   onSettingsUpdated: () => void;
+  onOwnerModeRequired?: () => void;
 }
 
-export default function ShopProfile({ token, onSettingsUpdated }: ShopProfileProps) {
+export default function ShopProfile({ token, onSettingsUpdated, onOwnerModeRequired }: ShopProfileProps) {
   const [shopName, setShopName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
@@ -61,7 +62,13 @@ export default function ShopProfile({ token, onSettingsUpdated }: ShopProfilePro
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to save.');
+      if (!res.ok) {
+        if (res.status === 403 && /owner mode required/i.test(data.error || '')) {
+          onOwnerModeRequired?.();
+          return;
+        }
+        throw new Error(data.error || 'Failed to save.');
+      }
       setSuccess(true);
       onSettingsUpdated();
     } catch (err: any) {

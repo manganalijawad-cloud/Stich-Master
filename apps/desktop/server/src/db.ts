@@ -1,16 +1,97 @@
 import path from "path";
 import fs from "fs";
+import { createRequire } from "module";
+import { fileURLToPath } from "url";
 import { v4 as uuidv4 } from "uuid";
-import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from "crypto";
+
+/**
+ * Resolve this module's absolute path for createRequire().
+ * Prefer CJS `__filename` first: esbuild --format=cjs empties `import.meta`,
+ * which previously crashed packaged Electron with:
+ * "The argument 'filename' ... Received undefined".
+ */
+declare const __filename: string | undefined;
+function resolveModuleFilename(): string {
+  if (typeof __filename === "string" && __filename.length > 0) {
+    return __filename;
+  }
+  // Dev/tsx ESM only — keep import.meta behind a Function so esbuild
+  // does not rewrite it to an empty object in the CJS bundle.
+  try {
+    const metaUrl = new Function("return import.meta.url")() as unknown;
+    if (typeof metaUrl === "string" && metaUrl.length > 0) {
+      return fileURLToPath(metaUrl);
+    }
+  } catch {
+    /* not ESM */
+  }
+  return path.resolve(process.cwd(), "dist", "server.cjs");
+}
+
+const moduleFilename = resolveModuleFilename();
+const require = createRequire(moduleFilename);
+const __dirname = path.dirname(moduleFilename);
 
 let Database: any;
-try {
-  // Non-literal string prevents bundlers (esbuild) from resolving at compile time
-  // This module is only used in Electron mode with the local SQLite database
-  Database = require("better-" + "sqlite3");
-} catch {
-  // better-sqlite3 native module not available (e.g., Vercel serverless)
+
+/**
+ * Load better-sqlite3 for Electron offline DB.
+ * Non-literal require keeps esbuild from bundling the native addon.
+ * Also tries app.asar.unpacked (set via ELECTRON_RESOURCES_PATH from Electron main)
+ * because server.cjs is shipped under resources/dist and cannot resolve asar deps alone.
+ */
+function loadBetterSqlite3(): any {
+  // Ensure packaged Electron can resolve JS deps of the native addon (bindings, etc.)
+  try {
+    const Module = require("module");
+    const resourcesPath = process.env.ELECTRON_RESOURCES_PATH || "";
+    if (resourcesPath) {
+      const roots = [
+        path.join(resourcesPath, "app.asar.unpacked", "node_modules"),
+        path.join(resourcesPath, "app.asar", "node_modules"),
+        path.join(resourcesPath, "dist", "node_modules"),
+        path.join(__dirname, "node_modules"),
+      ].filter((p) => fs.existsSync(p));
+      if (roots.length) {
+        const parts = [...roots];
+        if (process.env.NODE_PATH) parts.push(process.env.NODE_PATH);
+        process.env.NODE_PATH = parts.join(path.delimiter);
+        Module._initPaths();
+      }
+    }
+  } catch {
+    // ignore path bootstrap failures; require below will surface the real error
+  }
+
+  try {
+    return require("better-" + "sqlite3");
+  } catch {
+    // fall through to explicit packaged paths
+  }
+
+  const resourcesPath = process.env.ELECTRON_RESOURCES_PATH || "";
+  const candidates = [
+    resourcesPath
+      ? path.join(resourcesPath, "app.asar.unpacked", "node_modules", "better-sqlite3")
+      : "",
+    path.join(__dirname, "..", "app.asar.unpacked", "node_modules", "better-sqlite3"),
+    path.join(__dirname, "node_modules", "better-sqlite3"),
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        return require(candidate);
+      }
+    } catch {
+      // try next
+    }
+  }
+  return undefined;
 }
+
+Database = loadBetterSqlite3();
 
 export let db: any;
 
@@ -19,7 +100,6 @@ CREATE TABLE IF NOT EXISTS shops (
   id TEXT PRIMARY KEY,
   shop_name TEXT NOT NULL DEFAULT '',
   address TEXT NOT NULL DEFAULT '',
-  owner_name TEXT NOT NULL DEFAULT '',
   mobile_number TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   created_by TEXT,
@@ -126,13 +206,24 @@ CREATE TABLE IF NOT EXISTS inventory (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Local-only: salted password verifier for offline Owner-mode unlock (never synced)
+-- Local-only: salted password verifier for Owner-mode unlock
 CREATE TABLE IF NOT EXISTS owner_unlock_verifier (
   user_id TEXT PRIMARY KEY,
   salt TEXT NOT NULL,
   hash TEXT NOT NULL,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Local-only: opaque sessions minted after successful password unlock
+CREATE TABLE IF NOT EXISTS device_sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  last_used_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_device_sessions_user_id ON device_sessions(user_id);
 
 CREATE TABLE IF NOT EXISTS garment_types (
   id TEXT PRIMARY KEY,
@@ -161,25 +252,6 @@ CREATE TABLE IF NOT EXISTS styling_categories (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Sync tracking
-CREATE TABLE IF NOT EXISTS sync_metadata (
-  table_name TEXT PRIMARY KEY,
-  last_synced_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z',
-  last_push_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z'
-);
-
-CREATE TABLE IF NOT EXISTS sync_queue (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  table_name TEXT NOT NULL,
-  row_id TEXT NOT NULL,
-  operation TEXT NOT NULL CHECK(operation IN ('insert','update','delete')),
-  payload TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  retry_count INTEGER NOT NULL DEFAULT 0,
-  last_error TEXT,
-  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','processing','failed'))
-);
-
 CREATE INDEX IF NOT EXISTS idx_customers_created_by ON customers(created_by);
 CREATE INDEX IF NOT EXISTS idx_customers_shop_id ON customers(shop_id);
 CREATE INDEX IF NOT EXISTS idx_orders_created_by ON orders(created_by);
@@ -190,13 +262,20 @@ CREATE INDEX IF NOT EXISTS idx_shop_settings_key ON shop_settings(key);
 CREATE INDEX IF NOT EXISTS idx_garment_types_shop_id ON garment_types(shop_id);
 CREATE INDEX IF NOT EXISTS idx_styling_categories_garment_type_id ON styling_categories(garment_type_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
-CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status);
 CREATE INDEX IF NOT EXISTS idx_customers_updated_at ON customers(updated_at);
 CREATE INDEX IF NOT EXISTS idx_orders_updated_at ON orders(updated_at);
 
 `;
 
 export function initDatabase(dbPath?: string): void {
+  if (!Database) {
+    throw new Error(
+      "better-sqlite3 native module is not available. " +
+      "Offline database cannot start. Rebuild the desktop app so " +
+      "app.asar.unpacked/node_modules/better-sqlite3 is packaged correctly."
+    );
+  }
+
   const electronUserData = process.env.ELECTRON_USER_DATA;
   const resolvedPath = dbPath
     || (electronUserData ? path.join(electronUserData, "data", "hellodarzi.db")
@@ -219,20 +298,11 @@ export function initDatabase(dbPath?: string): void {
   migrateOrdersSchema();
   migrateShopsSchema();
   migrateShopSettingsSchema();
-
-  seedSyncMetadata();
-}
-
-function seedSyncMetadata(): void {
-  const tables = [
-    "customers", "measurements", "orders", "shop_settings",
-    "profiles", "shops", "inventory", "garment_types", "styling_categories"
-  ];
-  const insert = db.prepare(
-    "INSERT OR IGNORE INTO sync_metadata (table_name) VALUES (?)"
-  );
-  for (const t of tables) {
-    insert.run(t);
+  // Drop legacy device PIN table (feature removed)
+  try {
+    db.exec("DROP TABLE IF EXISTS device_unlock_verifier");
+  } catch {
+    // ignore
   }
 }
 
@@ -276,6 +346,38 @@ export function getCustomerById(id: string, createdBy: string): DbCustomer | und
   return db.prepare("SELECT * FROM customers WHERE id = ? AND created_by = ?").get(id, createdBy) as DbCustomer | undefined;
 }
 
+/**
+ * Ensure a shops row exists for a cloud/local shop id so FK columns (profiles,
+ * audit_logs, customers, …) do not fail when offline. Skips placeholders.
+ */
+export function ensureShop(
+  shopId: string | undefined | null,
+  createdBy: string,
+  shopName = ""
+): string | null {
+  if (!shopId || shopId === "default-shop") return null;
+  const existing = db.prepare("SELECT id FROM shops WHERE id = ?").get(shopId) as { id: string } | undefined;
+  if (existing) return shopId;
+  const now = nowISO();
+  db.prepare(`
+    INSERT INTO shops (id, shop_name, address, mobile_number, created_by, created_at, updated_at)
+    VALUES (?, ?, '', '', ?, ?, ?)
+  `).run(shopId, shopName || "", createdBy, now, now);
+  try {
+    db.prepare("UPDATE shops SET name = ? WHERE id = ?").run(shopName || "", shopId);
+  } catch {
+    /* legacy name column may be absent */
+  }
+  return shopId;
+}
+
+/** Resolve a shop_id safe for FK inserts (null if missing / placeholder / unknown). */
+export function shopIdForFk(shopId: string | undefined | null): string | null {
+  if (!shopId || shopId === "default-shop") return null;
+  const row = db.prepare("SELECT id FROM shops WHERE id = ?").get(shopId);
+  return row ? shopId : null;
+}
+
 export function createCustomer(data: {
   id?: string; shop_id?: string; name: string; phone?: string;
   address?: string; email?: string; notes?: string;
@@ -283,11 +385,12 @@ export function createCustomer(data: {
 }): DbCustomer {
   const id = data.id || uuidv4();
   const now = nowISO();
+  const shopId = ensureShop(data.shop_id, data.created_by);
   db.prepare(`
     INSERT INTO customers (id, shop_id, name, phone, address, email, notes, created_by, updated_by, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    id, data.shop_id || null, data.name, data.phone || null,
+    id, shopId, data.name, data.phone || null,
     data.address || null, data.email || null,
     data.notes || null, data.created_by, data.updated_by || data.created_by, now, now
   );
@@ -438,11 +541,12 @@ export function createOrder(data: {
 }): DbOrder {
   const id = data.id || uuidv4();
   const now = nowISO();
+  const shopId = ensureShop(data.shop_id, data.created_by);
   db.prepare(`
     INSERT INTO orders (id, shop_id, order_number, customer_id, status, items, total_amount, discount_type, discount_value, discount_amount, final_total, paid_amount, due_date, measurement_snapshot, created_by, updated_by, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    id, data.shop_id || null, data.order_number, data.customer_id,
+    id, shopId, data.order_number, data.customer_id,
     data.status || "Pending", JSON.stringify(data.items || []),
     data.total_amount || 0, data.discount_type || null, data.discount_value || 0,
     data.discount_amount || 0, data.final_total ?? data.total_amount ?? 0,
@@ -573,14 +677,15 @@ export function getProfile(userId: string): { id: string; email: string; name: s
 export function upsertProfile(profile: { id: string; email: string; name?: string; role?: string; shop_id?: string; created_by?: string }): void {
   const existing = db.prepare("SELECT id FROM profiles WHERE id = ?").get(profile.id);
   const now = nowISO();
+  const shopId = ensureShop(profile.shop_id, profile.created_by || profile.id, profile.name || "");
   if (existing) {
     db.prepare("UPDATE profiles SET email = ?, name = COALESCE(?, name), role = COALESCE(?, role), shop_id = COALESCE(?, shop_id), updated_at = ? WHERE id = ?").run(
-      profile.email, profile.name || null, profile.role || null, profile.shop_id || null, now, profile.id
+      profile.email, profile.name || null, profile.role || null, shopId, now, profile.id
     );
   } else {
     db.prepare("INSERT INTO profiles (id, email, name, role, shop_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
       profile.id, profile.email, profile.name || profile.email, profile.role || "Owner",
-      profile.shop_id || null, profile.created_by || profile.id, now, now
+      shopId, profile.created_by || profile.id, now, now
     );
   }
 }
@@ -589,8 +694,95 @@ export function getProfilesByOwner(ownerId: string): any[] {
   return db.prepare("SELECT id, email, name, role, shop_id, created_at FROM profiles WHERE created_by = ? ORDER BY created_at DESC").all(ownerId);
 }
 
+/** Every local profile — used for first-run setup checks and the offline unlock/login screens. */
+export function listAllProfiles(): Array<{ id: string; email: string; name: string; role: string; shop_id?: string }> {
+  return db.prepare(
+    "SELECT id, email, name, role, shop_id FROM profiles ORDER BY created_at ASC"
+  ).all() as Array<{ id: string; email: string; name: string; role: string; shop_id?: string }>;
+}
+
+/** True once at least one local profile exists (device has completed first-run setup). */
+export function hasAnyProfile(): boolean {
+  const row = db.prepare("SELECT 1 AS ok FROM profiles LIMIT 1").get() as { ok: number } | undefined;
+  return !!row;
+}
+
 export function deleteProfile(userId: string): boolean {
   return db.prepare("DELETE FROM profiles WHERE id = ?").run(userId).changes > 0;
+}
+
+/**
+ * Re-key a local profile (and its created_by ownership) to a Supabase Auth user id.
+ * Used once when migrating from local-only auth to Supabase Auth.
+ * Does not touch auth credentials — only business ownership ids.
+ */
+export function rekeyProfileOwnership(oldUserId: string, newUserId: string, email: string): void {
+  if (!oldUserId || !newUserId || oldUserId === newUserId) return;
+  const existingNew = db.prepare("SELECT id FROM profiles WHERE id = ?").get(newUserId);
+  if (existingNew) return;
+
+  const old = getProfile(oldUserId);
+  if (!old) return;
+
+  const now = nowISO();
+  const transaction = db.transaction(() => {
+    db.prepare(`
+      INSERT INTO profiles (id, email, name, role, shop_id, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      newUserId,
+      email || old.email,
+      old.name || email,
+      old.role || "Owner",
+      old.shop_id || null,
+      newUserId,
+      now,
+      now
+    );
+
+    const ownershipTables = [
+      "customers",
+      "measurements",
+      "orders",
+      "garment_types",
+      "styling_categories",
+      "inventory",
+      "shops",
+    ] as const;
+    for (const table of ownershipTables) {
+      try {
+        db.prepare(`UPDATE ${table} SET created_by = ? WHERE created_by = ?`).run(newUserId, oldUserId);
+      } catch {
+        /* table may lack created_by on older schemas */
+      }
+      try {
+        db.prepare(`UPDATE ${table} SET updated_by = ? WHERE updated_by = ?`).run(newUserId, oldUserId);
+      } catch {
+        /* optional column */
+      }
+    }
+
+    try {
+      db.prepare("UPDATE shop_settings SET user_id = ? WHERE user_id = ?").run(newUserId, oldUserId);
+    } catch {
+      /* ignore */
+    }
+
+    // Move owner-unlock verifier if present (Owner mode unlock — not Supabase Auth).
+    try {
+      db.prepare(`
+        INSERT OR REPLACE INTO owner_unlock_verifier (user_id, salt, hash, updated_at)
+        SELECT ?, salt, hash, ? FROM owner_unlock_verifier WHERE user_id = ?
+      `).run(newUserId, now, oldUserId);
+      db.prepare("DELETE FROM owner_unlock_verifier WHERE user_id = ?").run(oldUserId);
+    } catch {
+      /* ignore */
+    }
+
+    db.prepare("DELETE FROM device_sessions WHERE user_id = ?").run(oldUserId);
+    db.prepare("DELETE FROM profiles WHERE id = ?").run(oldUserId);
+  });
+  transaction();
 }
 
 // ---------------------------------------------------------------------------
@@ -599,19 +791,18 @@ export function deleteProfile(userId: string): boolean {
 export function createShop(
   name: string,
   createdBy: string,
-  extras?: { address?: string; owner_name?: string; mobile_number?: string }
+  extras?: { address?: string; mobile_number?: string }
 ): { id: string; name: string; shop_name: string } {
   const id = uuidv4();
   const now = nowISO();
   const shopName = name || "";
   db.prepare(`
-    INSERT INTO shops (id, shop_name, address, owner_name, mobile_number, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO shops (id, shop_name, address, mobile_number, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     shopName,
     extras?.address || "",
-    extras?.owner_name || "",
     extras?.mobile_number || "",
     createdBy,
     now,
@@ -675,10 +866,15 @@ export function saveSetting(key: string, value: any, userId: string, updatedBy?:
 // ---------------------------------------------------------------------------
 // GARMENT TYPE HELPERS
 // ---------------------------------------------------------------------------
-export function getGarmentTypes(createdBy: string, shopId?: string): any[] {
+export function getGarmentTypes(createdBy: string, shopId?: string | null): any[] {
   let sql = "SELECT * FROM garment_types WHERE created_by = ?";
   const params: any[] = [createdBy];
-  if (shopId) { sql += " AND shop_id = ?"; params.push(shopId); }
+  // ensureShop() stores NULL for missing/"default-shop"; never filter by that placeholder
+  // or newly created rows (shop_id NULL) will not appear after a successful create.
+  if (shopId && shopId !== "default-shop") {
+    sql += " AND shop_id = ?";
+    params.push(shopId);
+  }
   sql += " ORDER BY display_order ASC, name ASC";
   return db.prepare(sql).all(...params);
 }
@@ -686,10 +882,11 @@ export function getGarmentTypes(createdBy: string, shopId?: string): any[] {
 export function createGarmentType(data: any): any {
   const id = data.id || uuidv4();
   const now = nowISO();
+  const shopId = ensureShop(data.shop_id, data.created_by);
   db.prepare(`
     INSERT INTO garment_types (id, shop_id, name, enabled, display_order, price, measurement_fields, created_by, updated_by, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, data.shop_id || null, data.name, data.enabled !== false ? 1 : 0,
+  `).run(id, shopId, data.name, data.enabled !== false ? 1 : 0,
     data.display_order || 0, data.price || 0,
     JSON.stringify(data.measurement_fields || []),
     data.created_by, data.updated_by || data.created_by, now, now);
@@ -708,11 +905,14 @@ export function updateGarmentType(id: string, createdBy: string, data: any): any
       params.push(val);
     }
   }
-  if (sets.length === 0) return db.prepare("SELECT * FROM garment_types WHERE id = ? AND created_by = ?").get(id, createdBy);
+  if (sets.length === 0) {
+    return db.prepare("SELECT * FROM garment_types WHERE id = ? AND created_by = ?").get(id, createdBy);
+  }
   sets.push("updated_at = ?");
   params.push(nowISO());
   params.push(id, createdBy);
-  db.prepare(`UPDATE garment_types SET ${sets.join(", ")} WHERE id = ? AND created_by = ?`).run(...params);
+  const result = db.prepare(`UPDATE garment_types SET ${sets.join(", ")} WHERE id = ? AND created_by = ?`).run(...params);
+  if (result.changes === 0) return null;
   return db.prepare("SELECT * FROM garment_types WHERE id = ?").get(id);
 }
 
@@ -885,12 +1085,11 @@ function migrateOrdersStatusCheckConstraint(): void {
   console.log("Migrated orders table: removed hard-coded status CHECK for configurable pipeline stages.");
 }
 
-/** Align local shops with Supabase: shop_name, address, owner_name, mobile_number. */
+/** Ensure shops rows expose shop_name, address, mobile_number. */
 function migrateShopsSchema(): void {
   const newColumns: [string, string][] = [
     ["shop_name", "TEXT NOT NULL DEFAULT ''"],
     ["address", "TEXT NOT NULL DEFAULT ''"],
-    ["owner_name", "TEXT NOT NULL DEFAULT ''"],
     ["mobile_number", "TEXT NOT NULL DEFAULT ''"],
     ["updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))"],
   ];
@@ -972,7 +1171,7 @@ function migrateShopSettingsSchema(): void {
   });
 
   rebuild();
-  console.log("Migrated shop_settings: id column is now TEXT UUID (aligned with Supabase).");
+  console.log("Migrated shop_settings: id column is now TEXT UUID.");
 }
 
 export function logAction(
@@ -1014,7 +1213,7 @@ export function logAction(
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
-    shopId || null,
+    shopIdForFk(shopId),
     userId,
     userEmail,
     extra?.userName || details.user_name || '',
@@ -1173,7 +1372,7 @@ export function deleteInventoryItem(id: string, createdBy: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// OFFLINE OWNER UNLOCK VERIFIER (local-only, never synced)
+// OWNER UNLOCK VERIFIER (local-only)
 // ---------------------------------------------------------------------------
 export function setOwnerUnlockVerifier(userId: string, password: string): void {
   const salt = randomBytes(16).toString("hex");
@@ -1207,4 +1406,60 @@ export function verifyOwnerUnlockPassword(userId: string, password: string): boo
 
 export function clearOwnerUnlockVerifier(userId: string): void {
   db.prepare("DELETE FROM owner_unlock_verifier WHERE user_id = ?").run(userId);
+}
+
+// ---------------------------------------------------------------------------
+// LOCAL DEVICE SESSIONS
+// ---------------------------------------------------------------------------
+const DEVICE_SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+export const DEVICE_SESSION_PREFIX = "hddev_";
+
+function hashDeviceToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+export function isDeviceSessionToken(token: string): boolean {
+  return typeof token === "string" && token.startsWith(DEVICE_SESSION_PREFIX);
+}
+
+/** Mint an opaque local session token. Returns the raw token (store only the hash). */
+export function createDeviceSession(userId: string): { token: string; expiresAt: string } {
+  const raw = DEVICE_SESSION_PREFIX + randomBytes(32).toString("hex");
+  const tokenHash = hashDeviceToken(raw);
+  const now = Date.now();
+  const expiresAt = new Date(now + DEVICE_SESSION_TTL_MS).toISOString();
+  const nowIso = new Date(now).toISOString();
+  db.prepare(`
+    INSERT INTO device_sessions (token_hash, user_id, created_at, expires_at, last_used_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(tokenHash, userId, nowIso, expiresAt, nowIso);
+  return { token: raw, expiresAt };
+}
+
+export function validateDeviceSession(token: string): { userId: string; expiresAt: string } | null {
+  if (!isDeviceSessionToken(token)) return null;
+  const tokenHash = hashDeviceToken(token);
+  const row = db.prepare(
+    "SELECT user_id, expires_at FROM device_sessions WHERE token_hash = ?"
+  ).get(tokenHash) as { user_id: string; expires_at: string } | undefined;
+  if (!row) return null;
+  if (new Date(row.expires_at).getTime() <= Date.now()) {
+    db.prepare("DELETE FROM device_sessions WHERE token_hash = ?").run(tokenHash);
+    return null;
+  }
+  // Sliding activity window
+  const newExpires = new Date(Date.now() + DEVICE_SESSION_TTL_MS).toISOString();
+  db.prepare(
+    "UPDATE device_sessions SET last_used_at = ?, expires_at = ? WHERE token_hash = ?"
+  ).run(nowISO(), newExpires, tokenHash);
+  return { userId: row.user_id, expiresAt: newExpires };
+}
+
+export function revokeDeviceSession(token: string): void {
+  if (!isDeviceSessionToken(token)) return;
+  db.prepare("DELETE FROM device_sessions WHERE token_hash = ?").run(hashDeviceToken(token));
+}
+
+export function revokeDeviceSessionsForUser(userId: string): void {
+  db.prepare("DELETE FROM device_sessions WHERE user_id = ?").run(userId);
 }

@@ -25,21 +25,27 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build web frontend
-        run: npm run build
-
-      - name: Build server bundle
-        run: npm run build:server
-
-      - name: Bundle production config
-        run: node scripts/bundle-config.cjs
+      - name: Write Auth env for packaged desktop
+        shell: pwsh
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
+        run: |
+          @(
+            "VITE_SUPABASE_URL=$env:VITE_SUPABASE_URL"
+            "VITE_SUPABASE_ANON_KEY=$env:VITE_SUPABASE_ANON_KEY"
+            "SUPABASE_JWT_SECRET=$env:SUPABASE_JWT_SECRET"
+          ) | Set-Content -Encoding utf8NoBOM .env
+
+      - name: Build UI and server
+        run: npm run build:all
+
+      - name: Prepare packaged Auth env
+        run: node scripts/prepare-desktop-env.cjs
 
       - name: Build installer
-        run: cd apps\desktop; npx electron-builder --win --x64 --publish always --config electron-builder.json
+        run: cd apps/desktop; npx electron-builder --win --x64 --publish always --config electron-builder.json
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -47,5 +53,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hello-darzi-installer
-          path: release/*.exe
+          path: |
+            out/desktop/Hello-Darzi-Setup-*.exe
+            out/desktop/latest.yml
           if-no-files-found: error

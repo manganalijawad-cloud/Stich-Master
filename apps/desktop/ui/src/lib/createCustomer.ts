@@ -23,9 +23,45 @@ export type CreateCustomerResult =
       ok: true;
       customer: any;
       alreadyExists?: boolean;
-      firstProfile: MeasurementProfile;
+      /** Profile just created (new customer) or first existing profile when duplicate. */
+      firstProfile: MeasurementProfile | null;
+      /** Full measurement profiles for the customer (source of truth after create/lookup). */
+      profiles: MeasurementProfile[];
     }
   | { ok: false; error: string };
+
+async function loadCustomerProfiles(
+  token: string,
+  customerId: string
+): Promise<MeasurementProfile[]> {
+  const cached = localDataStore.getProfiles(customerId);
+  if (cached.length > 0) return cached;
+
+  try {
+    const res = await fetch(`/api/customers/${customerId}/measurements`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const profiles = Array.isArray(data?.data?.profiles)
+      ? data.data.profiles
+      : Array.isArray(data?.profiles)
+        ? data.profiles
+        : [];
+    if (customerId && profiles.length >= 0) {
+      localDataStore.upsertMeasurements(customerId, {
+        customer_id: customerId,
+        data: { profiles },
+        updated_at: data?.updated_at || new Date().toISOString(),
+        created_at: data?.created_at || new Date().toISOString(),
+      });
+    }
+    return profiles;
+  } catch {
+    return [];
+  }
+}
 
 /** Shared create-customer path for Customers + Orders (PROJECT.md §8 measurements required). */
 export async function createCustomerWithMeasurements(
@@ -89,20 +125,25 @@ export async function createCustomerWithMeasurements(
 
     if (data.alreadyExists) {
       if (data.customer) localDataStore.upsertCustomer(data.customer);
+      const profiles = data.customer?.id
+        ? await loadCustomerProfiles(input.token, data.customer.id)
+        : [];
       return {
         ok: true,
         customer: data.customer,
         alreadyExists: true,
-        firstProfile,
+        firstProfile: profiles[0] || null,
+        profiles,
       };
     }
 
     const customer = data.customer || data;
+    const profiles = [firstProfile];
     if (customer?.id) {
       localDataStore.upsertCustomer(customer);
       localDataStore.upsertMeasurements(customer.id, {
         customer_id: customer.id,
-        data: { profiles: [firstProfile] },
+        data: { profiles },
         updated_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
       });
@@ -112,6 +153,7 @@ export async function createCustomerWithMeasurements(
       ok: true,
       customer,
       firstProfile,
+      profiles,
     };
   } catch (err: unknown) {
     const message =

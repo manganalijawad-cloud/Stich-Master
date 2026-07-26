@@ -30,13 +30,48 @@ function resolveDevServerPort() {
   return 3000;
 }
 
-// Use an app-specific userData path in unpackaged/dev mode.
-// Default Electron userData is shared as "Electron" and causes cache lock errors.
+// Use an app-specific userData path (not the npm package name @hello-darzi/desktop).
+// Default Electron userData is shared as "Electron" in unpackaged mode and causes cache lock errors.
 app.setName('Hello Darzi');
 app.setPath(
   'userData',
   path.join(app.getPath('appData'), isDev ? 'Hello Darzi Dev' : 'Hello Darzi')
 );
+
+/**
+ * Older builds stored data under @hello-darzi/desktop or hello-darzi.
+ * Copy local SQLite into the stable Hello Darzi folder once so shops keep their data.
+ */
+function migrateLegacyUserDataIfNeeded(userDataPath) {
+  const destDb = path.join(userDataPath, 'data', 'hellodarzi.db');
+  if (fs.existsSync(destDb)) return;
+
+  const appData = app.getPath('appData');
+  const legacyRoots = [
+    path.join(appData, '@hello-darzi', 'desktop'),
+    path.join(appData, 'hello-darzi'),
+  ];
+
+  for (const legacyRoot of legacyRoots) {
+    const srcDb = path.join(legacyRoot, 'data', 'hellodarzi.db');
+    if (!fs.existsSync(srcDb)) continue;
+    try {
+      const destDir = path.join(userDataPath, 'data');
+      fs.mkdirSync(destDir, { recursive: true });
+      fs.copyFileSync(srcDb, destDb);
+      for (const suffix of ['-wal', '-shm']) {
+        const side = srcDb + suffix;
+        if (fs.existsSync(side)) {
+          fs.copyFileSync(side, destDb + suffix);
+        }
+      }
+      console.log('Migrated local database from', legacyRoot, 'to', userDataPath);
+      return;
+    } catch (err) {
+      console.warn('Failed to migrate legacy database from', legacyRoot, err?.message || err);
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // CUSTOM PROTOCOL (Deep Link)
@@ -67,56 +102,58 @@ app.setAppUserModelId('com.hellodarzi.app');
 // ---------------------------------------------------------------------------
 // PRODUCTION CONFIGURATION
 // ---------------------------------------------------------------------------
-function loadProductionConfig() {
-  if (isDev) return true;
-
-  const configPath = path.join(process.resourcesPath || '', 'config', 'production.json');
-
-  try {
-    if (fs.existsSync(configPath)) {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      if (config.SUPABASE_URL) process.env.SUPABASE_URL = config.SUPABASE_URL;
-      if (config.SUPABASE_ANON_KEY) process.env.SUPABASE_ANON_KEY = config.SUPABASE_ANON_KEY;
-      if (config.SUPABASE_SERVICE_ROLE_KEY) process.env.SUPABASE_SERVICE_ROLE_KEY = config.SUPABASE_SERVICE_ROLE_KEY;
-      if (config.VITE_SUPABASE_URL) process.env.VITE_SUPABASE_URL = config.VITE_SUPABASE_URL;
-      if (config.VITE_SUPABASE_ANON_KEY) process.env.VITE_SUPABASE_ANON_KEY = config.VITE_SUPABASE_ANON_KEY;
-      return true;
-    }
-  } catch (err) {
-    console.error('Failed to load config from', configPath, err.message);
-  }
-  return false;
-}
-
-function validateConfig() {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
-  const key = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
-  if (!url || !key) {
-    const missing = [];
-    if (!url && !process.env.VITE_SUPABASE_URL) missing.push('SUPABASE_URL');
-    if (!key && !process.env.VITE_SUPABASE_ANON_KEY) missing.push('SUPABASE_ANON_KEY');
-    dialog.showErrorBox(
-      'Configuration Required',
-      'Hello Darzi cannot start without Supabase configuration.\n\n' +
-      'Missing: ' + missing.join(', ') + '\n\n' +
-      'Please rebuild the application with valid configuration:\n' +
-      '  npm run electron:build\n\n' +
-      'Contact your system administrator for assistance.'
-    );
-    return false;
-  }
-  return true;
-}
+// Business data is local SQLite. Authentication uses Supabase Auth only;
+// SUPABASE_JWT_SECRET is loaded so the local server can verify sessions offline.
 
 // ---------------------------------------------------------------------------
 // ENSURE USER DATA DIRECTORY (persists across updates)
 // ---------------------------------------------------------------------------
 const userDataPath = app.getPath('userData');
+migrateLegacyUserDataIfNeeded(userDataPath);
 const dataDir = path.join(userDataPath, 'data');
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 process.env.ELECTRON_USER_DATA = userDataPath;
+
+// ---------------------------------------------------------------------------
+// SUPABASE AUTH ENV (JWT secret for offline local verification)
+// ---------------------------------------------------------------------------
+function loadSupabaseEnvFromFile() {
+  const candidates = [
+    path.join(process.cwd(), '.env'),
+    path.join(__dirname, '..', '..', '..', '.env'),
+  ];
+  if (process.resourcesPath) {
+    candidates.unshift(path.join(process.resourcesPath, '.env'));
+  }
+  for (const envPath of candidates) {
+    try {
+      if (!fs.existsSync(envPath)) continue;
+      const text = fs.readFileSync(envPath, 'utf8');
+      for (const rawLine of text.split(/\r?\n/)) {
+        const line = rawLine.trim();
+        if (!line || line.startsWith('#')) continue;
+        const eq = line.indexOf('=');
+        if (eq <= 0) continue;
+        const key = line.slice(0, eq).trim();
+        if (!key.startsWith('SUPABASE_') && !key.startsWith('VITE_SUPABASE_')) continue;
+        let val = line.slice(eq + 1).trim();
+        if (
+          (val.startsWith('"') && val.endsWith('"')) ||
+          (val.startsWith("'") && val.endsWith("'"))
+        ) {
+          val = val.slice(1, -1);
+        }
+        if (!process.env[key]) process.env[key] = val;
+      }
+      break;
+    } catch (err) {
+      console.warn('Could not load Supabase env from', envPath, err?.message || err);
+    }
+  }
+}
+loadSupabaseEnvFromFile();
 
 // ---------------------------------------------------------------------------
 // AUTO-UPDATER (GitHub Releases)
@@ -691,25 +728,51 @@ async function createWindow() {
 // ---------------------------------------------------------------------------
 // START EXPRESS SERVER
 // ---------------------------------------------------------------------------
-async function startExpressServer() {
+/**
+ * server.cjs is loaded from extraResources (resources/dist), outside the asar.
+ * Native better-sqlite3 lives in app.asar.unpacked; its JS deps (bindings, etc.)
+ * normally stay inside app.asar. Prepend BOTH module roots so require() can find
+ * the native addon and its JavaScript dependencies on clean installs.
+ */
+function ensurePackagedNativeModulePaths() {
   if (isDev) return;
+  const Module = require('module');
+  const resourcesPath = process.resourcesPath || '';
+  process.env.ELECTRON_RESOURCES_PATH = resourcesPath;
+
+  const moduleRoots = [
+    path.join(resourcesPath, 'app.asar.unpacked', 'node_modules'),
+    path.join(resourcesPath, 'app.asar', 'node_modules'),
+    // Fallback if electron-builder also mirrors deps next to the server bundle
+    path.join(resourcesPath, 'dist', 'node_modules'),
+  ].filter((p) => fs.existsSync(p));
+
+  if (moduleRoots.length === 0) {
+    console.warn('Packaged native module folders missing under', resourcesPath);
+    return;
+  }
+
+  const parts = [...moduleRoots];
+  if (process.env.NODE_PATH) parts.push(process.env.NODE_PATH);
+  process.env.NODE_PATH = parts.join(path.delimiter);
+  Module._initPaths();
+}
+
+async function startExpressServer() {
+  if (isDev) return true;
 
   process.env.NODE_ENV = 'production';
   process.env.ELECTRON_RUN = 'true';
+  // Prevent the server module from auto-listening on require — we call startServer().
+  process.env.ELECTRON_SERVER_MANAGED = '1';
 
-  if (!loadProductionConfig()) {
-    console.warn('No bundled config found — relying on existing environment variables.');
-  }
-
-  if (!validateConfig()) {
-    app.quit();
-    return;
-  }
+  ensurePackagedNativeModulePaths();
 
   try {
     const serverPath = path.join(process.resourcesPath || '', 'dist', 'server.cjs');
     const serverModule = require(serverPath);
     serverPort = await serverModule.startServer(serverModule.PORT);
+    return true;
   } catch (err) {
     console.error('Failed to start server:', err);
     dialog.showErrorBox(
@@ -717,6 +780,7 @@ async function startExpressServer() {
       `Failed to start the application server.\n\n${err.message}`
     );
     app.quit();
+    return false;
   }
 }
 
@@ -726,7 +790,9 @@ async function startExpressServer() {
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
 
-  await startExpressServer();
+  const serverReady = await startExpressServer();
+  if (!serverReady) return;
+
   if (isDev) {
     serverPort = resolveDevServerPort();
     console.log(`Electron dev mode loading http://localhost:${serverPort}`);
