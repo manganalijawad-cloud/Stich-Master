@@ -12,7 +12,7 @@ export default function ShopProfile({ token, onSettingsUpdated, onOwnerModeRequi
   const [shopName, setShopName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
-  const [currency, setCurrency] = useState('$');
+  const [currency, setCurrency] = useState('PKR');
   const [measurementUnit, setMeasurementUnit] = useState<'Inches' | 'Centimeters' | 'Feet'>('Inches');
   const [autoArchiveDays, setAutoArchiveDays] = useState<number>(30);
   const [deliverPaymentMode, setDeliverPaymentMode] = useState<DeliverPaymentMode>('remind');
@@ -34,7 +34,7 @@ export default function ShopProfile({ token, onSettingsUpdated, onOwnerModeRequi
         setShopName(data.shop_name || '');
         setPhone(data.phone || '');
         setAddress(data.address || '');
-        setCurrency(data.currency || '$');
+        setCurrency(data.currency || 'PKR');
         setMeasurementUnit(data.measurement_unit || 'Inches');
         setAutoArchiveDays(data.auto_archive_days !== undefined ? Number(data.auto_archive_days) : 30);
         const mode = data.deliver_payment_mode;
@@ -158,6 +158,10 @@ export default function ShopProfile({ token, onSettingsUpdated, onOwnerModeRequi
               <option value={60}>60 Days</option>
               <option value={90}>90 Days</option>
             </select>
+            <p className="text-3xs text-slate-500 mt-1.5 leading-relaxed">
+              Delivered orders older than this move to <strong>Finished → Archived</strong> automatically.
+              They are not deleted — open Finished orders to find them, or set Never to turn this off.
+            </p>
           </div>
         </div>
       </section>

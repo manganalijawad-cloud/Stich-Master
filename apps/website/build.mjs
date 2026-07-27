@@ -24,37 +24,46 @@ async function fetchLatestRelease() {
   };
   if (token) headers.Authorization = 'Bearer ' + token;
 
-  const url = `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
-
-  const res = await fetch(url, { headers });
+  // Prefer /releases/latest, but if that release has no .exe (broken publish),
+  // walk recent releases until we find a complete installer.
+  const listUrl = `https://api.github.com/repos/${owner}/${repo}/releases?per_page=10`;
+  const res = await fetch(listUrl, { headers });
   if (!res.ok) {
-    console.warn(`GitHub API returned ${res.status} for latest release. Download will be unavailable.`);
+    console.warn(`GitHub API returned ${res.status} for releases list. Download will be unavailable.`);
     if (res.status === 403) console.warn('Rate limited? Make sure GITHUB_TOKEN is set in Vercel env.');
     if (res.status === 404) console.warn('No releases found or repo not accessible.');
     return null;
   }
 
-  const release = await res.json();
-  const tag = release.tag_name;
-  const version = tag.replace(/^v/, '');
-  // electron-builder may upload as application/x-msdownload or application/octet-stream
-  const exeAsset = release.assets.find(
-    (a) =>
-      typeof a.name === 'string' &&
-      a.name.endsWith('.exe') &&
-      !a.name.endsWith('.exe.blockmap')
-  );
-
-  if (!exeAsset) {
-    console.warn('No .exe asset found in latest release ' + tag);
+  const releases = await res.json();
+  if (!Array.isArray(releases) || releases.length === 0) {
+    console.warn('No releases found.');
     return null;
   }
 
-  return {
-    version,
-    filename: exeAsset.name,
-    downloadUrl: exeAsset.browser_download_url,
-  };
+  for (const release of releases) {
+    if (release.draft || release.prerelease) continue;
+    const tag = release.tag_name;
+    const version = String(tag || '').replace(/^v/, '');
+    const exeAsset = (release.assets || []).find(
+      (a) =>
+        typeof a.name === 'string' &&
+        a.name.endsWith('.exe') &&
+        !a.name.endsWith('.exe.blockmap')
+    );
+    if (!exeAsset) {
+      console.warn('Skipping incomplete release ' + tag + ' (no .exe).');
+      continue;
+    }
+    return {
+      version,
+      filename: exeAsset.name,
+      downloadUrl: exeAsset.browser_download_url,
+    };
+  }
+
+  console.warn('No complete .exe release found in recent releases.');
+  return null;
 }
 
 async function writeReleaseManifest() {

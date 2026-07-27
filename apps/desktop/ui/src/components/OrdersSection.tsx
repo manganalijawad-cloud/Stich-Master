@@ -395,6 +395,7 @@ export default function OrdersSection({
   const [viewMode, setViewMode] = useState<'Active' | 'Archived'>('Active');
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [restoreStageId, setRestoreStageId] = useState('Pending');
+  const [autoArchiveNotice, setAutoArchiveNotice] = useState<string | null>(null);
 
   // Reopen Delivered Order back to Getting Ready (Pending)
   const reopenOrder = async (order: Order) => {
@@ -505,6 +506,13 @@ export default function OrdersSection({
         setOrders(data);
         setPage(1);
         setHasMore(data.length === 50);
+        const archivedHdr = res.headers.get('X-Hello-Darzi-Auto-Archived');
+        const archivedCount = archivedHdr ? parseInt(archivedHdr, 10) : 0;
+        if (archivedCount > 0) {
+          setAutoArchiveNotice(
+            `${archivedCount} delivered order${archivedCount === 1 ? '' : 's'} moved to Finished → Archived (auto-archive). Not deleted — open Finished orders to find them.`,
+          );
+        }
         // Merge into store without wiping other statuses
         for (const o of data) {
           cacheOrder(o);
@@ -1586,6 +1594,19 @@ export default function OrdersSection({
               Finished orders
             </button>
           </div>
+
+          {autoArchiveNotice && (
+            <div className="shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-3xs text-amber-900 leading-relaxed flex items-start gap-2">
+              <p className="flex-1">{autoArchiveNotice}</p>
+              <button
+                type="button"
+                className="text-amber-700 font-semibold uppercase tracking-wider cursor-pointer shrink-0"
+                onClick={() => setAutoArchiveNotice(null)}
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
 
           {/* Status Filters — open stages on Active; Delivered/Archived on Finished */}
           {viewMode === 'Active' ? (

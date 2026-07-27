@@ -200,7 +200,7 @@ function AuthWrapper() {
   const [shopPhone, setShopPhone] = useState('');
   const [shopAddress, setShopAddress] = useState('');
   const [shopLogo, setShopLogo] = useState('');
-  const [currency, setCurrency] = useState('$');
+  const [currency, setCurrency] = useState('PKR');
   const [measurementFields, setMeasurementFields] = useState<string[]>([]);
   const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
   const [measurementUnit, setMeasurementUnit] = useState<'Inches' | 'Centimeters' | 'Feet'>('Inches');
@@ -260,7 +260,7 @@ function AuthWrapper() {
     setShopLogo(settingsData.shop_logo ?? '');
     setTermsConditions(settingsData.terms_conditions ?? '');
     setReceiptFooterText(settingsData.receipt_footer_text ?? '');
-    setCurrency(settingsData.currency || '$');
+    setCurrency(settingsData.currency || 'PKR');
     setMeasurementFields(settingsData.measurement_fields || []);
     setMeasurementUnit(settingsData.measurement_unit || 'Inches');
     setPipelineStages(settingsData.pipeline_stages || DEFAULT_PIPELINE_STAGES);

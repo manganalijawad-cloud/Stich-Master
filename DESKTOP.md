@@ -26,15 +26,15 @@ npm run electron:build
 
 Output:
 
-- Installer: `out/desktop/Hello-Darzi-Setup-1.0.3.exe`
+- Installer: `out/desktop/Hello-Darzi-Setup-<version>.exe` (creates a desktop shortcut)
 - Unpacked smoke path: `out/desktop/win-unpacked/Hello Darzi.exe`
 - Update metadata (when publishing): `out/desktop/latest.yml`
 
-### Publish a release (users get auto-updates)
+### Publish a release (users get updates via GitHub Releases)
 
-1. Confirm `apps/desktop/package.json` version (source of truth for the installer).
-2. Commit packaging changes.
-3. Tag and push:
+1. Confirm **every** `package.json` version matches (root + `apps/desktop` are required by CI).
+2. Commit packaging changes on `main`.
+3. Tag and push the **same** version only (never retag an older `v*` while packages say a newer version):
 
 ```bash
 git tag v1.0.3
@@ -42,6 +42,8 @@ git push origin v1.0.3
 ```
 
 The `Build and Release` workflow builds the NSIS installer and publishes it to GitHub Releases. Installed apps check that channel via `electron-updater`.
+
+**v1 ships unsigned** (Unknown publisher). Tell users: Windows SmartScreen → More info → Run anyway. Azure Trusted Signing can be enabled later when secrets + `electron-builder.azure.json` are ready.
 
 ### Smoke-check before handing out builds
 

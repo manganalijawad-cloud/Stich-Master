@@ -1294,7 +1294,12 @@ export function getAuditLogs(options: {
 // BACKUP / RESTORE HELPERS
 // ---------------------------------------------------------------------------
 export function exportBackup(createdBy: string): Record<string, any[]> {
+  const profile = db.prepare("SELECT * FROM profiles WHERE id = ?").get(createdBy) as { shop_id?: string } | undefined;
+  const shopId = profile?.shop_id || null;
   return {
+    shops: shopId
+      ? db.prepare("SELECT * FROM shops WHERE id = ? OR created_by = ?").all(shopId, createdBy)
+      : db.prepare("SELECT * FROM shops WHERE created_by = ?").all(createdBy),
     profiles: db.prepare("SELECT * FROM profiles WHERE id = ? OR created_by = ?").all(createdBy, createdBy),
     customers: db.prepare("SELECT * FROM customers WHERE created_by = ?").all(createdBy),
     measurements: db.prepare("SELECT * FROM measurements WHERE created_by = ?").all(createdBy),
@@ -1305,32 +1310,77 @@ export function exportBackup(createdBy: string): Record<string, any[]> {
   };
 }
 
+/**
+ * Full-replace restore: clears this shop's business tables, then inserts backup rows.
+ * Account profile for the signed-in user is preserved; shop settings/data are replaced.
+ */
 export function importBackup(data: Record<string, any[]>, targetUserId: string): { imported: number } {
+  const ALLOWED = new Set([
+    "shops",
+    "customers",
+    "measurements",
+    "orders",
+    "shop_settings",
+    "garment_types",
+    "styling_categories",
+  ]);
+  const TABLE_ORDER = [
+    "shops",
+    "customers",
+    "measurements",
+    "garment_types",
+    "styling_categories",
+    "orders",
+    "shop_settings",
+  ];
+
   let imported = 0;
   const now = nowISO();
+  const errors: string[] = [];
+
   const transaction = db.transaction(() => {
-    for (const [table, rows] of Object.entries(data)) {
-      if (!Array.isArray(rows)) continue;
+    // Child tables first so FK cleanup succeeds
+    db.prepare("DELETE FROM orders WHERE created_by = ?").run(targetUserId);
+    db.prepare("DELETE FROM measurements WHERE created_by = ?").run(targetUserId);
+    db.prepare("DELETE FROM customers WHERE created_by = ?").run(targetUserId);
+    db.prepare("DELETE FROM garment_types WHERE created_by = ?").run(targetUserId);
+    db.prepare("DELETE FROM styling_categories WHERE created_by = ?").run(targetUserId);
+    db.prepare("DELETE FROM shop_settings WHERE user_id = ? OR key LIKE ?").run(targetUserId, `${targetUserId}:%`);
+
+    for (const table of TABLE_ORDER) {
+      const rows = data[table];
+      if (!Array.isArray(rows) || !ALLOWED.has(table)) continue;
       for (const row of rows) {
         try {
-          const existing = db.prepare(`SELECT id FROM ${table} WHERE id = ?`).get(row.id);
-          if (existing) continue;
-          const keys = Object.keys(row).filter(k => k !== "sync_status");
-          const vals = keys.map(k => {
+          if (!row || typeof row !== "object" || !row.id) {
+            throw new Error("row missing id");
+          }
+          const keys = Object.keys(row).filter((k) => k !== "sync_status");
+          const vals = keys.map((k) => {
             if (k === "created_at" || k === "updated_at") return row[k] || now;
             if (k === "updated_by") return row[k] || targetUserId;
             if (k === "created_by") return targetUserId;
+            if (k === "user_id" && table === "shop_settings") return targetUserId;
             if (k === "shop_id" && !row[k]) return null;
-            if (typeof row[k] === "object") return JSON.stringify(row[k]);
+            if (typeof row[k] === "object" && row[k] !== null) return JSON.stringify(row[k]);
             return row[k];
           });
           const placeholders = keys.map(() => "?").join(", ");
-          db.prepare(`INSERT OR IGNORE INTO ${table} (${keys.join(", ")}) VALUES (${placeholders})`).run(...vals);
+          db.prepare(
+            `INSERT OR REPLACE INTO ${table} (${keys.join(", ")}) VALUES (${placeholders})`
+          ).run(...vals);
           imported++;
-        } catch {}
+        } catch (err: any) {
+          errors.push(`${table}/${row?.id || "?"}: ${err?.message || String(err)}`);
+        }
       }
     }
+
+    if (errors.length > 0) {
+      throw new Error(`Restore incomplete (${errors.length} row error(s)). First: ${errors[0]}`);
+    }
   });
+
   transaction();
   return { imported };
 }
