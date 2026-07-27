@@ -1576,11 +1576,6 @@ export default function CustomersSection({
               <Check className="icon-xs" />
               Save Customer Profile
             </button>
-            {newCustomerMeasError && (
-              <p className="text-xs text-amber-700 font-semibold mt-1.5 text-center">
-                {newCustomerMeasError}
-              </p>
-            )}
           </div>
         ) : (
                   <div className="flex flex-col items-center justify-center py-16 text-center print:hidden">

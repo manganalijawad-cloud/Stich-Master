@@ -897,8 +897,10 @@ app.put("/api/orders/:id/status", requireAuth, async (req: AuthenticatedRequest,
     if (!oldOrder) return res.status(404).json({ error: "Order not found or access denied." });
 
     if (status === "Delivered") {
+      const deliverPaymentMode =
+        settingsMap.deliver_payment_mode ?? DEFAULT_SHOP_SETTINGS.deliver_payment_mode;
       const remaining = getOrderRemainingBalance(oldOrder);
-      if (remaining > 0) {
+      if (deliverPaymentMode === "require" && remaining > 0) {
         return res.status(400).json({
           error: `Collect remaining balance (${remaining}) before marking as Delivered.`,
           remaining,

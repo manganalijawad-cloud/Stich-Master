@@ -169,8 +169,35 @@ export default function OrdersSection({
   const [collectAmount, setCollectAmount] = useState<number>(0);
   const [oldDues, setOldDues] = useState<number>(0);
   const [collectingPayment, setCollectingPayment] = useState(false);
+  const [dialogPaymentMode, setDialogPaymentMode] = useState<DeliverPaymentMode>(deliverPaymentMode);
+
+  useEffect(() => {
+    setDialogPaymentMode(deliverPaymentMode);
+  }, [deliverPaymentMode]);
 
   const getOrderRemaining = (order: Order): number => getOrderRemainingShared(order);
+
+  const normalizeDeliverPaymentMode = (mode: unknown): DeliverPaymentMode | null =>
+    mode === 'require' || mode === 'off' || mode === 'remind' ? mode : null;
+
+  /** Read deliver payment mode from server so the dialog matches the delivery gate. */
+  const resolveDeliverPaymentMode = async (): Promise<DeliverPaymentMode> => {
+    try {
+      const res = await fetch('/api/settings', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const mode = normalizeDeliverPaymentMode(data.deliver_payment_mode);
+        if (mode) return mode;
+      }
+    } catch {
+      // Fall through to cached/prop values
+    }
+    const cached = normalizeDeliverPaymentMode(localDataStore.getSnapshot().settings?.deliver_payment_mode);
+    if (cached) return cached;
+    return deliverPaymentMode;
+  };
 
   const resetPaymentDialog = () => {
     setShowPaymentDialog(false);
@@ -1040,7 +1067,9 @@ export default function OrdersSection({
   // Shared deliver gate: opens payment dialog when this order OR older customer dues exist.
   // Returns true if the payment dialog was opened (caller must not advance status yet).
   const openDeliverPaymentIfNeeded = async (order: Order): Promise<boolean> => {
-    if (deliverPaymentMode === 'off') return false;
+    const mode = await resolveDeliverPaymentMode();
+    setDialogPaymentMode(mode);
+    if (mode === 'off') return false;
 
     const remaining = getOrderRemaining(order);
 
@@ -1120,7 +1149,10 @@ export default function OrdersSection({
   const handleDeliverCollectPayment = async (opts?: { skipPayment?: boolean }) => {
     if (!pendingDeliverOrder || collectingPayment) return;
 
-    if (opts?.skipPayment && deliverPaymentMode === 'require') {
+    const mode = await resolveDeliverPaymentMode();
+    setDialogPaymentMode(mode);
+
+    if (opts?.skipPayment && mode === 'require') {
       alert('This shop requires collecting this order’s remaining balance before delivery.');
       return;
     }
@@ -1128,7 +1160,7 @@ export default function OrdersSection({
     const amountToCollect = opts?.skipPayment ? 0 : Math.max(0, Number(collectAmount) || 0);
     const currentDue = getOrderRemaining(pendingDeliverOrder);
 
-    if (deliverPaymentMode === 'require' && amountToCollect < currentDue) {
+    if (mode === 'require' && amountToCollect < currentDue) {
       alert(`Collect at least ${currency}${currentDue} (this order’s remaining) before delivering.`);
       return;
     }
@@ -1662,7 +1694,7 @@ export default function OrdersSection({
                     <div className="text-right space-y-1 shrink-0">
                       <MoneyTotal
                         currency={currency}
-                        amount={o.total_amount}
+                        amount={o.final_total ?? o.total_amount}
                         className="text-sm block leading-tight"
                       />
                       <PaymentChip currency={currency} remaining={remaining} status={o.status} />
@@ -2732,7 +2764,7 @@ export default function OrdersSection({
                               <DeliveryDateText dueDate={o.due_date} className="text-3xs uppercase tracking-wider" />
                             </div>
                             <div className="text-right space-y-1 shrink-0">
-                              <MoneyTotal currency={currency} amount={o.total_amount} className="text-xs block" />
+                              <MoneyTotal currency={currency} amount={o.final_total ?? o.total_amount} className="text-xs block" />
                               <PaymentChip currency={currency} remaining={remaining} status={o.status} />
                             </div>
                           </button>
@@ -3689,7 +3721,7 @@ export default function OrdersSection({
                     Order <OrderId value={pendingDeliverOrder.order_number} className="!inline !text-xs" /> for{' '}
                     <CustomerName name={pendingDeliverOrder.customer_name} className="!inline" /> has an outstanding balance
                     {oldDues > 0 ? ', plus unpaid dues on earlier orders' : ''}.
-                    {deliverPaymentMode === 'require'
+                    {dialogPaymentMode === 'require'
                       ? ' Collect this order’s remaining balance to deliver.'
                       : ' Collect what you can, or deliver and keep the due.'}
                   </>
@@ -3697,7 +3729,7 @@ export default function OrdersSection({
                   <>
                     <CustomerName name={pendingDeliverOrder.customer_name} className="!inline" /> has unpaid dues on{' '}
                     {pendingOtherDueOrders.length} earlier order{pendingOtherDueOrders.length === 1 ? '' : 's'}.
-                    {deliverPaymentMode === 'require'
+                    {dialogPaymentMode === 'require'
                       ? ' You can collect now or deliver this order.'
                       : ' You can collect now or deliver anyway.'}
                   </>
@@ -3756,11 +3788,11 @@ export default function OrdersSection({
                 className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl font-semibold text-slate-800 text-sm focus-visible:outline-none focus:border-brand-sky disabled:opacity-60"
               />
               <p className="text-3xs text-slate-400 font-medium pt-1">
-                {deliverPaymentMode === 'require'
+                {dialogPaymentMode === 'require'
                   ? `Collect at least this order’s remaining (${currency}${getOrderRemaining(pendingDeliverOrder)}) to deliver.`
                   : 'Partial payment is fine. Any unpaid amount stays as due'}
-                {deliverPaymentMode !== 'require' && oldDues > 0 ? ' — applied to this order first, then older unpaid orders' : ''}
-                {deliverPaymentMode !== 'require' ? '.' : ''}
+                {dialogPaymentMode !== 'require' && oldDues > 0 ? ' — applied to this order first, then older unpaid orders' : ''}
+                {dialogPaymentMode !== 'require' ? '.' : ''}
               </p>
             </div>
 
@@ -3775,11 +3807,11 @@ export default function OrdersSection({
                   ? 'Working...'
                   : collectAmount > 0
                     ? `Collect ${currency}${collectAmount} & Deliver`
-                    : deliverPaymentMode === 'require' && getOrderRemaining(pendingDeliverOrder) > 0
+                    : dialogPaymentMode === 'require' && getOrderRemaining(pendingDeliverOrder) > 0
                       ? 'Collect & Deliver'
                       : 'Deliver'}
               </button>
-              {deliverPaymentMode !== 'require' && collectAmount > 0 && (
+              {dialogPaymentMode !== 'require' && collectAmount > 0 && (
                 <button
                   type="button"
                   disabled={collectingPayment}

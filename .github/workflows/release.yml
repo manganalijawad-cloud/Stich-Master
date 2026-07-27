@@ -48,9 +48,43 @@ jobs:
         run: node scripts/prepare-desktop-env.cjs
 
       - name: Build installer
-        run: cd apps/desktop; npx electron-builder --win --x64 --publish always --config electron-builder.json
+        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Azure Trusted Signing (Artifact Signing). Required for a trusted publisher.
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+          AZURE_CODE_SIGNING_ACCOUNT_NAME: ${{ secrets.AZURE_CODE_SIGNING_ACCOUNT_NAME }}
+          AZURE_CERTIFICATE_PROFILE_NAME: ${{ secrets.AZURE_CERTIFICATE_PROFILE_NAME }}
+          AZURE_PUBLISHER_NAME: ${{ secrets.AZURE_PUBLISHER_NAME }}
+        run: |
+          $config = if ($env:AZURE_CLIENT_ID -and $env:AZURE_CLIENT_SECRET -and $env:AZURE_TENANT_ID -and $env:AZURE_TRUSTED_SIGNING_ENDPOINT -and $env:AZURE_CODE_SIGNING_ACCOUNT_NAME -and $env:AZURE_CERTIFICATE_PROFILE_NAME -and $env:AZURE_PUBLISHER_NAME) {
+            Write-Host "Signing with Azure Trusted Signing"
+            "electron-builder.azure.json"
+          } else {
+            Write-Warning "Azure Trusted Signing secrets missing — building unsigned installer (Unknown publisher)"
+            "electron-builder.json"
+          }
+          Set-Location apps/desktop
+          npx electron-builder --win --x64 --publish always --config $config
+
+      - name: Ensure GitHub Release assets are complete
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $files = @(
+            Get-ChildItem -Path "out/desktop" -Filter "Hello-Darzi-Setup-*.exe" -File
+            Get-ChildItem -Path "out/desktop" -Filter "Hello-Darzi-Setup-*.exe.blockmap" -File
+            Get-Item -Path "out/desktop/latest.yml"
+          )
+          if ($files.Count -lt 2) {
+            throw "Expected installer and latest.yml in out/desktop, found $($files.Count) file(s)."
+          }
+          gh release upload $tag $files.FullName --clobber
 
       - name: Upload installer as artifact
         uses: actions/upload-artifact@v4
