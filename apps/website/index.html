@@ -7,32 +7,18 @@
   <meta name="description" content="Hello Darzi is free tailor shop management software for Windows. Manage customers, orders, measurements &amp; finances. Download the best tailoring software for Pakistan." />
   <meta name="robots" content="index, follow" />
   <link rel="canonical" href="https://hellodarzi.shop" />
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png" />
+  <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <link rel="manifest" href="/site.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'Helvetica Neue', 'Arial', 'sans-serif'],
-            display: ['Space Grotesk', 'sans-serif'],
-          },
-          colors: {
-            brand: {
-              sidebar: '#0F172A',
-              active: '#1E293B',
-              sky: '#38BDF8',
-              bg: '#F8FAFC',
-            },
-          },
-        },
-      },
-    }
-  </script>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&display=swap" media="print" onload="this.media='all'" />
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&display=swap" /></noscript>
+  <link rel="stylesheet" href="/styles.css" />
 
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://hellodarzi.shop" />
@@ -50,12 +36,24 @@
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "Hello Darzi",
+    "url": "https://hellodarzi.shop",
+    "logo": "https://hellodarzi.shop/web-app-manifest-192x192.png",
+    "sameAs": ["https://github.com/manganalijawad-cloud/Stich-Master"]
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "Hello Darzi",
     "operatingSystem": "Windows 10, Windows 11",
     "applicationCategory": "BusinessApplication",
     "description": "Tailor shop management software for Windows. Manage customers, orders, measurements, and finances effortlessly.",
     "url": "https://hellodarzi.shop",
+    "image": "https://hellodarzi.shop/web-app-manifest-192x192.png",
     "sameAs": "https://github.com/manganalijawad-cloud/Stich-Master",
     "screenshot": "https://hellodarzi.shop/og-image.png",
     "offers": [
@@ -63,7 +61,7 @@
       { "@type": "Offer", "price": "2500", "priceCurrency": "PKR", "description": "Basic plan — essential features for small tailor shops" },
       { "@type": "Offer", "price": "5000", "priceCurrency": "PKR", "description": "Premium plan — complete business management solution" }
     ],
-    "author": { "@type": "Organization", "name": "Hello Darzi" }
+    "author": { "@type": "Organization", "name": "Hello Darzi", "logo": "https://hellodarzi.shop/web-app-manifest-192x192.png" }
   }
   </script>
 
@@ -162,7 +160,7 @@
     <section id="features" class="py-16 sm:py-20 lg:py-28">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
-          <span class="inline-block text-xs font-bold uppercase tracking-[0.15em] text-brand-sky bg-brand-sky/10 px-4 py-1.5 rounded-full">Features</span>
+          <span class="inline-block text-xs font-bold uppercase tracking-[0.15em] text-sky-700 bg-sky-100 px-4 py-1.5 rounded-full">Features</span>
           <h2 class="font-display text-3xl sm:text-4xl font-bold text-brand-sidebar mt-6 mb-4">Everything a Tailor Shop Needs</h2>
           <p class="text-base sm:text-lg text-slate-500 leading-relaxed">No more lost paper slips or messy notebooks. Hello Darzi is the tailor management system that keeps everything organized in one place — so you can focus on your craft.</p>
         </div>
@@ -216,7 +214,7 @@
     <section id="screenshots" class="py-16 sm:py-20 lg:py-28 bg-white">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
-          <span class="inline-block text-xs font-bold uppercase tracking-[0.15em] text-brand-sky bg-brand-sky/10 px-4 py-1.5 rounded-full">Screenshots</span>
+          <span class="inline-block text-xs font-bold uppercase tracking-[0.15em] text-sky-700 bg-sky-100 px-4 py-1.5 rounded-full">Screenshots</span>
           <h2 class="font-display text-3xl sm:text-4xl font-bold text-brand-sidebar mt-6 mb-4">See Hello Darzi in Action</h2>
           <p class="text-base sm:text-lg text-slate-500">Here is what the software looks like. Clean, simple, and built for busy tailor shops.</p>
         </div>
@@ -235,7 +233,7 @@
             </div>
             <div class="p-5">
               <h3 class="font-display font-bold text-base text-brand-sidebar">Customer Registry</h3>
-              <p class="text-xs text-slate-400 mt-1">View, search, and manage all your customers</p>
+              <p class="text-xs text-slate-600 mt-1">View, search, and manage all your customers</p>
             </div>
           </div>
           <div class="screenshot-card rounded-xl overflow-hidden border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 group">
@@ -252,7 +250,7 @@
             </div>
             <div class="p-5">
               <h3 class="font-display font-bold text-base text-brand-sidebar">Order Queue</h3>
-              <p class="text-xs text-slate-400 mt-1">Track orders from pending to delivered</p>
+              <p class="text-xs text-slate-600 mt-1">Track orders from pending to delivered</p>
             </div>
           </div>
           <div class="screenshot-card rounded-xl overflow-hidden border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 group">
@@ -269,7 +267,7 @@
             </div>
             <div class="p-5">
               <h3 class="font-display font-bold text-base text-brand-sidebar">Financial Reports</h3>
-              <p class="text-xs text-slate-400 mt-1">See your shop's earnings and expenses</p>
+              <p class="text-xs text-slate-600 mt-1">See your shop's earnings and expenses</p>
             </div>
           </div>
         </div>
@@ -279,7 +277,7 @@
     <section id="how-it-works" class="py-16 sm:py-20 lg:py-28">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
-          <span class="inline-block text-xs font-bold uppercase tracking-[0.15em] text-brand-sky bg-brand-sky/10 px-4 py-1.5 rounded-full">How It Works</span>
+          <span class="inline-block text-xs font-bold uppercase tracking-[0.15em] text-sky-700 bg-sky-100 px-4 py-1.5 rounded-full">How It Works</span>
           <h2 class="font-display text-3xl sm:text-4xl font-bold text-brand-sidebar mt-6 mb-4">Get Started in Minutes</h2>
           <p class="text-base sm:text-lg text-slate-500 leading-relaxed">No complicated setup. No training needed. Just download, install, and start managing your business like a pro.</p>
         </div>
@@ -338,7 +336,7 @@
     <section id="why-choose" class="py-16 sm:py-20 lg:py-28 bg-white">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
-          <span class="inline-block text-xs font-bold uppercase tracking-[0.15em] text-brand-sky bg-brand-sky/10 px-4 py-1.5 rounded-full">Why Hello Darzi</span>
+          <span class="inline-block text-xs font-bold uppercase tracking-[0.15em] text-sky-700 bg-sky-100 px-4 py-1.5 rounded-full">Why Hello Darzi</span>
           <h2 class="font-display text-3xl sm:text-4xl font-bold text-brand-sidebar mt-6 mb-4">Why Tailor Shops Choose Us</h2>
           <p class="text-base sm:text-lg text-slate-500 leading-relaxed">Built specifically for the way tailor shops, boutiques, and alteration businesses work in Pakistan.</p>
         </div>
@@ -405,7 +403,7 @@
     <section id="pricing" class="py-16 sm:py-20 lg:py-28">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
-          <span class="inline-block text-xs font-bold uppercase tracking-[0.15em] text-brand-sky bg-brand-sky/10 px-4 py-1.5 rounded-full">Pricing</span>
+          <span class="inline-block text-xs font-bold uppercase tracking-[0.15em] text-sky-700 bg-sky-100 px-4 py-1.5 rounded-full">Pricing</span>
           <h2 class="font-display text-3xl sm:text-4xl font-bold text-brand-sidebar mt-6 mb-4">Simple, Transparent Pricing</h2>
           <p class="text-base sm:text-lg text-slate-500 leading-relaxed">Start with a free trial. Choose the plan that fits your shop as it grows.</p>
         </div>
@@ -416,7 +414,7 @@
           <button id="billing-toggle" role="switch" aria-checked="false" aria-label="Toggle annual billing" class="relative w-14 h-7 rounded-full bg-slate-300 transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-brand-sky focus-visible:outline-offset-2" type="button">
             <span class="absolute left-0.5 top-0.5 w-6 h-6 rounded-full bg-white shadow-sm transition-transform duration-300"></span>
           </button>
-          <span id="annual-label" class="text-sm font-semibold text-slate-400" aria-hidden="true">Annual</span>
+          <span id="annual-label" class="text-sm font-semibold text-slate-600" aria-hidden="true">Annual</span>
           <span class="inline-flex items-center gap-1 px-2.5 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full whitespace-nowrap">
             <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
             Save 2 Months
@@ -428,7 +426,7 @@
 
           <!-- Free Trial -->
           <div class="pricing-card bg-white rounded-2xl border border-slate-200 shadow-sm p-8 flex flex-col relative hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
-            <div class="absolute -top-3 left-6 bg-emerald-500 text-white text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full whitespace-nowrap shadow-sm">No Credit Card Required</div>
+            <div class="absolute -top-3 left-6 bg-emerald-700 text-white text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full whitespace-nowrap shadow-sm">No Credit Card Required</div>
             <div class="pt-4">
               <h3 class="font-display font-bold text-xl text-brand-sidebar mb-1">30-Day Free Trial</h3>
               <p class="text-sm text-slate-500 mb-5">Try every feature with no restrictions</p>
@@ -458,7 +456,7 @@
                 </li>
               </ul>
             </div>
-            <a href="#download" class="mt-auto w-full py-3 text-center text-sm font-bold text-white bg-emerald-500 rounded-xl hover:bg-emerald-600 transition-all duration-200 shadow-sm hover:shadow-md">Start Free Trial</a>
+            <a href="#download" class="mt-auto w-full py-3 text-center text-sm font-bold text-white bg-emerald-700 rounded-xl hover:bg-emerald-800 transition-all duration-200 shadow-sm hover:shadow-md">Start Free Trial</a>
           </div>
 
           <!-- Basic -->
@@ -468,7 +466,7 @@
               <p class="text-sm text-slate-500 mb-5">Perfect for small tailor shops and individual tailors</p>
               <div class="mb-6">
                 <span class="font-display text-4xl font-extrabold text-brand-sidebar pricing-amount" data-monthly="Rs. 2,500" data-annual="Rs. 25,000">Rs. 2,500</span>
-                <span class="text-slate-400 text-sm pricing-period" data-monthly="/month" data-annual="/year">/month</span>
+                <span class="text-slate-600 text-sm pricing-period" data-monthly="/month" data-annual="/year">/month</span>
               </div>
               <ul class="space-y-3 mb-8">
                 <li class="flex items-start gap-3 text-sm">
@@ -512,7 +510,7 @@
               <p class="text-sm text-slate-500 mb-5">Complete business management for growing tailor shops</p>
               <div class="mb-6">
                 <span class="font-display text-4xl font-extrabold text-brand-sidebar pricing-amount" data-monthly="Rs. 5,000" data-annual="Rs. 50,000">Rs. 5,000</span>
-                <span class="text-slate-400 text-sm pricing-period" data-monthly="/month" data-annual="/year">/month</span>
+                <span class="text-slate-600 text-sm pricing-period" data-monthly="/month" data-annual="/year">/month</span>
               </div>
               <ul class="space-y-3 mb-8">
                 <li class="flex items-start gap-3 text-sm">
@@ -561,7 +559,7 @@
                 </li>
               </ul>
             </div>
-            <a href="#download" class="mt-auto w-full py-3 text-center text-sm font-bold text-white bg-brand-sky text-brand-sidebar rounded-xl hover:bg-cyan-300 transition-all duration-200 shadow-md hover:shadow-lg">Go Premium</a>
+            <a href="#download" class="mt-auto w-full py-3 text-center text-sm font-bold bg-brand-sky text-brand-sidebar rounded-xl hover:bg-cyan-300 transition-all duration-200 shadow-md hover:shadow-lg">Go Premium</a>
           </div>
 
         </div>
@@ -612,7 +610,7 @@
     <section id="faq" class="py-16 sm:py-20 lg:py-28 bg-white">
       <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
-          <span class="inline-block text-xs font-bold uppercase tracking-[0.15em] text-brand-sky bg-brand-sky/10 px-4 py-1.5 rounded-full">FAQ</span>
+          <span class="inline-block text-xs font-bold uppercase tracking-[0.15em] text-sky-700 bg-sky-100 px-4 py-1.5 rounded-full">FAQ</span>
           <h2 class="font-display text-3xl sm:text-4xl font-bold text-brand-sidebar mt-6 mb-4">Frequently Asked Questions</h2>
           <p class="text-base sm:text-lg text-slate-500 leading-relaxed">Got questions about our tailor management system? We have answers.</p>
         </div>
@@ -789,7 +787,7 @@
     <section id="contact" class="py-16 sm:py-20 lg:py-28">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
-          <span class="inline-block text-xs font-bold uppercase tracking-[0.15em] text-brand-sky bg-brand-sky/10 px-4 py-1.5 rounded-full">Contact</span>
+          <span class="inline-block text-xs font-bold uppercase tracking-[0.15em] text-sky-700 bg-sky-100 px-4 py-1.5 rounded-full">Contact</span>
           <h2 class="font-display text-3xl sm:text-4xl font-bold text-brand-sidebar mt-6 mb-4">Get in Touch</h2>
           <p class="text-base sm:text-lg text-slate-500 leading-relaxed">Have a question about our tailor shop software or need help getting started? We would love to hear from you.</p>
         </div>
@@ -827,7 +825,7 @@
       <div class="absolute inset-0 bg-gradient-to-br from-brand-sidebar via-[#0F172A] to-slate-900 opacity-[0.97]"></div>
       <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(56,189,248,0.1),transparent_60%)]"></div>
       <div class="relative max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <span class="inline-block text-xs font-bold uppercase tracking-[0.15em] text-brand-sky bg-brand-sky/10 border border-brand-sky/20 px-4 py-1.5 rounded-full">Download</span>
+        <span class="inline-block text-xs font-bold uppercase tracking-[0.15em] text-sky-300 bg-brand-sky/10 border border-brand-sky/20 px-4 py-1.5 rounded-full">Download</span>
         <h2 class="font-display text-3xl sm:text-4xl font-bold text-white mt-6 mb-4">Ready to Transform Your Shop?</h2>
         <p class="text-base sm:text-lg text-slate-300 max-w-xl mx-auto mb-10 leading-relaxed">
           Download the latest Windows installer for the best free tailor shop management software. Start managing your tailor shop, boutique, or alteration business like a professional. Free to start, no credit card needed.
@@ -857,7 +855,7 @@
           <p class="text-sm text-slate-400 leading-relaxed max-w-xs">Simple, powerful tailor shop management software for Pakistan.</p>
         </div>
         <div>
-          <h4 class="font-display font-bold text-sm text-white mb-4 uppercase tracking-wider">Product</h4>
+          <p class="font-display font-bold text-sm text-white mb-4 uppercase tracking-wider">Product</p>
           <ul class="space-y-2.5">
             <li><a href="#features" class="text-sm text-slate-400 hover:text-white transition-colors">Features</a></li>
             <li><a href="#pricing" class="text-sm text-slate-400 hover:text-white transition-colors">Pricing</a></li>
@@ -866,7 +864,7 @@
           </ul>
         </div>
         <div>
-          <h4 class="font-display font-bold text-sm text-white mb-4 uppercase tracking-wider">Company</h4>
+          <p class="font-display font-bold text-sm text-white mb-4 uppercase tracking-wider">Company</p>
           <ul class="space-y-2.5">
             <li><a href="about.html" class="text-sm text-slate-400 hover:text-white transition-colors">About Us</a></li>
             <li><a href="contact.html" class="text-sm text-slate-400 hover:text-white transition-colors">Contact</a></li>
@@ -875,7 +873,7 @@
           </ul>
         </div>
         <div>
-          <h4 class="font-display font-bold text-sm text-white mb-4 uppercase tracking-wider">Connect</h4>
+          <p class="font-display font-bold text-sm text-white mb-4 uppercase tracking-wider">Connect</p>
           <ul class="space-y-2.5">
             <li><a href="https://github.com/manganalijawad-cloud/Stich-Master" target="_blank" rel="noopener noreferrer" class="text-sm text-slate-400 hover:text-white transition-colors flex items-center gap-2">
               <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
@@ -885,7 +883,7 @@
         </div>
       </div>
       <div class="pt-8 border-t border-slate-800/60 text-center">
-        <p class="text-xs text-slate-500">&copy; 2026 Hello Darzi. All rights reserved.</p>
+        <p class="text-xs text-slate-400">&copy; 2026 Hello Darzi. All rights reserved.</p>
       </div>
     </div>
   </footer>

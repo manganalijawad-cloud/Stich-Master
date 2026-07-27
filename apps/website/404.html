@@ -7,31 +7,18 @@
   <meta name="description" content="Page not found. The page you are looking for does not exist or has been moved. Return to the Hello Darzi homepage." />
   <meta name="robots" content="noindex, follow" />
   <link rel="canonical" href="https://hellodarzi.shop/404" />
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png" />
+  <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <link rel="manifest" href="/site.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'Helvetica Neue', 'Arial', 'sans-serif'],
-            display: ['Space Grotesk', 'sans-serif'],
-          },
-          colors: {
-            brand: {
-              sidebar: '#0F172A',
-              active: '#1E293B',
-              sky: '#38BDF8',
-              bg: '#F8FAFC',
-            },
-          },
-        },
-      },
-    }
-  </script>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&display=swap" media="print" onload="this.media='all'" />
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&display=swap" /></noscript>
+  <link rel="stylesheet" href="/styles.css" />
   <style>
     html { scroll-behavior: smooth; overflow-x: hidden; }
     body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; overflow-x: hidden; width: 100%; }
@@ -78,7 +65,7 @@
 
   <footer class="bg-brand-sidebar border-t border-slate-800 py-6">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-      <p class="text-xs text-slate-500">&copy; 2026 Hello Darzi. All rights reserved.</p>
+      <p class="text-xs text-slate-400">&copy; 2026 Hello Darzi. All rights reserved.</p>
     </div>
   </footer>
 </body>

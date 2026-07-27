@@ -104,15 +104,17 @@ export function StatusBadge({
 export function PaymentChip({
   currency,
   remaining,
+  status,
   className = '',
 }: {
   currency: string;
   remaining: number;
+  status?: string;
   className?: string;
 }) {
   return (
     <span className={`${getPaymentChipClass(remaining)} ${className}`.trim()}>
-      {getPaymentLabel(remaining, currency)}
+      {getPaymentLabel(remaining, currency, status)}
     </span>
   );
 }

@@ -508,11 +508,9 @@ Do you absolutely want to proceed with deletion?`;
   };
 
   const applyMeasurementFields = (getNext: (prev: MeasurementField[]) => MeasurementField[]) => {
-    let nextFields: MeasurementField[] = [];
-    setBuilderFields(prev => {
-      nextFields = getNext(prev);
-      return nextFields;
-    });
+    // Compute from current state — capturing inside setState can persist [] while UI still shows saved.
+    const nextFields = getNext(builderFields);
+    setBuilderFields(nextFields);
     void persistMeasurementFields(nextFields);
   };
 
@@ -886,11 +884,9 @@ Do you absolutely want to proceed with deletion?`;
   };
 
   const applyCategoryOptions = (getNext: (prev: StylingOption[]) => StylingOption[]) => {
-    let nextOptions: StylingOption[] = [];
-    setBuilderOptions(prev => {
-      nextOptions = getNext(prev);
-      return nextOptions;
-    });
+    // Same as measurements: compute before setState so we persist the real list.
+    const nextOptions = getNext(builderOptions);
+    setBuilderOptions(nextOptions);
     void persistCategoryOptions(nextOptions);
   };
 

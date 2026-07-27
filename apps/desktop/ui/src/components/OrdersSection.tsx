@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ShoppingCart, Calendar, Plus, Trash2, Printer, CheckCircle, Clock, ShieldAlert, ArrowRight, ChevronRight, Edit3, Search, UserPlus, ChevronLeft, Scissors, Info, Check, QrCode, Camera, Smartphone, Users, ChevronDown, MoreVertical } from 'lucide-react';
-import { Customer, Order, OrderItem, OrderStatus, PipelineStage, GarmentType, StylingCategory, MeasurementProfile } from '../types';
+import { Customer, DeliverPaymentMode, Order, OrderItem, OrderStatus, PipelineStage, GarmentType, StylingCategory, MeasurementProfile } from '../types';
 import { printPage } from '../lib/print';
 import { validateGarmentMeasurementsCompleted } from '../lib/validation';
 import { createCustomerWithMeasurements } from '../lib/createCustomer';
@@ -14,6 +14,8 @@ import { formatMoney } from '../lib/format';
 import {
   CustomerName,
   DeliveryDateText,
+  MoneyDue,
+  MoneyPaid,
   MoneyTotal,
   OrderId,
   PaymentChip,
@@ -23,6 +25,7 @@ import QRCode from 'qrcode';
 import jsQR from 'jsqr';
 import { localDataStore } from '../lib/localDataStore';
 import { useLocalData, cacheCustomer, cacheMeasurements, cacheOrder, removeCachedOrder } from '../lib/useLocalData';
+import { getOrderRemaining as getOrderRemainingShared } from '../lib/orderPayment';
 
 /** True when a customer profile has at least one non-empty measurement value. */
 function profileHasSavedMeasurements(profile: MeasurementProfile): boolean {
@@ -88,6 +91,8 @@ interface OrdersSectionProps {
   shopLogo?: string;
   termsConditions?: string;
   receiptFooterText?: string;
+  deliverPaymentMode?: DeliverPaymentMode;
+  deliverIncludeOldDues?: boolean;
   isOwnerMode?: boolean;
 }
 
@@ -108,6 +113,8 @@ export default function OrdersSection({
   shopLogo,
   termsConditions,
   receiptFooterText,
+  deliverPaymentMode = 'remind',
+  deliverIncludeOldDues = true,
   isOwnerMode = false,
 }: OrdersSectionProps) {
   // Dynamic Pipeline Stages
@@ -163,10 +170,7 @@ export default function OrdersSection({
   const [oldDues, setOldDues] = useState<number>(0);
   const [collectingPayment, setCollectingPayment] = useState(false);
 
-  const getOrderRemaining = (order: Order): number => {
-    const total = (order.final_total ?? order.total_amount) || 0;
-    return Math.max(0, total - (order.paid_amount || 0));
-  };
+  const getOrderRemaining = (order: Order): number => getOrderRemainingShared(order);
 
   const resetPaymentDialog = () => {
     setShowPaymentDialog(false);
@@ -1027,25 +1031,45 @@ export default function OrdersSection({
     setEditedTotal(total);
   }, [editedItems]);
 
-  // Shared deliver gate: opens payment dialog when dues exist. Used by main pipeline + QR.
+  // Other unpaid orders for this customer (oldest first). Excludes Archived.
+  const collectOtherDueOrders = (ordersList: Order[], currentOrderId: string): Order[] =>
+    (ordersList || [])
+      .filter((o) => o.id !== currentOrderId && o.status !== 'Archived' && getOrderRemaining(o) > 0)
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+  // Shared deliver gate: opens payment dialog when this order OR older customer dues exist.
   // Returns true if the payment dialog was opened (caller must not advance status yet).
   const openDeliverPaymentIfNeeded = async (order: Order): Promise<boolean> => {
+    if (deliverPaymentMode === 'off') return false;
+
     const remaining = getOrderRemaining(order);
 
     let otherDueOrders: Order[] = [];
-    let otherDues = 0;
-    try {
-      const otherRes = await fetch(`/api/customers/${order.customer_id}/orders`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (otherRes.ok) {
-        const otherOrders: Order[] = await otherRes.json();
-        otherDueOrders = (otherOrders || [])
-          .filter((o) => o.id !== order.id && o.status !== 'Archived' && getOrderRemaining(o) > 0)
-          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-        otherDues = otherDueOrders.reduce((sum, o) => sum + getOrderRemaining(o), 0);
+    if (deliverIncludeOldDues) {
+      let loadedOtherOrders = false;
+      try {
+        const otherRes = await fetch(`/api/customers/${order.customer_id}/orders`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (otherRes.ok) {
+          const otherOrders: Order[] = await otherRes.json();
+          otherDueOrders = collectOtherDueOrders(otherOrders, order.id);
+          loadedOtherOrders = true;
+        }
+      } catch {
+        // Fall through to local cache
       }
-    } catch {}
+
+      // Local bootstrap cache only when API did not succeed
+      if (!loadedOtherOrders) {
+        otherDueOrders = collectOtherDueOrders(
+          localDataStore.getOrdersForCustomer(order.customer_id),
+          order.id
+        );
+      }
+    }
+
+    const otherDues = otherDueOrders.reduce((sum, o) => sum + getOrderRemaining(o), 0);
 
     if (remaining > 0 || otherDues > 0) {
       setPendingDeliverOrder(order);
@@ -1093,49 +1117,57 @@ export default function OrdersSection({
     return merged;
   };
 
-  const handleDeliverCollectPayment = async () => {
+  const handleDeliverCollectPayment = async (opts?: { skipPayment?: boolean }) => {
     if (!pendingDeliverOrder || collectingPayment) return;
 
-    const amountToCollect = Math.max(0, Number(collectAmount) || 0);
+    if (opts?.skipPayment && deliverPaymentMode === 'require') {
+      alert('This shop requires collecting this order’s remaining balance before delivery.');
+      return;
+    }
+
+    const amountToCollect = opts?.skipPayment ? 0 : Math.max(0, Number(collectAmount) || 0);
     const currentDue = getOrderRemaining(pendingDeliverOrder);
-    if (amountToCollect < currentDue) {
-      alert(`Collect at least ${currency}${currentDue} (remaining balance) before delivering.`);
+
+    if (deliverPaymentMode === 'require' && amountToCollect < currentDue) {
+      alert(`Collect at least ${currency}${currentDue} (this order’s remaining) before delivering.`);
       return;
     }
 
     setCollectingPayment(true);
     let paymentApplied = false;
     try {
-      let remainingPool = amountToCollect;
-      const paymentUpdates: { order: Order; newPaid: number }[] = [];
+      if (amountToCollect > 0) {
+        let remainingPool = amountToCollect;
+        const paymentUpdates: { order: Order; newPaid: number }[] = [];
 
-      // 1) Apply to the order being delivered first
-      const toCurrent = Math.min(remainingPool, currentDue);
-      remainingPool -= toCurrent;
-      let currentNewPaid = (pendingDeliverOrder.paid_amount || 0) + toCurrent;
+        // 1) Apply to the order being delivered first
+        const toCurrent = Math.min(remainingPool, currentDue);
+        remainingPool -= toCurrent;
+        let currentNewPaid = (pendingDeliverOrder.paid_amount || 0) + toCurrent;
 
-      // 2) Apply leftover to other unpaid orders (oldest first)
-      for (const other of pendingOtherDueOrders) {
-        if (remainingPool <= 0) break;
-        const due = getOrderRemaining(other);
-        if (due <= 0) continue;
-        const apply = Math.min(remainingPool, due);
-        paymentUpdates.push({ order: other, newPaid: (other.paid_amount || 0) + apply });
-        remainingPool -= apply;
-      }
+        // 2) Apply leftover to other unpaid orders (oldest first)
+        for (const other of pendingOtherDueOrders) {
+          if (remainingPool <= 0) break;
+          const due = getOrderRemaining(other);
+          if (due <= 0) continue;
+          const apply = Math.min(remainingPool, due);
+          paymentUpdates.push({ order: other, newPaid: (other.paid_amount || 0) + apply });
+          remainingPool -= apply;
+        }
 
-      // 3) Any amount beyond total outstanding stays on the current order
-      if (remainingPool > 0) {
-        currentNewPaid += remainingPool;
-      }
+        // 3) Any amount beyond total outstanding stays on the current order
+        if (remainingPool > 0) {
+          currentNewPaid += remainingPool;
+        }
 
-      if (currentNewPaid !== (pendingDeliverOrder.paid_amount || 0)) {
-        await applyPaidAmountUpdate(pendingDeliverOrder, currentNewPaid);
-        paymentApplied = true;
-      }
-      for (const update of paymentUpdates) {
-        await applyPaidAmountUpdate(update.order, update.newPaid);
-        paymentApplied = true;
+        if (currentNewPaid !== (pendingDeliverOrder.paid_amount || 0)) {
+          await applyPaidAmountUpdate(pendingDeliverOrder, currentNewPaid);
+          paymentApplied = true;
+        }
+        for (const update of paymentUpdates) {
+          await applyPaidAmountUpdate(update.order, update.newPaid);
+          paymentApplied = true;
+        }
       }
 
       // Refresh order snapshot after payments before status change
@@ -1609,7 +1641,7 @@ export default function OrdersSection({
               )}
               {orders.map((o) => {
                 const isSelected = selectedOrder?.id === o.id;
-                const remaining = (o.final_total ?? o.total_amount) - o.paid_amount;
+                const remaining = getOrderRemaining(o);
                 return (
                   <button
                     key={o.id}
@@ -1633,7 +1665,7 @@ export default function OrdersSection({
                         amount={o.total_amount}
                         className="text-sm block leading-tight"
                       />
-                      <PaymentChip currency={currency} remaining={remaining} />
+                      <PaymentChip currency={currency} remaining={remaining} status={o.status} />
                     </div>
                   </button>
                 );
@@ -2678,7 +2710,7 @@ export default function OrdersSection({
                       )}
                       {customerOrders.map((o) => {
                         const isCurrentOrder = selectedOrder?.id === o.id;
-                        const remaining = (o.final_total ?? o.total_amount) - o.paid_amount;
+                        const remaining = getOrderRemaining(o);
                         return (
                           <button
                             key={o.id}
@@ -2701,7 +2733,7 @@ export default function OrdersSection({
                             </div>
                             <div className="text-right space-y-1 shrink-0">
                               <MoneyTotal currency={currency} amount={o.total_amount} className="text-xs block" />
-                              <PaymentChip currency={currency} remaining={remaining} />
+                              <PaymentChip currency={currency} remaining={remaining} status={o.status} />
                             </div>
                           </button>
                         );
@@ -3652,8 +3684,24 @@ export default function OrdersSection({
             <div>
               <h3 className="text-h2">Payment Due</h3>
               <p className="text-xs text-secondary mt-1 leading-relaxed">
-                Order <OrderId value={pendingDeliverOrder.order_number} className="!inline !text-xs" /> for{' '}
-                <CustomerName name={pendingDeliverOrder.customer_name} className="!inline" /> has an outstanding balance.
+                {getOrderRemaining(pendingDeliverOrder) > 0 ? (
+                  <>
+                    Order <OrderId value={pendingDeliverOrder.order_number} className="!inline !text-xs" /> for{' '}
+                    <CustomerName name={pendingDeliverOrder.customer_name} className="!inline" /> has an outstanding balance
+                    {oldDues > 0 ? ', plus unpaid dues on earlier orders' : ''}.
+                    {deliverPaymentMode === 'require'
+                      ? ' Collect this order’s remaining balance to deliver.'
+                      : ' Collect what you can, or deliver and keep the due.'}
+                  </>
+                ) : (
+                  <>
+                    <CustomerName name={pendingDeliverOrder.customer_name} className="!inline" /> has unpaid dues on{' '}
+                    {pendingOtherDueOrders.length} earlier order{pendingOtherDueOrders.length === 1 ? '' : 's'}.
+                    {deliverPaymentMode === 'require'
+                      ? ' You can collect now or deliver this order.'
+                      : ' You can collect now or deliver anyway.'}
+                  </>
+                )}
               </p>
             </div>
 
@@ -3693,7 +3741,7 @@ export default function OrdersSection({
             </div>
 
             <div className="text-left space-y-1">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Collect Payment ({currency})</label>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Collect Now ({currency})</label>
               <input
                 type="number"
                 min="0"
@@ -3707,22 +3755,40 @@ export default function OrdersSection({
                 }}
                 className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl font-semibold text-slate-800 text-sm focus-visible:outline-none focus:border-brand-sky disabled:opacity-60"
               />
-              {oldDues > 0 && (
-                <p className="text-3xs text-slate-400 font-medium pt-1">
-                  Payment is applied to this order first, then to older unpaid orders.
-                </p>
-              )}
+              <p className="text-3xs text-slate-400 font-medium pt-1">
+                {deliverPaymentMode === 'require'
+                  ? `Collect at least this order’s remaining (${currency}${getOrderRemaining(pendingDeliverOrder)}) to deliver.`
+                  : 'Partial payment is fine. Any unpaid amount stays as due'}
+                {deliverPaymentMode !== 'require' && oldDues > 0 ? ' — applied to this order first, then older unpaid orders' : ''}
+                {deliverPaymentMode !== 'require' ? '.' : ''}
+              </p>
             </div>
 
             <div className="space-y-2">
               <button
                 type="button"
                 disabled={collectingPayment}
-                onClick={handleDeliverCollectPayment}
+                onClick={() => handleDeliverCollectPayment()}
                 className="btn-success w-full disabled:opacity-60"
               >
-                {collectingPayment ? 'Collecting...' : `Collect ${currency}${collectAmount} & Deliver`}
+                {collectingPayment
+                  ? 'Working...'
+                  : collectAmount > 0
+                    ? `Collect ${currency}${collectAmount} & Deliver`
+                    : deliverPaymentMode === 'require' && getOrderRemaining(pendingDeliverOrder) > 0
+                      ? 'Collect & Deliver'
+                      : 'Deliver'}
               </button>
+              {deliverPaymentMode !== 'require' && collectAmount > 0 && (
+                <button
+                  type="button"
+                  disabled={collectingPayment}
+                  onClick={() => handleDeliverCollectPayment({ skipPayment: true })}
+                  className="w-full py-2.5 bg-white hover:bg-warning-50 text-warning-700 border border-warning-200 font-semibold rounded-xl text-xs uppercase tracking-wider cursor-pointer transition-[background-color] disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  Deliver with Due
+                </button>
+              )}
               <button
                 type="button"
                 disabled={collectingPayment}

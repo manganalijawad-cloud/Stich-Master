@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Search, 
   UserPlus, 
@@ -36,6 +36,7 @@ import {
 import { localDataStore } from '../lib/localDataStore';
 import { useLocalData } from '../lib/useLocalData';
 import { cacheCustomer, cacheMeasurements, cacheOrder, removeCachedCustomer } from '../lib/useLocalData';
+import { countCustomerDueOrders, getCustomerOutstanding, getOrderRemaining } from '../lib/orderPayment';
 
 interface CustomersSectionProps {
   token: string;
@@ -122,6 +123,28 @@ export default function CustomersSection({
   const [orderHistory, setOrderHistory] = useState<Order[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+
+  // Customer outstanding from local bootstrap cache (POS-style balance badge)
+  const outstandingByCustomerId = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const c of localData.customers || []) {
+      const due = getCustomerOutstanding(localDataStore.getOrdersForCustomer(c.id));
+      if (due > 0) map[c.id] = due;
+    }
+    return map;
+  }, [localData.customers, localData.version]);
+
+  const selectedOutstanding = useMemo(() => {
+    if (!selectedCustomer) return 0;
+    if (!historyLoading) return getCustomerOutstanding(orderHistory);
+    return outstandingByCustomerId[selectedCustomer.id] || 0;
+  }, [selectedCustomer, orderHistory, historyLoading, outstandingByCustomerId]);
+
+  const selectedDueOrderCount = useMemo(() => {
+    if (!selectedCustomer) return 0;
+    if (!historyLoading) return countCustomerDueOrders(orderHistory);
+    return countCustomerDueOrders(localDataStore.getOrdersForCustomer(selectedCustomer.id));
+  }, [selectedCustomer, orderHistory, historyLoading, localData.version]);
 
   // Helper unit abbreviation
   const getUnitAbbreviation = (unit?: string) => {
@@ -679,19 +702,20 @@ export default function CustomersSection({
                 <th className="table-th">Customer Name</th>
                 <th className="table-th">Mobile Number</th>
                 <th className="table-th">Address</th>
+                <th className="table-th text-right">Balance</th>
                 <th className="table-th text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading && customers.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="table-td text-center text-muted font-semibold">
+                  <td colSpan={5} className="table-td text-center text-muted font-semibold">
                     Searching...
                   </td>
                 </tr>
               ) : customers.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="table-td">
+                  <td colSpan={5} className="table-td">
                     <div className="empty-state py-8">
                       <p className="empty-state-title">No customers found</p>
                       <p className="empty-state-text">Try a different search.</p>
@@ -699,7 +723,9 @@ export default function CustomersSection({
                   </td>
                 </tr>
               ) : (
-                customers.map((c) => (
+                customers.map((c) => {
+                  const due = outstandingByCustomerId[c.id] || 0;
+                  return (
                   <tr key={c.id} className="table-tr">
                      <td className="table-td"><span className="text-customer-name">{c.name}</span></td>
                     <td className="table-td">
@@ -714,6 +740,13 @@ export default function CustomersSection({
                     </td>
                     <td className="table-td break-words min-w-0">{c.address || <span className="text-muted italic">No address</span>}</td>
                     <td className="table-td text-right">
+                      {due > 0 ? (
+                        <PaymentChip currency={currency} remaining={due} />
+                      ) : (
+                        <span className="text-3xs text-muted font-semibold uppercase tracking-wider">—</span>
+                      )}
+                    </td>
+                    <td className="table-td text-right">
                       <button
                         onClick={() => {
                           setSelectedCustomer(c);
@@ -725,7 +758,8 @@ export default function CustomersSection({
                       </button>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -839,7 +873,9 @@ export default function CustomersSection({
                     <p className="empty-state-text">Add a customer to start taking measurements and orders.</p>
                   </div>
                 )}
-                {(searchQuery ? customers : recentCustomers).map((c) => (
+                {(searchQuery ? customers : recentCustomers).map((c) => {
+                  const due = outstandingByCustomerId[c.id] || 0;
+                  return (
                   <button
                     key={c.id}
                     onClick={() => {
@@ -847,7 +883,7 @@ export default function CustomersSection({
                     }}
                     className={`list-row ${selectedCustomer?.id === c.id ? 'list-row-selected' : ''}`}
                   >
-                    <div className="space-y-0.5 min-w-0">
+                    <div className="space-y-0.5 min-w-0 flex-1">
                       <CustomerName name={c.name} as="p" className="truncate" />
                       {c.phone && !c.phone.startsWith('NO-PHONE-') ? (
                         <div className="flex items-center gap-1 text-secondary text-caption-xs">
@@ -860,9 +896,13 @@ export default function CustomersSection({
                         </div>
                       )}
                     </div>
-                    <ChevronRight className={`icon-md shrink-0 ${selectedCustomer?.id === c.id ? 'text-info-600' : 'text-slate-400'}`} />
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {due > 0 && <PaymentChip currency={currency} remaining={due} className="!text-3xs" />}
+                      <ChevronRight className={`icon-md shrink-0 ${selectedCustomer?.id === c.id ? 'text-info-600' : 'text-slate-400'}`} />
+                    </div>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -911,6 +951,18 @@ export default function CustomersSection({
                 />
               ) : (
                 <CustomerName name={selectedCustomer.name} as="h1" className="!text-base tracking-tight uppercase" />
+              )}
+
+              {selectedOutstanding > 0 && (
+                <div className="flex items-center justify-between gap-2 rounded-xl border border-warning-200 bg-warning-50 px-2.5 py-1.5">
+                  <div className="min-w-0">
+                    <p className="text-3xs font-bold uppercase tracking-wider text-feedback-warning">Account balance</p>
+                    <p className="text-xs font-semibold text-slate-700 truncate">
+                      {selectedDueOrderCount} unpaid order{selectedDueOrderCount === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                  <PaymentChip currency={currency} remaining={selectedOutstanding} />
+                </div>
               )}
 
               {/* Attributes display - compact 2-column */}
@@ -1053,7 +1105,7 @@ export default function CustomersSection({
                 ) : (
                   <div className="space-y-1.5 max-h-[35vh] overflow-y-auto pr-1">
                     {orderHistory.map((order) => {
-                      const remaining = (order.final_total ?? order.total_amount) - order.paid_amount;
+                      const remaining = getOrderRemaining(order);
                       return (
                       <button
                         key={order.id}
@@ -1083,7 +1135,7 @@ export default function CustomersSection({
                             amount={order.final_total ?? order.total_amount}
                             className="text-sm block"
                           />
-                          <PaymentChip currency={currency} remaining={remaining} />
+                          <PaymentChip currency={currency} remaining={remaining} status={order.status} />
                           {onOpenOrder && (
                             <span className="text-3xs font-bold text-muted uppercase tracking-wider flex items-center justify-end gap-0.5">
                               Open <ChevronRight className="w-3 h-3" />

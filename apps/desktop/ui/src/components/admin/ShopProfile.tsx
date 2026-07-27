@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Save, Shield } from 'lucide-react';
+import type { DeliverPaymentMode } from '../../types';
 
 interface ShopProfileProps {
   token: string;
@@ -14,6 +15,8 @@ export default function ShopProfile({ token, onSettingsUpdated, onOwnerModeRequi
   const [currency, setCurrency] = useState('$');
   const [measurementUnit, setMeasurementUnit] = useState<'Inches' | 'Centimeters' | 'Feet'>('Inches');
   const [autoArchiveDays, setAutoArchiveDays] = useState<number>(30);
+  const [deliverPaymentMode, setDeliverPaymentMode] = useState<DeliverPaymentMode>('remind');
+  const [deliverIncludeOldDues, setDeliverIncludeOldDues] = useState(true);
   const [shopLogo, setShopLogo] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -34,6 +37,9 @@ export default function ShopProfile({ token, onSettingsUpdated, onOwnerModeRequi
         setCurrency(data.currency || '$');
         setMeasurementUnit(data.measurement_unit || 'Inches');
         setAutoArchiveDays(data.auto_archive_days !== undefined ? Number(data.auto_archive_days) : 30);
+        const mode = data.deliver_payment_mode;
+        setDeliverPaymentMode(mode === 'require' || mode === 'off' || mode === 'remind' ? mode : 'remind');
+        setDeliverIncludeOldDues(data.deliver_include_old_dues !== false);
         setShopLogo(data.shop_logo || '');
       }
     } catch (err) { console.error(err); }
@@ -58,6 +64,8 @@ export default function ShopProfile({ token, onSettingsUpdated, onOwnerModeRequi
           currency,
           measurement_unit: measurementUnit,
           auto_archive_days: autoArchiveDays,
+          deliver_payment_mode: deliverPaymentMode,
+          deliver_include_old_dues: deliverIncludeOldDues,
           shop_logo: shopLogo,
         }),
       });
@@ -150,6 +158,45 @@ export default function ShopProfile({ token, onSettingsUpdated, onOwnerModeRequi
               <option value={60}>60 Days</option>
               <option value={90}>90 Days</option>
             </select>
+          </div>
+        </div>
+      </section>
+
+      <section className="px-4 py-3 space-y-3">
+        <div className="flex items-center gap-2">
+          <Shield className="icon-xs text-brand-sky shrink-0" />
+          <h3 className="text-xs font-bold text-brand-sidebar uppercase tracking-wider">Delivery & Payments</h3>
+        </div>
+        <p className="text-3xs text-slate-500 max-w-3xl">
+          Choose what happens when staff advance an order to Delivered and money is still owed.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-3xl">
+          <div>
+            <label className="text-3xs font-bold text-slate-500 uppercase tracking-wider block mb-0.5">On deliver with dues</label>
+            <select
+              value={deliverPaymentMode}
+              onChange={(e) => setDeliverPaymentMode(e.target.value as DeliverPaymentMode)}
+              className="select-base text-xs"
+            >
+              <option value="remind">Remind — allow partial pay or deliver with due</option>
+              <option value="require">Require — must collect this order’s remaining first</option>
+              <option value="off">Off — deliver without asking</option>
+            </select>
+          </div>
+          <div className="flex items-end">
+            <label className={`flex items-start gap-2 text-xs text-slate-700 ${deliverPaymentMode === 'off' ? 'opacity-50' : ''}`}>
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={deliverIncludeOldDues}
+                disabled={deliverPaymentMode === 'off'}
+                onChange={(e) => setDeliverIncludeOldDues(e.target.checked)}
+              />
+              <span>
+                <span className="font-semibold block">Also show old customer dues</span>
+                <span className="text-3xs text-slate-500">Include unpaid balances from this customer’s other orders</span>
+              </span>
+            </label>
           </div>
         </div>
       </section>

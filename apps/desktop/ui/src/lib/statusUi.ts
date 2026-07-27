@@ -46,10 +46,16 @@ export function getPaymentChipClass(remaining: number): string {
   return remaining > 0 ? 'chip-due' : 'chip-paid';
 }
 
-export function getPaymentLabel(remaining: number, currency: string): string {
+export function getPaymentLabel(
+  remaining: number,
+  currency: string,
+  status?: string,
+): string {
   if (remaining > 0) {
     const n = Math.round(remaining);
-    return `Due ${currency}${n.toLocaleString()}`;
+    // Delivered-but-unpaid: scan as leftover receivable, not a new booking due
+    const prefix = status === 'Delivered' ? 'Still due' : 'Due';
+    return `${prefix} ${currency}${n.toLocaleString()}`;
   }
   return 'Paid';
 }

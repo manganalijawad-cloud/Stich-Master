@@ -9,6 +9,7 @@ export type {
   AuditMeta,
   AuditLog,
   PipelineStage,
+  DeliverPaymentMode,
   ShopSettings,
   MeasurementField,
   GarmentType,

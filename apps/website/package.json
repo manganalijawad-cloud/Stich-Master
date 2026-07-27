@@ -5,10 +5,14 @@
   "type": "module",
   "scripts": {
     "sync": "node ../../scripts/sync-release.mjs",
-    "predev": "node ../../scripts/sync-release.mjs",
+    "css": "tailwindcss -i ./src/input.css -o ./styles.css --minify",
+    "predev": "node ../../scripts/sync-release.mjs && npm run css",
     "dev": "node ../../scripts/dev-website.mjs",
-    "build": "node ../../scripts/sync-release.mjs && echo 'Static site — nothing to build'",
+    "build": "npm run css && node build.mjs",
     "prestart": "node ../../scripts/sync-release.mjs",
     "start": "node ../../scripts/dev-website.mjs"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.17"
   }
 }

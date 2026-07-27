@@ -121,6 +121,9 @@ export interface PipelineStage {
   enabled: boolean;
 }
 
+/** How the app behaves when advancing an order to Delivered with unpaid balance. */
+export type DeliverPaymentMode = 'remind' | 'require' | 'off';
+
 export interface ShopSettings {
   shop_id?: string;
   shop_name: string;
@@ -131,6 +134,10 @@ export interface ShopSettings {
   pipeline_stages?: PipelineStage[]; // customizable pipeline stages
   auto_archive_days?: number; // default: 30 days
   measurement_unit?: 'Inches' | 'Centimeters' | 'Feet';
+  /** remind = soft dialog (default); require = must pay this order; off = no dialog */
+  deliver_payment_mode?: DeliverPaymentMode;
+  /** When true (default), deliver dialog also includes unpaid dues on other customer orders */
+  deliver_include_old_dues?: boolean;
   updated_at: string;
   updated_by: string;
 }

@@ -7,7 +7,7 @@ import FinancialReports from './components/FinancialReports';
 
 import TitleBar from './components/TitleBar';
 import VersionInfo from './components/VersionInfo';
-import { Customer, PipelineStage } from './types';
+import { Customer, DeliverPaymentMode, PipelineStage } from './types';
 import { DEFAULT_PIPELINE_STAGES } from '@hello-darzi/shared';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -206,6 +206,8 @@ function AuthWrapper() {
   const [measurementUnit, setMeasurementUnit] = useState<'Inches' | 'Centimeters' | 'Feet'>('Inches');
   const [termsConditions, setTermsConditions] = useState('');
   const [receiptFooterText, setReceiptFooterText] = useState('');
+  const [deliverPaymentMode, setDeliverPaymentMode] = useState<DeliverPaymentMode>('remind');
+  const [deliverIncludeOldDues, setDeliverIncludeOldDues] = useState(true);
   const [activeOrderId, setActiveOrderId] = useState<string | undefined>(undefined);
   const [activeItemIdx, setActiveItemIdx] = useState<number | undefined>(undefined);
 
@@ -262,6 +264,9 @@ function AuthWrapper() {
     setMeasurementFields(settingsData.measurement_fields || []);
     setMeasurementUnit(settingsData.measurement_unit || 'Inches');
     setPipelineStages(settingsData.pipeline_stages || DEFAULT_PIPELINE_STAGES);
+    const mode = settingsData.deliver_payment_mode;
+    setDeliverPaymentMode(mode === 'require' || mode === 'off' || mode === 'remind' ? mode : 'remind');
+    setDeliverIncludeOldDues(settingsData.deliver_include_old_dues !== false);
   }, []);
 
   // Instant paint from last-known settings (localStorage) before bootstrap returns
@@ -656,6 +661,8 @@ function AuthWrapper() {
                 shopLogo={shopLogo}
                 termsConditions={termsConditions}
                 receiptFooterText={receiptFooterText}
+                deliverPaymentMode={deliverPaymentMode}
+                deliverIncludeOldDues={deliverIncludeOldDues}
                 isOwnerMode={activeMode === 'Owner'}
               />
             )}
