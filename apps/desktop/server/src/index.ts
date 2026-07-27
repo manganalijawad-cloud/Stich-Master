@@ -453,10 +453,34 @@ function parseJsonColumn(val: unknown, fallback: unknown) {
   if (typeof val === "object") return val;
   if (typeof val !== "string") return fallback;
   try {
-    return JSON.parse(val);
+    let parsed: unknown = JSON.parse(val);
+    // Some rows were double-encoded historically — unwrap once more.
+    if (typeof parsed === "string") {
+      try {
+        parsed = JSON.parse(parsed);
+      } catch {
+        /* keep first parse result */
+      }
+    }
+    return parsed;
   } catch {
     return fallback;
   }
+}
+
+/** Ensure order.items is always a real array with object snapshots (never JSON strings). */
+function normalizeOrderItems(items: unknown): any[] {
+  const parsed = parseJsonColumn(items, []);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.map((item: any) => {
+    if (!item || typeof item !== "object") return item;
+    return {
+      ...item,
+      price: Number(item.price) || 0,
+      measurement_snapshot: parseJsonColumn(item.measurement_snapshot, {}),
+      styling_snapshot: parseJsonColumn(item.styling_snapshot, {}),
+    };
+  });
 }
 
 function normalizeGarmentTypeRow(row: any) {
@@ -490,7 +514,7 @@ function normalizeMeasurementRow(row: any) {
 function normalizeOrderRow(row: any, customer?: { name?: string; phone?: string; address?: string } | null) {
   return {
     ...row,
-    items: parseJsonColumn(row.items, []),
+    items: normalizeOrderItems(row.items),
     measurement_snapshot: parseJsonColumn(row.measurement_snapshot, {}),
     total_amount: Number(row.total_amount) || 0,
     discount_value: Number(row.discount_value) || 0,

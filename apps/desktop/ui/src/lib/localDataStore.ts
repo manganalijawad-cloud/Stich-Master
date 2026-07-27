@@ -346,11 +346,27 @@ class LocalDataStore {
   }
 
   upsertOrder(order: Order) {
-    const idx = this.snapshot.orders.findIndex((o) => o.id === order.id);
+    const safe: Order = {
+      ...order,
+      items: Array.isArray(order.items)
+        ? order.items
+        : (() => {
+            if (typeof (order as any).items === 'string') {
+              try {
+                const parsed = JSON.parse((order as any).items);
+                return Array.isArray(parsed) ? parsed : [];
+              } catch {
+                return [];
+              }
+            }
+            return [];
+          })(),
+    };
+    const idx = this.snapshot.orders.findIndex((o) => o.id === safe.id);
     const orders =
       idx >= 0
-        ? this.snapshot.orders.map((o, i) => (i === idx ? { ...o, ...order } : o))
-        : [order, ...this.snapshot.orders];
+        ? this.snapshot.orders.map((o, i) => (i === idx ? { ...o, ...safe } : o))
+        : [safe, ...this.snapshot.orders];
     this.setPartial({ orders });
   }
 

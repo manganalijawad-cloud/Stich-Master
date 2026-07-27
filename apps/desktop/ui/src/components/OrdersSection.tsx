@@ -29,20 +29,44 @@ function profileHasSavedMeasurements(profile: MeasurementProfile): boolean {
   return Object.values(profile.values || {}).some(v => String(v ?? '').trim() !== '');
 }
 
+/** Always return a real OrderItem[] — raw SQLite/API JSON strings crash React on `.map()`. */
+function ensureOrderItems(items: unknown, fallback: OrderItem[] = []): OrderItem[] {
+  if (Array.isArray(items)) return items as OrderItem[];
+  if (typeof items === 'string') {
+    try {
+      let parsed: unknown = JSON.parse(items);
+      if (typeof parsed === 'string') {
+        try {
+          parsed = JSON.parse(parsed);
+        } catch {
+          /* keep first parse */
+        }
+      }
+      return Array.isArray(parsed) ? (parsed as OrderItem[]) : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
 /** Merge API order payloads without letting raw JSON-string `items` wipe the array (white-screen crash). */
 function mergeOrderFromApi(existing: Order, data: Partial<Order> & Record<string, unknown>): Order {
   const merged: Order = { ...existing, ...data } as Order;
-  if (!Array.isArray(merged.items)) {
-    if (typeof (data as any).items === 'string') {
-      try {
-        const parsed = JSON.parse((data as any).items);
-        merged.items = Array.isArray(parsed) ? parsed : existing.items || [];
-      } catch {
-        merged.items = existing.items || [];
-      }
-    } else {
-      merged.items = existing.items || [];
+  merged.items = ensureOrderItems(
+    merged.items,
+    ensureOrderItems(existing.items, [])
+  );
+  // Snapshots can also arrive as JSON strings from older server builds.
+  if (merged.measurement_snapshot != null && typeof merged.measurement_snapshot === 'string') {
+    try {
+      merged.measurement_snapshot = JSON.parse(merged.measurement_snapshot as unknown as string);
+    } catch {
+      merged.measurement_snapshot = existing.measurement_snapshot || {};
     }
+  }
+  if (!merged.measurement_snapshot || typeof merged.measurement_snapshot !== 'object') {
+    merged.measurement_snapshot = existing.measurement_snapshot || {};
   }
   return merged;
 }
@@ -175,7 +199,7 @@ export default function OrdersSection({
           buildOrderQrPayload(selectedOrder.id),
           qrOpts
         );
-        const items = selectedOrder.items || [];
+        const items = ensureOrderItems(selectedOrder.items);
         for (let i = 0; i < items.length; i++) {
           next[`item-${i}`] = await QRCode.toDataURL(
             buildOrderQrPayload(selectedOrder.id, i),
@@ -2060,7 +2084,7 @@ export default function OrdersSection({
                           })
                           .map(([catId, optId]) => {
                             const catObj = stylingCategories.find(c => c.id === catId);
-                            const optObj = catObj?.options.find(o => o.id === optId);
+                            const optObj = catObj?.options?.find(o => o.id === optId);
                             return (
                               <span key={catId} className="bg-slate-50 text-slate-600 px-2.5 py-1 rounded-md text-xs font-semibold border border-slate-200">
                                 {catObj?.name}: {optObj?.name || optId}
@@ -2538,11 +2562,14 @@ export default function OrdersSection({
                         status={selectedOrder.status}
                         label={stagesList.find(s => s.id === selectedOrder.status)?.name || selectedOrder.status}
                       />
-                      {selectedOrder.items && (
+                      {(() => {
+                        const itemCount = ensureOrderItems(selectedOrder.items).length;
+                        return itemCount > 0 ? (
                         <span className="text-xs font-semibold text-secondary font-mono bg-slate-100 px-2 py-0.5 rounded-md">
-                          {selectedOrder.items.length} item{selectedOrder.items.length !== 1 ? 's' : ''}
+                          {itemCount} item{itemCount !== 1 ? 's' : ''}
                         </span>
-                      )}
+                        ) : null;
+                      })()}
                     </div>
                     <CustomerName name={selectedOrder.customer_name} as="p" className="!text-base" />
                     <p className="text-xs text-secondary">
@@ -2578,7 +2605,7 @@ export default function OrdersSection({
                     {isOwnerMode && selectedOrder.status !== 'Delivered' && selectedOrder.status !== 'Archived' && (
                       <button
                         onClick={() => {
-                          setEditedItems([...(selectedOrder.items || [])]);
+                          setEditedItems([...ensureOrderItems(selectedOrder.items)]);
                           setEditedPaid(selectedOrder.paid_amount);
                           setEditedDueDate(selectedOrder.due_date?.split('T')[0] || '');
                           setEditedSnapshot({ ...selectedOrder.measurement_snapshot });
@@ -2769,9 +2796,15 @@ export default function OrdersSection({
                 <div className="space-y-3">
                   <span className="font-semibold text-xs text-slate-700 uppercase tracking-wider block">Order Garments List</span>
                   <div className="divide-y divide-slate-100 bg-slate-50/50 rounded-lg border border-slate-200/60 overflow-hidden">
-                    {(selectedOrder.items || []).map((item, i) => {
-                      const hasItemMeas = item.measurement_snapshot && Object.keys(item.measurement_snapshot).length > 0;
-                      const hasItemStyling = item.styling_snapshot && Object.keys(item.styling_snapshot).length > 0;
+                    {ensureOrderItems(selectedOrder.items).map((item, i) => {
+                      const measSnap = item.measurement_snapshot && typeof item.measurement_snapshot === 'object'
+                        ? item.measurement_snapshot
+                        : null;
+                      const styleSnap = item.styling_snapshot && typeof item.styling_snapshot === 'object'
+                        ? item.styling_snapshot
+                        : null;
+                      const hasItemMeas = !!(measSnap && Object.keys(measSnap).length > 0);
+                      const hasItemStyling = !!(styleSnap && Object.keys(styleSnap).length > 0);
 
                       return (
                         <div key={i} className="p-3 bg-white first:rounded-t-lg last:rounded-b-lg border-b border-slate-100 last:border-0 space-y-2">
@@ -2806,7 +2839,7 @@ export default function OrdersSection({
                               </button>
                               {showStyling && (
                                 <div className="flex flex-wrap gap-1.5 mt-2">
-                                  {Object.entries(item.styling_snapshot || {})
+                                  {Object.entries(styleSnap || {})
                                     .filter(([catId, optId]) => {
                                       const category = stylingCategories.find(c => c.id === catId || c.name === catId);
                                       const gType = garmentTypes.find(g => g.name === item.type);
@@ -2814,7 +2847,7 @@ export default function OrdersSection({
                                     })
                                     .map(([catId, optId]) => {
                                       const category = stylingCategories.find(c => c.id === catId || c.name === catId);
-                                      const option = category?.options.find(o => o.id === optId || o.name === optId);
+                                      const option = category?.options?.find(o => o.id === optId || o.name === optId);
                                       return (
                                         <span key={catId} className="text-3xs bg-white border border-slate-200 px-2 py-0.5 rounded font-semibold text-slate-700">
                                           <strong>{category?.name || catId}:</strong> {option?.name || optId}
@@ -2839,7 +2872,7 @@ export default function OrdersSection({
                               </button>
                               {showMeasurements && (
                                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 mt-2">
-                                  {Object.entries(item.measurement_snapshot || {}).map(([field, val]) => (
+                                  {Object.entries(measSnap || {}).map(([field, val]) => (
                                     <div key={field} className="bg-white p-1.5 border border-slate-200/40 rounded flex flex-col items-center">
                                       <span className="text-3xs font-semibold text-slate-400 uppercase break-words text-center leading-tight" title={field}>{field}</span>
                                       <span className="text-xs font-black text-slate-800 mt-0.5">{val || '--'}</span>
@@ -2899,7 +2932,10 @@ export default function OrdersSection({
                 </div>
 
                 {/* Legacy global measurements fallback display if no items have individual snapshots */}
-                {!selectedOrder.items?.some(item => item.measurement_snapshot && Object.keys(item.measurement_snapshot).length > 0) && (
+                {!ensureOrderItems(selectedOrder.items).some(item => {
+                  const snap = item.measurement_snapshot;
+                  return !!(snap && typeof snap === 'object' && Object.keys(snap).length > 0);
+                }) && (
                   <div>
                     <button
                       type="button"
@@ -3009,7 +3045,7 @@ export default function OrdersSection({
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedOrder.items.map((item, idx) => {
+                    {ensureOrderItems(selectedOrder.items).map((item, idx) => {
                       const qty = item.quantity || 1;
                       return (
                         <tr key={idx} className="border-b border-gray-100">
@@ -3085,12 +3121,16 @@ export default function OrdersSection({
           <div className={`${printOptions.measure ? '' : 'hidden'}`}>
             {(() => {
               const slips: React.ReactNode[] = [];
-              const itemsWithData = (selectedOrder.items || [])
+              const itemsWithData = ensureOrderItems(selectedOrder.items)
                 .map((item, originalIdx) => ({ item, originalIdx }))
-                .filter(({ item }) =>
-                  (item.measurement_snapshot && Object.keys(item.measurement_snapshot).length > 0) ||
-                  (item.styling_snapshot && Object.keys(item.styling_snapshot).length > 0)
-                );
+                .filter(({ item }) => {
+                  const meas = item.measurement_snapshot;
+                  const style = item.styling_snapshot;
+                  return (
+                    !!(meas && typeof meas === 'object' && Object.keys(meas).length > 0) ||
+                    !!(style && typeof style === 'object' && Object.keys(style).length > 0)
+                  );
+                });
               if (itemsWithData.length === 0) return null;
 
               for (let page = 0; page < Math.ceil(itemsWithData.length / 2); page++) {
@@ -3145,7 +3185,7 @@ export default function OrdersSection({
                           </div>
 
                           {/* Measurements */}
-                          {item.measurement_snapshot && Object.keys(item.measurement_snapshot).length > 0 && (
+                          {item.measurement_snapshot && typeof item.measurement_snapshot === 'object' && Object.keys(item.measurement_snapshot).length > 0 && (
                             <div className="meas-section">
                               <h3 className="meas-section-title">Measurements</h3>
                               <div className="meas-grid">
@@ -3160,7 +3200,7 @@ export default function OrdersSection({
                           )}
 
                           {/* Styling */}
-                          {item.styling_snapshot && Object.keys(item.styling_snapshot).length > 0 && (
+                          {item.styling_snapshot && typeof item.styling_snapshot === 'object' && Object.keys(item.styling_snapshot).length > 0 && (
                             <div className="meas-section">
                               <h3 className="meas-section-title">Styling</h3>
                               <div className="meas-styling-list">
@@ -3172,7 +3212,7 @@ export default function OrdersSection({
                                   })
                                   .map(([catId, optId]) => {
                                     const category = stylingCategories.find(c => c.id === catId || c.name === catId);
-                                    const option = category?.options.find(o => o.id === optId || o.name === optId);
+                                    const option = category?.options?.find(o => o.id === optId || o.name === optId);
                                     return (
                                       <span key={catId} className="meas-styling-chip">
                                         <strong>{category?.name || catId}:</strong> {option?.name || optId}
@@ -3417,7 +3457,7 @@ export default function OrdersSection({
                         </div>
                         
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1">
-                          {o.items?.map((item, idx) => (
+                          {ensureOrderItems(o.items).map((item, idx) => (
                             <button
                               key={idx}
                               onClick={() => {
