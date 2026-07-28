@@ -1643,7 +1643,7 @@ const DEV_PORT_FILE = path.join(process.cwd(), ".dev-server-port");
 
 /** Publish port for wait-and-start-desktop.mjs / local browser. Skip packaged production. */
 function shouldPublishDevPort(): boolean {
-  if (process.env.VERCEL || process.env.NETLIFY) return false;
+  if (process.env.VERCEL) return false;
   if (process.env.NODE_ENV === "production" && process.env.ELECTRON_SERVER_MANAGED === "1") {
     return false;
   }
@@ -1717,7 +1717,7 @@ async function startServer(preferredPort?: number): Promise<number> {
   }
 
   // Set up static/Vite middleware once before binding
-  if (!process.env.VERCEL && !process.env.NETLIFY && process.env.NODE_ENV !== "production") {
+  if (!process.env.VERCEL && process.env.NODE_ENV !== "production") {
     try {
       const viteModule = await import("vite");
       const viteConfigPath = path.resolve(
@@ -1759,7 +1759,7 @@ export { app, PORT, startServer };
 
 // Auto-start for `npm run dev` and `npm run dev:desktop` (ELECTRON_RUN=true).
 // Packaged Electron sets ELECTRON_SERVER_MANAGED=1 and calls startServer() itself.
-if (!process.env.VERCEL && !process.env.NETLIFY && process.env.ELECTRON_SERVER_MANAGED !== "1") {
+if (!process.env.VERCEL && process.env.ELECTRON_SERVER_MANAGED !== "1") {
   const cleanupDevPort = () => clearDevPortFile();
   process.once("exit", cleanupDevPort);
   process.once("SIGINT", () => {
