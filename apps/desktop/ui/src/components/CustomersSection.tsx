@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
   Search, 
   UserPlus, 
@@ -37,6 +37,7 @@ import { localDataStore } from '../lib/localDataStore';
 import { useLocalData } from '../lib/useLocalData';
 import { cacheCustomer, cacheMeasurements, cacheOrder, removeCachedCustomer } from '../lib/useLocalData';
 import { countCustomerDueOrders, getCustomerOutstanding, getOrderRemaining } from '../lib/orderPayment';
+import { focusElement, isEditableTarget, isMod, matchHotkeys } from '../lib/keyboard';
 
 interface CustomersSectionProps {
   token: string;
@@ -76,6 +77,8 @@ export default function CustomersSection({
 
   // Create customer form state
   const [isCreating, setIsCreating] = useState(false);
+  const customerSearchRef = useRef<HTMLInputElement | null>(null);
+  const customerListRef = useRef<HTMLDivElement | null>(null);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [isNameDuplicate, setIsNameDuplicate] = useState(false);
@@ -770,30 +773,80 @@ export default function CustomersSection({
     );
   }
 
+
+  const startCreateCustomer = useCallback(() => {
+    setIsCreating(true);
+    setSelectedCustomer(null);
+    const enabled = garmentTypes.filter(g => g.enabled);
+    if (enabled.length > 0) setSelectedGarmentTypeId(enabled[0].id);
+    setInitialMeasurements({});
+  }, [garmentTypes]);
+
+  // Customers hotkeys
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      matchHotkeys(e, [
+        (ev) => {
+          if (ev.key === 'Escape' && isCreating) {
+            setIsCreating(false);
+            return true;
+          }
+        },
+        (ev) => {
+          if (isCreating) return;
+          if (isMod(ev) && (ev.key === 'n' || ev.key === 'N')) {
+            startCreateCustomer();
+            return true;
+          }
+          if ((isMod(ev) && (ev.key === 'f' || ev.key === 'F')) || (ev.key === '/' && !isEditableTarget(ev.target))) {
+            focusElement(customerSearchRef.current);
+            return true;
+          }
+          if (!isEditableTarget(ev.target) && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp')) {
+            const list = searchQuery ? customers : recentCustomers;
+            if (!list.length) return;
+            const current = list.findIndex(c => c.id === selectedCustomer?.id);
+            const next = ev.key === 'ArrowDown'
+              ? Math.min((current < 0 ? -1 : current) + 1, list.length - 1)
+              : Math.max((current < 0 ? list.length : current) - 1, 0);
+            const cust = list[next];
+            if (cust) {
+              setSelectedCustomer(cust);
+              const row = customerListRef.current?.querySelector(`[data-customer-index="${next}"]`) as HTMLElement | null;
+              row?.scrollIntoView({ block: 'nearest' });
+            }
+            return true;
+          }
+          if (isMod(ev) && (ev.key === 'p' || ev.key === 'P') && selectedCustomer) {
+            // print measurements if handler exists via button click
+            const btn = document.getElementById('customers-print-btn') as HTMLButtonElement | null;
+            btn?.click();
+            return true;
+          }
+        },
+      ]);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [isCreating, searchQuery, customers, recentCustomers, selectedCustomer, startCreateCustomer]);
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch min-h-0 lg:h-full">
+    <div className="desk-fill grid grid-cols-1 lg:grid-cols-12 gap-2 items-stretch min-h-0">
       
       {/* LEFT COLUMN: Customer Search & List */}
-      <div className="lg:col-span-5 card stack-sm flex flex-col min-h-0 overflow-hidden lg:h-full">
+      <div className="lg:col-span-5 card-dense stack-xs flex flex-col min-h-0 overflow-hidden h-full">
         <div className="stack-sm flex-1 min-h-0 flex flex-col">
           <div className="flex items-center justify-between gap-2 shrink-0">
             <h2 className="text-h2">Customers</h2>
             {!isCreating && (
               <button
-                onClick={() => {
-                  setIsCreating(true);
-                  setSelectedCustomer(null);
-                  // Pre-populate with first enabled garment type
-                  const enabled = garmentTypes.filter(g => g.enabled);
-                  if (enabled.length > 0) {
-                    setSelectedGarmentTypeId(enabled[0].id);
-                  }
-                  setInitialMeasurements({});
-                }}
+                onClick={startCreateCustomer}
                 className="btn-primary"
+                title="New customer (Ctrl+N)"
               >
                 <UserPlus className="icon-sm" />
                 Add Customer
+                <kbd className="hidden xl:inline text-[9px] font-mono opacity-70 ml-1">Ctrl+N</kbd>
               </button>
             )}
           </div>
@@ -802,11 +855,13 @@ export default function CustomersSection({
             <div className="relative shrink-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 icon-sm text-slate-400" />
               <input
+                ref={customerSearchRef}
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search customers by name, phone..."
+                placeholder="Search customers… (/ or Ctrl+F)"
                 className="input-base pl-9 pr-9"
+                aria-label="Search customers"
               />
               {searchQuery && (
                 <button
@@ -853,7 +908,7 @@ export default function CustomersSection({
                   {searchQuery ? `Search Results (${customers.length})` : 'Newly Added Customers'}
                 </span>
 
-              <div className="panel-scroll space-y-1.5 pr-0.5">
+              <div ref={customerListRef} className="panel-scroll space-y-1 pr-0.5">
                 {loading && (
                   <p className="text-center text-muted py-3 text-caption-xs font-semibold">Searching...</p>
                 )}
@@ -873,7 +928,7 @@ export default function CustomersSection({
                     <p className="empty-state-text">Add a customer to start taking measurements and orders.</p>
                   </div>
                 )}
-                {(searchQuery ? customers : recentCustomers).map((c) => {
+                {(searchQuery ? customers : recentCustomers).map((c, cIdx) => {
                   const due = outstandingByCustomerId[c.id] || 0;
                   return (
                   <button
@@ -881,7 +936,8 @@ export default function CustomersSection({
                     onClick={() => {
                       setSelectedCustomer(c);
                     }}
-                    className={`list-row ${selectedCustomer?.id === c.id ? 'list-row-selected' : ''}`}
+                    data-customer-index={cIdx}
+                    className={`list-row list-row-dense ${selectedCustomer?.id === c.id ? 'list-row-selected' : ''}`}
                   >
                     <div className="space-y-0.5 min-w-0 flex-1">
                       <CustomerName name={c.name} as="p" className="truncate" />
@@ -1020,9 +1076,10 @@ export default function CustomersSection({
                             <Edit2 className="icon-xs" />
                           </button>
                           <button
+                            id="customers-print-btn"
                             onClick={handlePrintCustomer}
                             className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 rounded-md cursor-pointer transition-colors"
-                            title="Print customer profile"
+                            title="Print customer profile (Ctrl+P)"
                             aria-label="Print customer"
                           >
                             <Printer className="icon-xs" />

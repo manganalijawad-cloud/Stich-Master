@@ -81,6 +81,14 @@ export default function OwnerDashboard({ token, onSettingsUpdated, onOwnerModeRe
     setRestoreError(null);
     setRestoreSuccess(null);
 
+    const confirmed = window.confirm(
+      'Restore replaces ALL shop data on this computer (customers, orders, measurements, settings) with the backup file.\n\nThis cannot be undone. Download a fresh backup first if you are unsure.\n\nContinue?',
+    );
+    if (!confirmed) {
+      e.target.value = '';
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
@@ -107,12 +115,22 @@ export default function OwnerDashboard({ token, onSettingsUpdated, onOwnerModeRe
           throw new Error(data.error);
         }
 
-        setRestoreSuccess('Backup restored. Data refresh in progress…');
+        setRestoreSuccess(
+          typeof data.imported === 'number'
+            ? `Backup restored (${data.imported} rows). Data refresh in progress…`
+            : 'Backup restored. Data refresh in progress…',
+        );
         await localDataStore.hydrate(token, { force: true });
-        setRestoreSuccess('Backup restored successfully.');
+        setRestoreSuccess(
+          typeof data.imported === 'number'
+            ? `Backup restored successfully (${data.imported} rows replaced).`
+            : 'Backup restored successfully.',
+        );
         onSettingsUpdated();
       } catch (err: any) {
         setRestoreError(err.message || 'Failed to parse JSON file.');
+      } finally {
+        e.target.value = '';
       }
     };
     reader.readAsText(file);
@@ -235,7 +253,9 @@ export default function OwnerDashboard({ token, onSettingsUpdated, onOwnerModeRe
                 <ArrowUp className="icon-sm text-emerald-500 shrink-0" />
                 <div>
                   <h3 className="text-xs font-bold text-brand-sidebar uppercase tracking-wider">Restore from backup</h3>
-                  <p className="text-3xs text-slate-500">Upload a .json backup file</p>
+                  <p className="text-3xs text-slate-500">
+                    Replaces all shop data on this PC with the backup. Download a backup first.
+                  </p>
                 </div>
               </div>
               {restoreSuccess && <div className="alert-success animate-fade-in text-xs py-1.5">{restoreSuccess}</div>}

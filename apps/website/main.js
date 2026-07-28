@@ -84,43 +84,7 @@
 })();
 
 (function () {
-  var forms = document.querySelectorAll('#contact-form');
-
-  forms.forEach(function (form) {
-    var statusEl = document.getElementById('form-status');
-
-    if (form && statusEl) {
-      form.addEventListener('submit', function (e) {
-        e.preventDefault();
-
-        var name = document.getElementById('name');
-        var email = document.getElementById('email');
-        var message = document.getElementById('message');
-        if (!name || !email || !message) return;
-
-        var nameVal = name.value.trim();
-        var emailVal = email.value.trim();
-        var messageVal = message.value.trim();
-
-        if (!nameVal || !emailVal || !messageVal) {
-          statusEl.textContent = 'Please fill in all required fields.';
-          statusEl.className = 'text-center text-sm font-semibold text-red-500';
-          statusEl.classList.remove('hidden');
-          return;
-        }
-
-        statusEl.textContent = 'Thank you! We will get back to you soon.';
-        statusEl.className = 'text-center text-sm font-semibold text-green-600';
-        statusEl.classList.remove('hidden');
-
-        form.reset();
-
-        setTimeout(function () {
-          statusEl.classList.add('hidden');
-        }, 5000);
-      });
-    }
-  });
+  // Contact is WhatsApp-only; no fake form submission.
 })();
 
 (function () {
@@ -219,9 +183,9 @@
     };
   }
 
-  /** Always prefer the live GitHub release so new tags update the button without a site redeploy. */
+  /** Prefer a release that actually has an installer .exe (skip broken latest). */
   function fetchLatestReleaseManifest() {
-    var url = 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/releases/latest';
+    var url = 'https://api.github.com/repos/' + REPO_OWNER + '/' + REPO_NAME + '/releases?per_page=10';
     return fetch(url, {
       headers: {
         Accept: 'application/vnd.github+json',
@@ -229,10 +193,15 @@
     }).then(function (res) {
       if (!res.ok) throw new Error('GitHub release status ' + res.status);
       return res.json();
-    }).then(function (release) {
-      var manifest = manifestFromRelease(release);
-      if (!manifest) throw new Error('No installer asset on latest release');
-      return manifest;
+    }).then(function (releases) {
+      if (!Array.isArray(releases)) throw new Error('Invalid releases response');
+      for (var i = 0; i < releases.length; i++) {
+        var release = releases[i];
+        if (release.draft || release.prerelease) continue;
+        var manifest = manifestFromRelease(release);
+        if (manifest) return manifest;
+      }
+      throw new Error('No installer asset on recent releases');
     });
   }
 

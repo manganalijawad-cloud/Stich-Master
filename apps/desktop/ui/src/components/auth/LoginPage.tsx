@@ -2,7 +2,6 @@
 import { Lock, Eye, EyeOff, Loader2, Mail, Store } from 'lucide-react';
 import {
   completeShopSetup,
-  requestPasswordReset,
   signInWithPassword,
   signOut as supabaseSignOut,
   updatePassword,
@@ -13,6 +12,10 @@ import { useAuth } from '../../contexts/AuthContext';
 import VersionInfo from '../VersionInfo';
 
 type Mode = 'signin' | 'forgot' | 'recovery' | 'shop-setup';
+
+const SUPPORT_WHATSAPP_URL = 'https://wa.me/923163455358?text=' + encodeURIComponent(
+  'Hello Hello Darzi support — I need help resetting my account password.',
+);
 
 export default function LoginPage() {
   const {
@@ -101,26 +104,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleForgotSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setInfo(null);
-    if (!email.trim()) {
-      setError('Email is required.');
-      return;
-    }
-
-    setIsLoading(true);
-    const result = await requestPasswordReset(email);
-    setIsLoading(false);
-
-    if (result.error) {
-      setError(result.error);
-      return;
-    }
-    setInfo('Check your email for a magic link to reset your password.');
-  };
-
   const handleRecoverySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -194,7 +177,7 @@ export default function LoginPage() {
 
   const headline =
     mode === 'forgot'
-      ? 'Reset password'
+      ? 'Need a password reset?'
       : mode === 'recovery'
         ? 'Set new password'
         : mode === 'shop-setup'
@@ -203,7 +186,7 @@ export default function LoginPage() {
 
   const subtext =
     mode === 'forgot'
-      ? 'We will email you a magic link to reset your password'
+      ? 'Password reset is handled by Hello Darzi support on WhatsApp'
       : mode === 'recovery'
         ? 'Enter a new password for your account'
         : mode === 'shop-setup'
@@ -288,41 +271,26 @@ export default function LoginPage() {
           )}
 
           {mode === 'forgot' && (
-            <form onSubmit={handleForgotSubmit} className="space-y-4">
-              <div>
-                <div className="relative">
-                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 icon-sm text-slate-500 pointer-events-none" />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Email"
-                    autoComplete="email"
-                    autoFocus
-                    className="w-full h-11 pl-10 pr-4 bg-slate-800/50 border border-slate-700/50 rounded-xl text-sm text-white placeholder-slate-500 outline-none focus:border-white focus:ring-2 focus:ring-white/20 transition-colors duration-150"
-                    disabled={isLoading}
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full h-11 bg-white hover:bg-neutral-200 disabled:bg-neutral-700/50 text-[#0a0a0a] font-semibold text-sm rounded-xl transition-colors duration-150 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+            <div className="space-y-4">
+              <p className="text-sm text-slate-300 leading-relaxed text-center">
+                Accounts are invite-only. Message us on WhatsApp and we will reset your password for you.
+              </p>
+              <a
+                href={SUPPORT_WHATSAPP_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full h-11 bg-[#25D366] hover:bg-[#1ebe57] text-[#0a0a0a] font-semibold text-sm rounded-xl transition-colors duration-150 flex items-center justify-center gap-2 cursor-pointer"
               >
-                {isLoading ? <Loader2 className="icon-sm animate-spin" /> : null}
-                {isLoading ? 'Sending…' : 'Send magic link'}
-              </button>
-
+                WhatsApp +92 316 3455358
+              </a>
               <button
                 type="button"
                 onClick={() => { setMode('signin'); setError(null); setInfo(null); }}
                 className="w-full text-sm text-slate-400 hover:text-white transition-colors cursor-pointer"
-                disabled={isLoading}
               >
                 Back to sign in
               </button>
-            </form>
+            </div>
           )}
 
           {mode === 'recovery' && (
