@@ -652,6 +652,64 @@ export default function CustomersSection({
   );
   const canSaveNewCustomer = !!newName.trim() && !newCustomerMeasError;
 
+  // Hooks must run before any early return (Show More full list) or React crashes.
+  const startCreateCustomer = useCallback(() => {
+    setIsCreating(true);
+    setSelectedCustomer(null);
+    const enabled = garmentTypes.filter(g => g.enabled);
+    if (enabled.length > 0) setSelectedGarmentTypeId(enabled[0].id);
+    setInitialMeasurements({});
+  }, [garmentTypes]);
+
+  // Customers hotkeys
+  useEffect(() => {
+    if (showAllPage) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      matchHotkeys(e, [
+        (ev) => {
+          if (ev.key === 'Escape' && isCreating) {
+            setIsCreating(false);
+            return true;
+          }
+        },
+        (ev) => {
+          if (isCreating) return;
+          if (isMod(ev) && (ev.key === 'n' || ev.key === 'N')) {
+            startCreateCustomer();
+            return true;
+          }
+          if ((isMod(ev) && (ev.key === 'f' || ev.key === 'F')) || (ev.key === '/' && !isEditableTarget(ev.target))) {
+            focusElement(customerSearchRef.current);
+            return true;
+          }
+          if (!isEditableTarget(ev.target) && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp')) {
+            const list = searchQuery ? customers : recentCustomers;
+            if (!list.length) return;
+            const current = list.findIndex(c => c.id === selectedCustomer?.id);
+            const next = ev.key === 'ArrowDown'
+              ? Math.min((current < 0 ? -1 : current) + 1, list.length - 1)
+              : Math.max((current < 0 ? list.length : current) - 1, 0);
+            const cust = list[next];
+            if (cust) {
+              setSelectedCustomer(cust);
+              const row = customerListRef.current?.querySelector(`[data-customer-index="${next}"]`) as HTMLElement | null;
+              row?.scrollIntoView({ block: 'nearest' });
+            }
+            return true;
+          }
+          if (isMod(ev) && (ev.key === 'p' || ev.key === 'P') && selectedCustomer) {
+            // print measurements if handler exists via button click
+            const btn = document.getElementById('customers-print-btn') as HTMLButtonElement | null;
+            btn?.click();
+            return true;
+          }
+        },
+      ]);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [showAllPage, isCreating, searchQuery, customers, recentCustomers, selectedCustomer, startCreateCustomer]);
+
   if (showAllPage) {
     return (
       <div className="card animate-fade-in stack-md">
@@ -670,13 +728,7 @@ export default function CustomersSection({
           <button
             onClick={() => {
               setShowAllPage(false);
-              setIsCreating(true);
-              setSelectedCustomer(null);
-              const enabled = garmentTypes.filter(g => g.enabled);
-              if (enabled.length > 0) {
-                setSelectedGarmentTypeId(enabled[0].id);
-              }
-              setInitialMeasurements({});
+              startCreateCustomer();
             }}
             className="btn-primary self-start sm:self-auto"
           >
@@ -772,63 +824,6 @@ export default function CustomersSection({
       </div>
     );
   }
-
-
-  const startCreateCustomer = useCallback(() => {
-    setIsCreating(true);
-    setSelectedCustomer(null);
-    const enabled = garmentTypes.filter(g => g.enabled);
-    if (enabled.length > 0) setSelectedGarmentTypeId(enabled[0].id);
-    setInitialMeasurements({});
-  }, [garmentTypes]);
-
-  // Customers hotkeys
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      matchHotkeys(e, [
-        (ev) => {
-          if (ev.key === 'Escape' && isCreating) {
-            setIsCreating(false);
-            return true;
-          }
-        },
-        (ev) => {
-          if (isCreating) return;
-          if (isMod(ev) && (ev.key === 'n' || ev.key === 'N')) {
-            startCreateCustomer();
-            return true;
-          }
-          if ((isMod(ev) && (ev.key === 'f' || ev.key === 'F')) || (ev.key === '/' && !isEditableTarget(ev.target))) {
-            focusElement(customerSearchRef.current);
-            return true;
-          }
-          if (!isEditableTarget(ev.target) && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp')) {
-            const list = searchQuery ? customers : recentCustomers;
-            if (!list.length) return;
-            const current = list.findIndex(c => c.id === selectedCustomer?.id);
-            const next = ev.key === 'ArrowDown'
-              ? Math.min((current < 0 ? -1 : current) + 1, list.length - 1)
-              : Math.max((current < 0 ? list.length : current) - 1, 0);
-            const cust = list[next];
-            if (cust) {
-              setSelectedCustomer(cust);
-              const row = customerListRef.current?.querySelector(`[data-customer-index="${next}"]`) as HTMLElement | null;
-              row?.scrollIntoView({ block: 'nearest' });
-            }
-            return true;
-          }
-          if (isMod(ev) && (ev.key === 'p' || ev.key === 'P') && selectedCustomer) {
-            // print measurements if handler exists via button click
-            const btn = document.getElementById('customers-print-btn') as HTMLButtonElement | null;
-            btn?.click();
-            return true;
-          }
-        },
-      ]);
-    };
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [isCreating, searchQuery, customers, recentCustomers, selectedCustomer, startCreateCustomer]);
 
   return (
     <div className="desk-fill grid grid-cols-1 lg:grid-cols-12 gap-2 items-stretch min-h-0">
@@ -1183,7 +1178,7 @@ export default function CustomersSection({
                             <DeliveryDateText dueDate={order.due_date} short={false} className="!inline" />
                           </p>
                           <div className="text-xs text-secondary truncate">
-                            Items: {(order.items || []).map(it => it.type).join(', ')}
+                            Items: {(Array.isArray(order.items) ? order.items : []).map(it => it.type).join(', ')}
                           </div>
                         </div>
                         <div className="text-right space-y-1 shrink-0">
