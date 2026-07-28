@@ -1,7 +1,7 @@
-{
+﻿{
   "name": "@hello-darzi/desktop",
-  "version": "1.0.3",
-  "description": "Hello Darzi — tailor shop management desktop app",
+  "version": "1.0.4",
+  "description": "Hello Darzi â€” tailor shop management desktop app",
   "author": "Hello Darzi",
   "private": true,
   "type": "commonjs",
