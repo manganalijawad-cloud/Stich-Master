@@ -103,3 +103,10 @@ cd apps/desktop && npx electron-builder --win --x64 --config electron-builder.az
 - First downloads may still get a SmartScreen warning until reputation builds; Azure Trusted Signing is OV-class, not instant EV trust.
 - First sign-in needs internet; afterward Owner unlock can work offline with cached JWT verification.
 - Do not ship from the `Stich-Master-v1.0.0` worktree snapshot — use this repo root.
+
+## Repo Hygiene
+
+- Run all release and maintenance commands from `D:/stichmaster/Stich-Master`.
+- Keep parent `D:/stichmaster` as a local container only; do not treat it as the canonical repo.
+- Before packaging, clear stale outputs with `npm run clean` so installers are built from a reproducible state.
+- If `out/` cannot be fully removed on Windows, close any running packaged app/process that may lock `out/desktop/win-unpacked/resources/app.asar`, then run `npm run clean` again.
