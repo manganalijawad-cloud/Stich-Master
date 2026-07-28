@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Lock, Eye, EyeOff, Loader2, Mail, Store } from 'lucide-react';
 import {
   completeShopSetup,
