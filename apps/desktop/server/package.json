@@ -1,6 +1,10 @@
 {
   "name": "@hello-darzi/server",
+<<<<<<< HEAD
   "version": "1.0.0",
+=======
+  "version": "1.0.3",
+>>>>>>> 6e397515e4a1fbdf0e9cc4b88e030ff427088d8c
   "private": true,
   "type": "module",
   "main": "./src/index.ts",

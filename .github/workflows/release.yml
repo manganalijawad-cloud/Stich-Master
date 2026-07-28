@@ -22,6 +22,21 @@ jobs:
           node-version: 24
           cache: 'npm'
 
+      - name: Verify tag matches package version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $expected = $tag -replace '^v', ''
+          $pkg = Get-Content package.json -Raw | ConvertFrom-Json
+          $desktop = Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json
+          if ($pkg.version -ne $expected) {
+            throw "Root package.json version $($pkg.version) does not match tag $tag (expected $expected)."
+          }
+          if ($desktop.version -ne $expected) {
+            throw "apps/desktop/package.json version $($desktop.version) does not match tag $tag (expected $expected)."
+          }
+          Write-Host "Version check OK: $expected"
+
       - name: Install dependencies
         run: npm ci
 
@@ -32,6 +47,9 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
         run: |
+          if (-not $env:VITE_SUPABASE_URL -or -not $env:VITE_SUPABASE_ANON_KEY) {
+            throw "VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY secrets are required."
+          }
           @(
             "VITE_SUPABASE_URL=$env:VITE_SUPABASE_URL"
             "VITE_SUPABASE_ANON_KEY=$env:VITE_SUPABASE_ANON_KEY"
@@ -47,28 +65,16 @@ jobs:
       - name: Prepare packaged Auth env
         run: node scripts/prepare-desktop-env.cjs
 
-      - name: Build installer
+      - name: Build installer (unsigned for v1)
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Azure Trusted Signing (Artifact Signing). Required for a trusted publisher.
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
-          AZURE_CODE_SIGNING_ACCOUNT_NAME: ${{ secrets.AZURE_CODE_SIGNING_ACCOUNT_NAME }}
-          AZURE_CERTIFICATE_PROFILE_NAME: ${{ secrets.AZURE_CERTIFICATE_PROFILE_NAME }}
-          AZURE_PUBLISHER_NAME: ${{ secrets.AZURE_PUBLISHER_NAME }}
         run: |
-          $config = if ($env:AZURE_CLIENT_ID -and $env:AZURE_CLIENT_SECRET -and $env:AZURE_TENANT_ID -and $env:AZURE_TRUSTED_SIGNING_ENDPOINT -and $env:AZURE_CODE_SIGNING_ACCOUNT_NAME -and $env:AZURE_CERTIFICATE_PROFILE_NAME -and $env:AZURE_PUBLISHER_NAME) {
-            Write-Host "Signing with Azure Trusted Signing"
-            "electron-builder.azure.json"
-          } else {
-            Write-Warning "Azure Trusted Signing secrets missing — building unsigned installer (Unknown publisher)"
-            "electron-builder.json"
-          }
+          # Azure Trusted Signing is optional later. For v1 we ship unsigned and
+          # document SmartScreen on the website. Do not select a missing azure config.
+          Write-Warning "Building unsigned installer (Unknown publisher) — SmartScreen guidance is on the download page."
           Set-Location apps/desktop
-          npx electron-builder --win --x64 --publish always --config $config
+          npx electron-builder --win --x64 --publish always --config electron-builder.json
 
       - name: Ensure GitHub Release assets are complete
         shell: pwsh
@@ -76,15 +82,25 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $tag = "${{ github.ref_name }}"
-          $files = @(
-            Get-ChildItem -Path "out/desktop" -Filter "Hello-Darzi-Setup-*.exe" -File
-            Get-ChildItem -Path "out/desktop" -Filter "Hello-Darzi-Setup-*.exe.blockmap" -File
-            Get-Item -Path "out/desktop/latest.yml"
-          )
-          if ($files.Count -lt 2) {
-            throw "Expected installer and latest.yml in out/desktop, found $($files.Count) file(s)."
+          $exe = Get-ChildItem -Path "out/desktop" -Filter "Hello-Darzi-Setup-*.exe" -File | Select-Object -First 1
+          $blockmap = Get-ChildItem -Path "out/desktop" -Filter "Hello-Darzi-Setup-*.exe.blockmap" -File | Select-Object -First 1
+          $yml = Get-Item -Path "out/desktop/latest.yml" -ErrorAction SilentlyContinue
+          if (-not $exe -or -not $yml) {
+            throw "Expected installer .exe and latest.yml in out/desktop before publishing release assets."
           }
-          gh release upload $tag $files.FullName --clobber
+          $files = @($exe.FullName, $yml.FullName)
+          if ($blockmap) { $files += $blockmap.FullName }
+          gh release upload $tag $files --clobber
+
+          # Fail the job if the published release is still missing the installer
+          $assets = gh release view $tag --json assets | ConvertFrom-Json
+          $names = @($assets.assets | ForEach-Object { $_.name })
+          $hasExe = $names | Where-Object { $_ -like 'Hello-Darzi-Setup-*.exe' -and $_ -notlike '*.blockmap' }
+          $hasYml = $names | Where-Object { $_ -eq 'latest.yml' }
+          if (-not $hasExe -or -not $hasYml) {
+            throw "Release $tag is incomplete after upload. Assets: $($names -join ', ')"
+          }
+          Write-Host "Release $tag assets verified: $($names -join ', ')"
 
       - name: Upload installer as artifact
         uses: actions/upload-artifact@v4

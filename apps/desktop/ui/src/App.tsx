@@ -16,6 +16,8 @@ import LoginPage from './components/auth/LoginPage';
 import { parseOrderQrPayload } from './lib/orderQr';
 import { localDataStore } from './lib/localDataStore';
 import { useLocalData } from './lib/useLocalData';
+import { isEditableTarget, isMod } from './lib/keyboard';
+import ShortcutsCheatsheet from './components/ui/ShortcutsCheatsheet';
 
 function AuthWrapper() {
   const { user, token, isLoading, signOut, needsShopSetup, isPasswordRecovery } = useAuth();
@@ -29,6 +31,7 @@ function AuthWrapper() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
   const [activeTab, setActiveTab] = useState<'Customers' | 'Orders' | 'Financials' | 'Owner'>('Customers');
+  const [showAppShortcuts, setShowAppShortcuts] = useState(false);
 
   /** Idle timeout before Owner mode auto-returns to Manager (PROJECT.md §5). */
   const OWNER_IDLE_MS = 15 * 60 * 1000;
@@ -121,6 +124,54 @@ function AuthWrapper() {
     };
   }, [activeMode, switchToManager, handleOwnerModeRequired, token, OWNER_IDLE_MS]);
 
+  // App shell: tab switching + Esc on unlock modal + shortcut cheat sheet
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (showPasswordModal && e.key === 'Escape') {
+        e.preventDefault();
+        setShowPasswordModal(false);
+        setPasswordError(null);
+        setOwnerPassword('');
+        return;
+      }
+      if (showAppShortcuts && e.key === 'Escape') {
+        e.preventDefault();
+        setShowAppShortcuts(false);
+        return;
+      }
+      if (e.key === '?' && !isEditableTarget(e.target) && !isMod(e) && !showPasswordModal) {
+        // Orders page also listens — allow both to open the same idea; prefer page if mounted
+        if (activeTab !== 'Orders') {
+          e.preventDefault();
+          setShowAppShortcuts(true);
+        }
+        return;
+      }
+      if (!isMod(e) || e.altKey || e.shiftKey) return;
+      if (isEditableTarget(e.target) && e.key !== '1' && e.key !== '2' && e.key !== '3' && e.key !== '4') return;
+      const map: Record<string, typeof activeTab> = {
+        '1': 'Customers',
+        '2': 'Orders',
+        '3': 'Financials',
+        '4': 'Owner',
+      };
+      const next = map[e.key];
+      if (!next) return;
+      if (next === 'Financials' || next === 'Owner') {
+        if (activeMode !== 'Owner') {
+          e.preventDefault();
+          switchToOwner();
+          return;
+        }
+      }
+      e.preventDefault();
+      setActiveTab(next);
+      setIsMobileMenuOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [showPasswordModal, showAppShortcuts, activeTab, activeMode]);
+
   const handlePasswordSubmit = async () => {
     if (!ownerPassword || !token) return;
     setIsVerifyingPassword(true);
@@ -200,7 +251,7 @@ function AuthWrapper() {
   const [shopPhone, setShopPhone] = useState('');
   const [shopAddress, setShopAddress] = useState('');
   const [shopLogo, setShopLogo] = useState('');
-  const [currency, setCurrency] = useState('$');
+  const [currency, setCurrency] = useState('PKR');
   const [measurementFields, setMeasurementFields] = useState<string[]>([]);
   const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
   const [measurementUnit, setMeasurementUnit] = useState<'Inches' | 'Centimeters' | 'Feet'>('Inches');
@@ -260,7 +311,7 @@ function AuthWrapper() {
     setShopLogo(settingsData.shop_logo ?? '');
     setTermsConditions(settingsData.terms_conditions ?? '');
     setReceiptFooterText(settingsData.receipt_footer_text ?? '');
-    setCurrency(settingsData.currency || '$');
+    setCurrency(settingsData.currency || 'PKR');
     setMeasurementFields(settingsData.measurement_fields || []);
     setMeasurementUnit(settingsData.measurement_unit || 'Inches');
     setPipelineStages(settingsData.pipeline_stages || DEFAULT_PIPELINE_STAGES);
@@ -621,8 +672,8 @@ function AuthWrapper() {
           </div>
         </header>
 
-        <main className="flex-1 min-h-0 min-w-0 p-2 md:p-3 overflow-x-hidden overflow-y-auto content-scroll">
-          <div className="animate-fade-in h-full min-h-0">
+        <main className={`flex-1 min-h-0 min-w-0 p-2 md:p-3 ${(activeTab === 'Orders' || activeTab === 'Customers') ? 'overflow-hidden' : 'overflow-x-hidden overflow-y-auto content-scroll'}`}>
+          <div className="animate-fade-in h-full min-h-0 desk-fill">
             {activeTab === 'Customers' && (
               <CustomersSection
                 token={token}
@@ -707,7 +758,14 @@ function AuthWrapper() {
                 type="password"
                 value={ownerPassword}
                 onChange={(e) => setOwnerPassword(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handlePasswordSubmit(); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handlePasswordSubmit();
+                  if (e.key === 'Escape') {
+                    setShowPasswordModal(false);
+                    setPasswordError(null);
+                    setOwnerPassword('');
+                  }
+                }}
                 placeholder="Enter password..."
                 className="input-base mb-4"
                 autoFocus
@@ -730,6 +788,8 @@ function AuthWrapper() {
             </div>
           </div>
         )}
+
+        <ShortcutsCheatsheet open={showAppShortcuts} onClose={() => setShowAppShortcuts(false)} />
 
       </div>
     </div>

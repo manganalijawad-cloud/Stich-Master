@@ -1,0 +1,6 @@
+/login            /auth.html                 301
+/signin           /auth.html                 301
+/signup           /auth.html?action=signup   301
+/forgot-password  /auth.html?action=forgot   301
+/download         /#download                 301
+/github           https://github.com/manganalijawad-cloud/Stich-Master  301

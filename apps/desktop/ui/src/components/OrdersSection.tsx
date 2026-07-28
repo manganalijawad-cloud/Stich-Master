@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ShoppingCart, Calendar, Plus, Trash2, Printer, CheckCircle, Clock, ShieldAlert, ArrowRight, ChevronRight, Edit3, Search, UserPlus, ChevronLeft, Scissors, Info, Check, QrCode, Camera, Smartphone, Users, ChevronDown, MoreVertical } from 'lucide-react';
 import { Customer, DeliverPaymentMode, Order, OrderItem, OrderStatus, PipelineStage, GarmentType, StylingCategory, MeasurementProfile } from '../types';
 import { printPage } from '../lib/print';
@@ -26,6 +26,9 @@ import jsQR from 'jsqr';
 import { localDataStore } from '../lib/localDataStore';
 import { useLocalData, cacheCustomer, cacheMeasurements, cacheOrder, removeCachedOrder } from '../lib/useLocalData';
 import { getOrderRemaining as getOrderRemainingShared } from '../lib/orderPayment';
+import { focusElement } from '../lib/keyboard';
+import { useOrdersHotkeys, useAutoFocusOnOpen } from '../hooks/useOrdersHotkeys';
+import ShortcutsCheatsheet from './ui/ShortcutsCheatsheet';
 
 /** True when a customer profile has at least one non-empty measurement value. */
 function profileHasSavedMeasurements(profile: MeasurementProfile): boolean {
@@ -395,6 +398,15 @@ export default function OrdersSection({
   const [viewMode, setViewMode] = useState<'Active' | 'Archived'>('Active');
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [restoreStageId, setRestoreStageId] = useState('Pending');
+  const [autoArchiveNotice, setAutoArchiveNotice] = useState<string | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [customerHighlight, setCustomerHighlight] = useState(0);
+  const [zeroPriceWarning, setZeroPriceWarning] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const customerSearchRef = useRef<HTMLInputElement | null>(null);
+  const paidAmountRef = useRef<HTMLInputElement | null>(null);
+  const editFormRef = useRef<HTMLFormElement | null>(null);
+  const orderListRef = useRef<HTMLDivElement | null>(null);
 
   // Reopen Delivered Order back to Getting Ready (Pending)
   const reopenOrder = async (order: Order) => {
@@ -505,6 +517,13 @@ export default function OrdersSection({
         setOrders(data);
         setPage(1);
         setHasMore(data.length === 50);
+        const archivedHdr = res.headers.get('X-Hello-Darzi-Auto-Archived');
+        const archivedCount = archivedHdr ? parseInt(archivedHdr, 10) : 0;
+        if (archivedCount > 0) {
+          setAutoArchiveNotice(
+            `${archivedCount} delivered order${archivedCount === 1 ? '' : 's'} moved to Finished → Archived (auto-archive). Not deleted — open Finished orders to find them.`,
+          );
+        }
         // Merge into store without wiping other statuses
         for (const o of data) {
           cacheOrder(o);
@@ -777,6 +796,10 @@ export default function OrdersSection({
     setCreateSuccess(false);
     setIsCreating(true);
     setSelectedOrder(null);
+    setShowCreateCustomer(false);
+    setCustomerSearch('');
+    setCustomerHighlight(0);
+    setZeroPriceWarning(false);
     const d = new Date();
     d.setDate(d.getDate() + 10);
     setSharedDeliveryDate(d.toLocaleDateString('en-CA'));
@@ -1542,24 +1565,158 @@ export default function OrdersSection({
     }, 200);
   };
 
+  const cancelBooking = useCallback(() => {
+    setIsCreating(false);
+    setShowCreateCustomer(false);
+    setCreateError(null);
+    setZeroPriceWarning(false);
+    if (onClearActiveCustomer) onClearActiveCustomer();
+  }, [onClearActiveCustomer]);
+
+  const goSummaryStep = useCallback(() => {
+    const invalid = bookingItems.some(item => !item.price || item.price <= 0);
+    if (invalid) {
+      setZeroPriceWarning(true);
+    } else {
+      setZeroPriceWarning(false);
+    }
+    setBookingStep('summary');
+  }, [bookingItems]);
+
+  useEffect(() => {
+    setCustomerHighlight(0);
+  }, [customerSearch, searchResults.length]);
+
+  useAutoFocusOnOpen(isCreating && bookingStep === 'customer' && !showCreateCustomer, customerSearchRef, [isCreating, bookingStep, showCreateCustomer]);
+  useAutoFocusOnOpen(!isCreating && !isEditing && !selectedOrder, searchInputRef, [isCreating, isEditing, selectedOrder?.id]);
+  useAutoFocusOnOpen(isCreating && bookingStep === 'summary', paidAmountRef, [isCreating, bookingStep]);
+
+  useOrdersHotkeys({
+    isCreating,
+    isEditing,
+    bookingStep,
+    showCreateCustomer,
+    createSuccess,
+    restoreDialogOpen,
+    isScannerOpen,
+    showPaymentDialog,
+    showMoreMenu,
+    showShortcuts,
+    hasScannedItem: !!scannedGarmentItem,
+    setShowShortcuts,
+    orders,
+    selectedOrderId: selectedOrder?.id || null,
+    searchResults,
+    highlightIndex: customerHighlight,
+    setHighlightIndex: setCustomerHighlight,
+    searchQuery,
+    customerSearch,
+    searchRef: searchInputRef,
+    customerSearchRef,
+    paidAmountRef,
+    startNewBooking,
+    cancelBooking,
+    selectOrderByIndex: (index) => {
+      const order = orders[index];
+      if (order) {
+        void selectOrderWithDetails(order);
+        const row = orderListRef.current?.querySelector(`[data-order-index="${index}"]`) as HTMLElement | null;
+        row?.scrollIntoView({ block: 'nearest' });
+      }
+    },
+    selectCustomerByIndex: (index) => {
+      const cust = searchResults[index];
+      if (cust) void handleSelectCustomer(cust);
+    },
+    openCreateCustomer: () => setShowCreateCustomer(true),
+    closeCreateCustomer: () => {
+      setShowCreateCustomer(false);
+      setNewCustGarmentTypeId('');
+      setNewCustMeasurements({});
+      focusElement(customerSearchRef.current);
+    },
+    goGarmentsStep: () => setBookingStep('garments'),
+    goSummaryStep,
+    goCustomerStep: () => setBookingStep('customer'),
+    lockOrder: () => {
+      const fake = { preventDefault() {} } as React.FormEvent;
+      void handleFinalizeBooking(fake);
+    },
+    saveEdits: () => {
+      editFormRef.current?.requestSubmit();
+    },
+    startEdit: () => {
+      if (!selectedOrder || !isOwnerMode) return;
+      if (selectedOrder.status === 'Delivered' || selectedOrder.status === 'Archived') return;
+      setEditedItems([...ensureOrderItems(selectedOrder.items)]);
+      setEditedPaid(selectedOrder.paid_amount);
+      setEditedDueDate(selectedOrder.due_date?.split('T')[0] || '');
+      setEditedSnapshot({ ...selectedOrder.measurement_snapshot });
+      setEditedDiscount({
+        apply: !!selectedOrder.discount_type && Number(selectedOrder.discount_amount) > 0,
+        type: selectedOrder.discount_type || 'fixed',
+        value: selectedOrder.discount_value ? String(selectedOrder.discount_value) : '',
+      });
+      setIsEditing(true);
+    },
+    cancelEdit: () => setIsEditing(false),
+    printSelected: () => {
+      if (selectedOrder) triggerPrintReceipt();
+    },
+    deleteSelected: () => {
+      if (selectedOrder) void handleDeleteOrder(selectedOrder);
+    },
+    advanceSelected: () => {
+      if (selectedOrder) void advanceOrderStatus(selectedOrder);
+    },
+    closeCreateSuccess: () => setCreateSuccess(false),
+    closeRestore: () => setRestoreDialogOpen(false),
+    closeScanner: () => setIsScannerOpen(false),
+    closeScannedItem: () => setScannedGarmentItem(null),
+    closePayment: () => resetPaymentDialog(),
+    confirmPayment: () => {
+      const btn = document.getElementById('orders-confirm-payment') as HTMLButtonElement | null;
+      btn?.click();
+    },
+    confirmRestore: () => {
+      const btn = document.getElementById('orders-confirm-restore') as HTMLButtonElement | null;
+      btn?.click();
+    },
+    closeMoreMenu: () => setShowMoreMenu(false),
+    closeShortcuts: () => setShowShortcuts(false),
+  });
+
+
   return (
-    <div className={`grid grid-cols-1 gap-3 items-stretch min-h-0 ${isCreating ? '' : 'lg:grid-cols-12 lg:h-full'}`}>
+    <div className={`desk-fill grid grid-cols-1 gap-2 items-stretch min-h-0 ${isCreating ? '' : 'lg:grid-cols-12'}`}>
       
       {/* LEFT COLUMN: Queue / Filters */}
       {!isCreating && (
-        <div className="lg:col-span-5 card stack-sm flex flex-col min-h-0 overflow-hidden lg:h-full">
+        <div className="lg:col-span-5 card-dense stack-xs flex flex-col min-h-0 overflow-hidden h-full">
           <div className="flex items-center justify-between gap-2 shrink-0">
             <h2 className="text-h2">
               {viewMode === 'Active' ? 'Open orders' : 'Finished orders'}
             </h2>
             {!isCreating && (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowShortcuts(true)}
+                className="btn-ghost text-3xs"
+                title="Keyboard shortcuts (?)"
+              >
+                ?
+              </button>
               <button
                 onClick={startNewBooking}
                 className="btn-primary"
+                title="New order (Ctrl+N)"
               >
                 <ShoppingCart className="icon-sm" />
                 Book Order
+                <kbd className="hidden xl:inline text-[9px] font-mono opacity-70 ml-1">Ctrl+N</kbd>
               </button>
+            </div>
             )}
           </div>
 
@@ -1586,6 +1743,19 @@ export default function OrdersSection({
               Finished orders
             </button>
           </div>
+
+          {autoArchiveNotice && (
+            <div className="shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-3xs text-amber-900 leading-relaxed flex items-start gap-2">
+              <p className="flex-1">{autoArchiveNotice}</p>
+              <button
+                type="button"
+                className="text-amber-700 font-semibold uppercase tracking-wider cursor-pointer shrink-0"
+                onClick={() => setAutoArchiveNotice(null)}
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
 
           {/* Status Filters — open stages on Active; Delivered/Archived on Finished */}
           {viewMode === 'Active' ? (
@@ -1635,11 +1805,13 @@ export default function OrdersSection({
               <div className="relative flex-1">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 icon-xs text-slate-400" />
                 <input
+                  ref={searchInputRef}
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search order #, customer name..."
+                  placeholder="Search order #, customer… (/ or Ctrl+F)"
                   className="input-base pl-8"
+                  aria-label="Search orders"
                 />
               </div>
               <button
@@ -1654,7 +1826,7 @@ export default function OrdersSection({
             </div>
 
             {/* Active List — only scroll owner in this column */}
-            <div className="panel-scroll space-y-1.5 pr-0.5">
+            <div ref={orderListRef} className="panel-scroll space-y-1 pr-0.5">
               {loading && (
                 <p className="text-center text-muted text-xs font-semibold uppercase tracking-wider py-3">
                   Refreshing Queue...
@@ -1677,10 +1849,12 @@ export default function OrdersSection({
                 return (
                   <button
                     key={o.id}
+                    type="button"
+                    data-order-index={orders.indexOf(o)}
                     onClick={() => selectOrderWithDetails(o)}
-                    className={`list-row ${isSelected ? 'list-row-selected' : ''}`}
+                    className={`list-row list-row-dense ${isSelected ? 'list-row-selected' : ''}`}
                   >
-                    <div className="space-y-1 min-w-0 flex-1 mr-2">
+                    <div className="min-w-0 flex-1 mr-1.5">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <OrderId value={o.order_number} />
                         <StatusBadge
@@ -1688,14 +1862,16 @@ export default function OrdersSection({
                           label={stagesList.find(s => s.id === o.status)?.name || o.status}
                         />
                       </div>
-                      <CustomerName name={o.customer_name} as="p" className="truncate" />
-                      <DeliveryDateText dueDate={o.due_date} className="text-3xs uppercase tracking-wider" />
+                      <div className="flex items-center gap-2 min-w-0">
+                        <CustomerName name={o.customer_name} as="p" className="truncate !text-xs" />
+                        <DeliveryDateText dueDate={o.due_date} className="text-3xs uppercase tracking-wider shrink-0" />
+                      </div>
                     </div>
-                    <div className="text-right space-y-1 shrink-0">
+                    <div className="text-right shrink-0">
                       <MoneyTotal
                         currency={currency}
                         amount={o.final_total ?? o.total_amount}
-                        className="text-sm block leading-tight"
+                        className="text-xs block leading-tight"
                       />
                       <PaymentChip currency={currency} remaining={remaining} status={o.status} />
                     </div>
@@ -1717,14 +1893,14 @@ export default function OrdersSection({
       )}
 
       {/* RIGHT COLUMN: Action Forms or Details */}
-      <div className={`${isCreating ? 'lg:col-span-12' : 'lg:col-span-7 lg:h-full'} card stack-md min-h-0 overflow-x-hidden overflow-y-auto`}>
+      <div className={`${isCreating ? 'lg:col-span-12' : 'lg:col-span-7'} card-dense stack-sm min-h-0 h-full overflow-x-hidden overflow-y-auto`}>
         
         {isCreating ? (
-          <div className="space-y-4">
+          <div className="stack-sm h-full min-h-0">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2 shrink-0">
               <div>
-                <h3 className="text-lg font-extrabold text-slate-900 font-display uppercase tracking-wider">
+                <h3 className="text-sm font-extrabold text-slate-900 font-display uppercase tracking-wider">
                   New Order
                 </h3>
                 {customer && (
@@ -1735,13 +1911,11 @@ export default function OrdersSection({
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  setIsCreating(false);
-                  if (onClearActiveCustomer) onClearActiveCustomer();
-                }}
+                onClick={cancelBooking}
                 className="text-xs text-slate-500 hover:text-slate-800 font-semibold uppercase tracking-wider cursor-pointer"
+                title="Cancel (Esc)"
               >
-                Cancel
+                Cancel <kbd className="font-mono text-[9px] opacity-60">Esc</kbd>
               </button>
             </div>
 
@@ -1783,27 +1957,30 @@ export default function OrdersSection({
                     <div className="relative">
                       <Search className="absolute left-3.5 top-3.5 icon-xs text-slate-400" />
                       <input
+                        ref={customerSearchRef}
                         type="text"
                         value={customerSearch}
                         onChange={(e) => setCustomerSearch(e.target.value)}
                         className="input-base pl-10 font-semibold"
-                        placeholder="Search customer by name, phone or email..."
+                        placeholder="Search customer — ↑↓ Enter to select"
+                        aria-label="Search customers"
                       />
                     </div>
 
                     {customerSearch.trim() && (
-                      <div className="bg-white border border-slate-200 rounded-xl max-h-[45vh] overflow-y-auto divide-y divide-slate-100 shadow-sm">
+                      <div className="bg-white border border-slate-200 rounded-lg max-h-[32vh] overflow-y-auto divide-y divide-slate-100 shadow-sm">
                         {searching ? (
                           <div className="p-4 text-center text-slate-400 text-sm uppercase font-semibold">Searching...</div>
                         ) : searchResults.length === 0 ? (
                           <div className="p-4 text-center text-slate-400 text-sm uppercase font-semibold">No matching customers</div>
                         ) : (
-                          searchResults.map((cust) => (
+                          searchResults.map((cust, custIdx) => (
                             <button
                               key={cust.id}
                               type="button"
                               onClick={() => handleSelectCustomer(cust)}
-                              className="w-full text-left px-4 py-3 hover:bg-sky-50 flex items-center justify-between cursor-pointer group transition-colors"
+                              onMouseEnter={() => setCustomerHighlight(custIdx)}
+                              className={`w-full text-left px-3 py-2 flex items-center justify-between cursor-pointer group transition-colors ${customerHighlight === custIdx ? 'bg-sky-50' : 'hover:bg-slate-50'}`}
                             >
                               <div className="min-w-0 flex-1">
                                 <span className="font-semibold text-slate-800 text-sm break-words block group-hover:text-sky-600">{cust.name}</span>
@@ -2075,16 +2252,12 @@ export default function OrdersSection({
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      const invalid = bookingItems.some(item => !item.price || item.price <= 0);
-                      if (invalid) {
-                        if (!confirm('Some items have a price of 0. Proceed anyway?')) return;
-                      }
-                      setBookingStep('summary');
-                    }}
+                    onClick={goSummaryStep}
                     className="btn-primary"
+                    title="Review (Ctrl+Enter)"
                   >
                     Review <ChevronRight className="icon-xs" />
+                    <kbd className="hidden sm:inline text-[9px] font-mono opacity-70">Ctrl+Enter</kbd>
                   </button>
                 </div>
               </div>
@@ -2092,9 +2265,14 @@ export default function OrdersSection({
 
             {/* STEP 3: REVIEW & LOCK */}
             {bookingStep === 'summary' && customer && (
-              <div className="animate-fade-in space-y-3">
+              <div className="animate-fade-in stack-sm">
+                {zeroPriceWarning && (
+                  <div className="alert-warning text-xs py-1.5">
+                    Some garments have price 0. You can still lock — update prices if needed.
+                  </div>
+                )}
                 {/* Customer badge */}
-                <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="p-2 bg-white border border-slate-200 rounded-lg shrink-0">
                       <Users className="icon-xs text-slate-500" />
@@ -2120,7 +2298,7 @@ export default function OrdersSection({
                 </div>
 
                 {/* Garment cards */}
-                <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-0.5">
+                <div className="space-y-1 max-h-[22vh] overflow-y-auto pr-0.5">
                   {bookingItems.map((item, idx) => (
                     <div key={item.id} className="p-3 card">
                       <div className="flex items-center justify-between mb-1.5">
@@ -2161,7 +2339,7 @@ export default function OrdersSection({
                 </div>
 
                 {/* Delivery Date - prominent card */}
-                <div className="p-4 bg-white border-2 border-brand-sky/30 rounded-xl shadow-sm">
+                <div className="p-2.5 bg-white border border-brand-sky/30 rounded-lg">
                   <div className="flex items-center gap-3 sm:gap-4">
                     <div className="p-2.5 bg-sky-50 rounded-lg shrink-0">
                       <Calendar className="w-5 h-5 text-brand-sky" />
@@ -2173,7 +2351,7 @@ export default function OrdersSection({
                         required
                         value={sharedDeliveryDate}
                         onChange={(e) => updateSharedDeliveryDate(e.target.value)}
-                        className="mt-0.5 block w-full bg-transparent border-0 p-0 font-display text-xl font-black text-slate-800 focus-visible:outline-none focus-visible:ring-0"
+                        className="mt-0.5 block w-full bg-transparent border-0 p-0 font-display text-base font-bold text-slate-800 focus-visible:outline-none focus-visible:ring-0"
                         style={{ colorScheme: 'light' }}
                       />
                     </div>
@@ -2181,15 +2359,16 @@ export default function OrdersSection({
                 </div>
 
                 {/* Financials */}
-                <div className="space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <div className="stack-sm">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg">
                       <span className="text-label mb-0">Total</span>
-                      <MoneyTotal currency={currency} amount={rawTotal} className="text-2xl block mt-1" />
+                      <MoneyTotal currency={currency} amount={rawTotal} className="text-lg block mt-0.5" />
                     </div>
                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
                       <label className="text-label">Paid Amount ({currency})</label>
                       <input
+                        ref={paidAmountRef}
                         type="number"
                         min="0"
                         max={maxPaid}
@@ -2349,9 +2528,11 @@ export default function OrdersSection({
                     type="button"
                     onClick={handleFinalizeBooking}
                     className="btn-success flex-1"
+                    title="Lock order (Ctrl+Enter)"
                   >
                     <CheckCircle className="w-5 h-5" />
                     Lock Order & Confirm
+                    <kbd className="hidden sm:inline text-[9px] font-mono opacity-80 ml-1">Ctrl+Enter</kbd>
                   </button>
                 </div>
               </div>
@@ -2359,11 +2540,11 @@ export default function OrdersSection({
           </div>
         ) : selectedOrder ? (
           /* ORDER DETAILS & VIEW */
-          <div className="space-y-4">
+          <div className="stack-sm h-full min-h-0">
             
             {isEditing ? (
               /* OWNER EDITING PORTAL */
-              <form onSubmit={handleEditOrder} className="space-y-3 animate-fade-in">
+              <form ref={editFormRef} onSubmit={handleEditOrder} className="stack-sm animate-fade-in">
                 <div className="flex justify-between items-center border-b border-slate-100 pb-3">
                   <h3 className="font-extrabold text-base text-slate-900 font-display uppercase tracking-wider">Edit order: {selectedOrder.order_number}</h3>
                   <button
@@ -2615,10 +2796,10 @@ export default function OrdersSection({
               </form>
             ) : (
               /* DETAILED VIEW MODE */
-              <div className="space-y-4 animate-fade-in">
+              <div className="stack-sm animate-fade-in">
                 
                 {/* Header info */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-4 gap-3">
+                <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-2 gap-2 shrink-0">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <OrderId value={selectedOrder.order_number} className="!text-xl !font-bold font-display tracking-tight" />
@@ -2660,6 +2841,7 @@ export default function OrdersSection({
                   <div className="flex flex-wrap items-center gap-1.5 print:hidden">
                     <button
                       onClick={triggerPrintReceipt}
+                      title="Print (Ctrl+P)"
                       className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-semibold rounded-lg text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-[background-color,border-color] hover:border-slate-300"
                     >
                       <Printer className="w-3.5 h-3.5 text-slate-500" />
@@ -2680,6 +2862,7 @@ export default function OrdersSection({
                           });
                           setIsEditing(true);
                         }}
+                        title="Edit (F2)"
                         className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-[background-color]"
                       >
                         <Edit3 className="w-3.5 h-3.5 text-brand-sky" />
@@ -2775,7 +2958,7 @@ export default function OrdersSection({
                 )}
 
                 {/* Progress bar state machine - styled perfectly with sky-blue pipeline */}
-                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200/60 space-y-3 print:hidden">
+                <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/60 stack-sm print:hidden">
                   {(() => {
                     if (selectedOrder.status === 'Delivered') {
                       return (
@@ -3396,6 +3579,7 @@ export default function OrdersSection({
               </button>
               <button
                 type="button"
+                id="orders-confirm-restore"
                 onClick={() => restoreOrder(selectedOrder, restoreStageId)}
                 className="px-4 py-2 bg-brand-sidebar hover:bg-brand-active text-white font-semibold text-xs uppercase tracking-wider rounded-lg cursor-pointer"
               >
@@ -3801,6 +3985,7 @@ export default function OrdersSection({
                 type="button"
                 disabled={collectingPayment}
                 onClick={() => handleDeliverCollectPayment()}
+                id="orders-confirm-payment"
                 className="btn-success w-full disabled:opacity-60"
               >
                 {collectingPayment
@@ -3833,6 +4018,8 @@ export default function OrdersSection({
           </div>
         </div>
       )}
+
+      <ShortcutsCheatsheet open={showShortcuts} onClose={() => setShowShortcuts(false)} />
 
     </div>
   );

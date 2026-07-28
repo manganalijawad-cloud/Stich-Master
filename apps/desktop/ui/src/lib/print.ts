@@ -8,10 +8,13 @@ export function printPage(): void {
   if (api?.isElectron && typeof api.print === 'function') {
     void api.print().then((result: { success?: boolean; error?: string } | void) => {
       if (result && result.success === false) {
-        console.error('Electron print failed:', result.error || 'Unknown error');
+        const detail = result.error || 'Unknown error';
+        console.error('Electron print failed:', detail);
+        window.alert(`Printing failed: ${detail}`);
       }
     }).catch((err: unknown) => {
       console.error('Electron print IPC failed:', err);
+      window.alert(`Printing failed: ${err instanceof Error ? err.message : String(err)}`);
     });
     return;
   }

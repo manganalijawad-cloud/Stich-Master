@@ -756,10 +756,12 @@ app.get("/api/orders", requireAuth, async (req: AuthenticatedRequest, res: Respo
     if (settingsMap.auto_archive_days !== undefined) {
       autoArchiveDays = Number(settingsMap.auto_archive_days);
     }
+    let autoArchivedCount = 0;
     if (autoArchiveDays > 0) {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - autoArchiveDays);
-      db.archiveOrders(req.user!.id, cutoffDate.toISOString());
+      const archived = db.archiveOrders(req.user!.id, cutoffDate.toISOString());
+      autoArchivedCount = archived.count;
     }
     let data;
     if (statusFilter === "finished") {
@@ -776,6 +778,7 @@ app.get("/api/orders", requireAuth, async (req: AuthenticatedRequest, res: Respo
       return normalizeOrderRow(o, c);
     });
     const sliced = enriched.slice(offset, offset + limit);
+    res.setHeader("X-Hello-Darzi-Auto-Archived", String(autoArchivedCount));
     return res.json(sliced);
   } catch (err: any) {
     return res.status(500).json({ error: err.message });
@@ -1361,9 +1364,13 @@ app.post("/api/restore", requireAuth, requireRole(["Owner"]), requireOwnerMode, 
   }
 
   try {
-    db.importBackup(backupData.data, req.user!.id);
-    db.logAction("SYSTEM_RESTORE", req.user!.id, req.user!.email, req.user!.shop_id, { timestamp: backupData.timestamp });
-    return res.json({ success: true });
+    const result = db.importBackup(backupData.data, req.user!.id);
+    db.logAction("SYSTEM_RESTORE", req.user!.id, req.user!.email, req.user!.shop_id, {
+      timestamp: backupData.timestamp,
+      imported: result.imported,
+      mode: "replace",
+    });
+    return res.json({ success: true, imported: result.imported, mode: "replace" });
   } catch (err: any) {
     return res.status(500).json({ error: "Failed to restore backup: " + err.message });
   }
@@ -1408,7 +1415,7 @@ app.get("/api/reports/financials", requireAuth, requireRole(["Owner"]), requireO
     return res.json({
       orders: mappedOrders,
       settings: {
-        currency: settingsMap.currency || "$",
+        currency: settingsMap.currency || "PKR",
         pipeline_stages: settingsMap.pipeline_stages || DEFAULT_SHOP_SETTINGS.pipeline_stages,
       },
     });
