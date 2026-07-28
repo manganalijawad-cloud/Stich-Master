@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Database, Calendar, Upload, Shield, Printer, ListTodo, Sliders, ArrowUp } from 'lucide-react';
+import { Database, Calendar, Upload, Shield, Printer, ListTodo, Sliders, ArrowUp, FolderOpen } from 'lucide-react';
 import { GarmentType } from '../types';
 import GarmentConfiguration from './GarmentConfiguration';
 import DataImport from './DataImport';
@@ -22,6 +22,8 @@ export default function OwnerDashboard({ token, onSettingsUpdated, onOwnerModeRe
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreSuccess, setRestoreSuccess] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [autoBackupPath, setAutoBackupPath] = useState<string | null>(null);
+  const [openingBackups, setOpeningBackups] = useState(false);
 
   const [garmentTypes, setGarmentTypes] = useState<GarmentType[]>([]);
 
@@ -30,6 +32,14 @@ export default function OwnerDashboard({ token, onSettingsUpdated, onOwnerModeRe
       const d = new Date();
       d.setDate(d.getDate() - 30);
       setArchiveCutoff(d.toLocaleDateString('en-CA'));
+      fetch('/api/backup/auto-dir', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => r.json())
+        .then((d) => {
+          if (typeof d?.path === 'string') setAutoBackupPath(d.path);
+        })
+        .catch(() => setAutoBackupPath(null));
     }
     if (activeTab === 'Import') {
       fetch('/api/garment-types', {
@@ -41,6 +51,36 @@ export default function OwnerDashboard({ token, onSettingsUpdated, onOwnerModeRe
     }
   }, [activeTab, token]);
 
+  const openAutoBackupsFolder = async () => {
+    setOpeningBackups(true);
+    try {
+      let folder = autoBackupPath;
+      if (!folder) {
+        const res = await fetch('/api/backup/auto-dir', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || typeof data.path !== 'string') {
+          throw new Error(data.error || 'Could not resolve auto-backup folder.');
+        }
+        folder = data.path;
+        setAutoBackupPath(folder);
+      }
+      const api = (window as any).electronAPI;
+      if (api?.openPath) {
+        const result = await api.openPath(folder);
+        if (result && result.success === false) {
+          throw new Error(result.error || 'Could not open folder.');
+        }
+      } else {
+        alert(`Auto-backups folder:\n${folder}`);
+      }
+    } catch (err: any) {
+      alert(err?.message || 'Could not open auto-backups folder.');
+    } finally {
+      setOpeningBackups(false);
+    }
+  };
   const triggerBackupDownload = async () => {
     setBackupLoading(true);
     try {
@@ -229,6 +269,26 @@ export default function OwnerDashboard({ token, onSettingsUpdated, onOwnerModeRe
 
         {activeTab === 'Backup' && (
           <div className="p-4 space-y-3 animate-fade-in">
+
+            <div className="card-flat space-y-3">
+              <div className="flex items-center gap-2">
+                <FolderOpen className="icon-sm text-sky-600 shrink-0" />
+                <div>
+                  <h3 className="text-xs font-bold text-brand-sidebar uppercase tracking-wider">Automatic daily backups</h3>
+                  <p className="text-3xs text-slate-500">
+                    Hello Darzi saves a restore-compatible .json copy once per day on this PC (keeps the last 7).
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={openAutoBackupsFolder}
+                disabled={openingBackups}
+                className="px-4 py-2 bg-white hover:bg-slate-50 disabled:opacity-60 text-slate-800 font-semibold rounded-lg cursor-pointer text-xs uppercase tracking-wider border border-slate-200 transition-colors"
+              >
+                {openingBackups ? 'Opening…' : 'Open auto-backups folder'}
+              </button>
+            </div>
 
             <div className="card-flat space-y-3">
               <div className="flex items-center gap-2">

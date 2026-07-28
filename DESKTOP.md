@@ -9,13 +9,12 @@ Windows desktop app for tailor shops. Business data stays in local SQLite. Supab
 1. Copy `.env.example` → `.env` and set:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
-   - Optional: `SUPABASE_JWT_SECRET` (only if your project still issues HS256 tokens)
+   - Optional: `SUPABASE_JWT_SECRET` (only if your project still issues HS256 tokens — prefer JWKS/ES256 and omit this for production installers)
 2. Install deps: `npm install`
 3. For GitHub Releases auto-update, ensure Actions secrets match the Auth keys above:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
-   - `SUPABASE_JWT_SECRET` (optional)
-   - Azure Trusted Signing secrets (see below) — without them, releases stay unsigned
+   - `SUPABASE_JWT_SECRET` (optional — omit for JWKS-only)
 
 ### Build a local Windows installer
 
@@ -43,68 +42,29 @@ git push origin v1.0.3
 
 The `Build and Release` workflow builds the NSIS installer and publishes it to GitHub Releases. Installed apps check that channel via `electron-updater`.
 
-**v1 ships unsigned** (Unknown publisher). Tell users: Windows SmartScreen → More info → Run anyway. Azure Trusted Signing can be enabled later when secrets + `electron-builder.azure.json` are ready.
+**Releases ship unsigned for now** (Unknown publisher). Tell users: Windows SmartScreen → More info → Run anyway. Code signing can be added later when ready.
 
 ### Smoke-check before handing out builds
 
-1. Install from `Hello-Darzi-Setup-*.exe` (or run `release/win-unpacked/Hello Darzi.exe`).
-2. Sign in with a real Supabase Auth user.
+1. Install from `Hello-Darzi-Setup-*.exe` (or run `out/desktop/win-unpacked/Hello Darzi.exe`).
+2. Sign in with a real invite-only Supabase Auth user (internet required once).
 3. Create a customer + order, quit, reopen — data should persist.
-4. Confirm Settings → version / update check does not error online.
+4. Disconnect network. Keep using customers/orders after the access JWT would normally expire (~1h). App must keep working via the local device session.
+5. Unlock Owner mode with the account password (offline). Confirm Settings → Backup shows automatic daily backups and “Open auto-backups folder” works. Confirm a `auto_*.json` file appears under `%AppData%\Hello Darzi\data\backups\` after the first daily run.
+6. Confirm Settings → version / update check does not show a fake “downloading” state on background check.
+7. Confirm the website download button resolves to the latest GitHub Release asset.
 
-### Windows code signing — Azure Trusted Signing (fixes “Unknown publisher”)
+### Offline sessions & backups
 
-Hello Darzi uses **Microsoft Azure Trusted Signing** (also called Artifact Signing), ~$9.99/month. No `.pfx` file to manage; CI signs via cloud.
-
-**Eligibility (Public Trust):** organizations in US/Canada/EU/UK and several other countries; **individuals only in US or Canada**. See [Microsoft’s quickstart](https://learn.microsoft.com/en-us/azure/trusted-signing/quickstart).
-
-#### One-time Azure setup
-
-1. Create an [Azure subscription](https://azure.microsoft.com/free/) if you don’t have one.
-2. In the Azure portal → your subscription → **Resource providers** → register **`Microsoft.CodeSigning`**.
-3. Create an **Artifact Signing / Trusted Signing** account in a supported region (e.g. East US → endpoint `https://eus.codesigning.azure.net/`).
-4. Complete **Identity validation** (individual or organization). The approved legal name becomes the Windows publisher name.
-5. Create a **Public Trust** certificate profile under that account.
-6. Create an **App registration** (Entra ID):
-   - Certificates & secrets → new **client secret**
-   - Note **Application (client) ID**, **Directory (tenant) ID**, and the secret **Value**
-7. Grant that app the role **Trusted Signing Certificate Profile Signer** on the Trusted Signing account (Access control / IAM).
-
-#### GitHub Actions secrets
-
-Add these on the repo (Settings → Secrets and variables → Actions):
-
-| Secret | Value |
-|--------|--------|
-| `AZURE_TENANT_ID` | Directory (tenant) ID |
-| `AZURE_CLIENT_ID` | Application (client) ID |
-| `AZURE_CLIENT_SECRET` | Client secret value |
-| `AZURE_TRUSTED_SIGNING_ENDPOINT` | Region endpoint, e.g. `https://eus.codesigning.azure.net/` |
-| `AZURE_CODE_SIGNING_ACCOUNT_NAME` | Trusted Signing **account** name (not the app registration name) |
-| `AZURE_CERTIFICATE_PROFILE_NAME` | Certificate profile name |
-| `AZURE_PUBLISHER_NAME` | Exact subject / CN from identity validation (what users will see as publisher) |
-
-Tagged releases use `electron-builder.azure.json` when all of the above are set; otherwise they build unsigned.
-
-#### Verify after a signed release
-
-```powershell
-Get-AuthenticodeSignature .\out\desktop\Hello-Darzi-Setup-*.exe
-```
-
-Status should be `Valid`. SignerCertificate should show your validated name — not blank / `NotSigned`.
-
-Local `npm run electron:build` stays unsigned on purpose. For a local signed build, set the same env vars and run:
-
-```bash
-cd apps/desktop && npx electron-builder --win --x64 --config electron-builder.azure.json
-```
+- **First sign-in needs internet.** After that, a local device session (`hddev_…`, ~90-day sliding) keeps the shop usable without network.
+- **Owner unlock** still uses the local password verifier (not cloud).
+- **Daily auto-backups** write restore-compatible JSON under `%AppData%\Hello Darzi\data\backups\` (last 7 kept). Manual download/restore remains in Owner → Backup.
+- Accounts stay **invite-only**; password help stays **WhatsApp**; **one PC / one shop account**.
 
 ### Notes
 
-- First downloads may still get a SmartScreen warning until reputation builds; Azure Trusted Signing is OV-class, not instant EV trust.
-- First sign-in needs internet; afterward Owner unlock can work offline with cached JWT verification.
 - Do not ship from the `Stich-Master-v1.0.0` worktree snapshot — use this repo root.
+- Do not set `SUPABASE_JWT_SECRET` in production packaging unless you still mint HS256 tokens; JWKS verify is preferred.
 
 ## Repo Hygiene
 

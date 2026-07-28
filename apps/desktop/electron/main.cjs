@@ -246,16 +246,82 @@ ipcMain.handle('get-user-data-path', () => {
   return userDataPath;
 });
 
+ipcMain.handle('open-path', async (_event, targetPath) => {
+  if (!targetPath || typeof targetPath !== 'string') {
+    return { success: false, error: 'Invalid path' };
+  }
+  // Only allow opening under the app userData tree (safety).
+  const resolved = path.resolve(targetPath);
+  const root = path.resolve(userDataPath);
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    return { success: false, error: 'Path not allowed' };
+  }
+  try {
+    if (!fs.existsSync(resolved)) {
+      fs.mkdirSync(resolved, { recursive: true });
+    }
+    const err = await shell.openPath(resolved);
+    if (err) return { success: false, error: err };
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message || String(e) };
+  }
+});
+
+const PREFS_FILE = path.join(userDataPath, 'preferences.json');
+
+function readPrefs() {
+  try {
+    if (fs.existsSync(PREFS_FILE)) {
+      return JSON.parse(fs.readFileSync(PREFS_FILE, 'utf8'));
+    }
+  } catch {}
+  return {};
+}
+
+function writePrefs(prefs) {
+  try {
+    fs.writeFileSync(PREFS_FILE, JSON.stringify(prefs, null, 2));
+  } catch (err) {
+    console.warn('Failed to write preferences:', err?.message || err);
+  }
+}
+
+function applyAutoLaunch(enable) {
+  app.setLoginItemSettings({
+    openAtLogin: !!enable,
+    openAsHidden: false,
+    path: process.execPath,
+    args: [],
+  });
+  const prefs = readPrefs();
+  prefs.autoLaunch = !!enable;
+  writePrefs(prefs);
+  return !!enable;
+}
+
+/** Packaged installs open with Windows by default; preference can turn it off. */
+function ensureAutoLaunchDefault() {
+  if (isDev) return;
+  const prefs = readPrefs();
+  if (typeof prefs.autoLaunch !== 'boolean') {
+    applyAutoLaunch(true);
+    return;
+  }
+  const current = app.getLoginItemSettings().openAtLogin;
+  if (current !== prefs.autoLaunch) {
+    applyAutoLaunch(prefs.autoLaunch);
+  }
+}
+
 ipcMain.handle('get-auto-launch', () => {
+  const prefs = readPrefs();
+  if (typeof prefs.autoLaunch === 'boolean') return prefs.autoLaunch;
   return app.getLoginItemSettings().openAtLogin;
 });
 
 ipcMain.handle('set-auto-launch', (_event, enable) => {
-  app.setLoginItemSettings({
-    openAtLogin: enable,
-    path: app.getPath('exe'),
-  });
-  return true;
+  return applyAutoLaunch(enable);
 });
 
 ipcMain.handle('check-for-updates', async () => {
@@ -657,6 +723,8 @@ function handleDeepLink(url) {
 // CREATE MAIN WINDOW
 // ---------------------------------------------------------------------------
 let mainWindow = null;
+let loadRetries = 0;
+const MAX_LOAD_RETRIES = 5;
 
 async function createWindow() {
   const state = loadWindowState();
@@ -670,7 +738,7 @@ async function createWindow() {
     minHeight: 600,
     title: 'Hello Darzi',
     frame: false,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#0f172a',
     show: false,
     icon: (function() { const candidates = [ path.join(process.resourcesPath || '', 'dist', 'icon.ico'), path.join(__dirname, 'icon.ico'), ]; for (const c of candidates) { try { if (fs.existsSync(c)) return c; } catch {} } return undefined; })(),
     webPreferences: {
@@ -702,10 +770,9 @@ async function createWindow() {
     mainWindow.show();
   });
 
-  let loadRetries = 0;
-  const MAX_LOAD_RETRIES = 5;
-
-  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    // Ignore splash / about:blank failures; only retry the app URL.
+    if (validatedURL && !validatedURL.includes(`localhost:${serverPort}`)) return;
     console.error('Failed to load page:', errorCode, errorDescription);
     if (loadRetries < MAX_LOAD_RETRIES && mainWindow) {
       loadRetries++;
@@ -733,6 +800,17 @@ async function createWindow() {
     console.warn('Window became unresponsive');
   });
 
+  // Instant first paint — splash while the local server boots.
+  try {
+    await mainWindow.loadFile(path.join(__dirname, 'splash.html'));
+  } catch (err) {
+    console.warn('Splash load failed:', err?.message || err);
+  }
+}
+
+async function loadAppIntoWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  loadRetries = 0;
   const url = `http://localhost:${serverPort}`;
   try {
     await mainWindow.loadURL(url);
@@ -806,6 +884,10 @@ async function startExpressServer() {
 // ---------------------------------------------------------------------------
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
+  ensureAutoLaunchDefault();
+
+  // Show splash immediately so startup feels instant.
+  await createWindow();
 
   const serverReady = await startExpressServer();
   if (!serverReady) return;
@@ -814,7 +896,7 @@ app.whenReady().then(async () => {
     serverPort = resolveDevServerPort();
     console.log(`Electron dev mode loading http://localhost:${serverPort}`);
   }
-  await createWindow();
+  await loadAppIntoWindow();
 
   // Handle deep link if app was launched via the custom protocol
   const deepLinkArg = process.argv.find(a => a.startsWith(`${PROTOCOL}://`));
@@ -839,7 +921,9 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow().then(() => loadAppIntoWindow()).catch(() => {});
+  }
 });
 
 app.on('before-quit', () => {

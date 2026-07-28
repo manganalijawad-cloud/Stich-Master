@@ -170,7 +170,7 @@ export default function LoginPage() {
     }
     if (result.user) {
       completeShopSetupSession(result.user);
-      setSession(result.user, accessToken);
+      setSession(result.user, result.token || accessToken);
       setSetupToken(null);
     }
   };

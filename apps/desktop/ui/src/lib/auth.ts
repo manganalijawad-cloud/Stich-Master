@@ -1,15 +1,114 @@
 /**
  * Authentication API — Supabase Auth only.
  * Business data stays in the local SQLite database via /api/*.
+ * After online sign-in, a local hddev_ device session keeps /api working offline.
  */
 
 import { getAuthRedirectUrl, getSupabase, isSupabaseConfigured } from './supabaseClient';
+
+export const DEVICE_TOKEN_KEY = 'hellodarzi-device-token';
 
 export interface AuthResult {
   user: ExtendedUserProfile | null;
   token: string | null;
   error: string | null;
   needsShopSetup?: boolean;
+}
+
+export function readDeviceToken(): string | null {
+  try {
+    return localStorage.getItem(DEVICE_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function writeDeviceToken(token: string): void {
+  try {
+    localStorage.setItem(DEVICE_TOKEN_KEY, token);
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+export function clearDeviceToken(): void {
+  try {
+    localStorage.removeItem(DEVICE_TOKEN_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+export function isDeviceSessionToken(token: string | null | undefined): boolean {
+  return typeof token === 'string' && token.startsWith('hddev_');
+}
+
+/** True when a JWT is missing exp or exp is in the past (30s skew). */
+export function isAccessTokenExpired(token: string): boolean {
+  if (!token || isDeviceSessionToken(token)) return true;
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return true;
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    const payload = JSON.parse(atob(padded)) as { exp?: number };
+    if (typeof payload.exp !== 'number') return false;
+    return payload.exp * 1000 <= Date.now() - 30_000;
+  } catch {
+    return true;
+  }
+}
+
+/** Prefer a live Supabase JWT; fall back to the local device session for APIs. */
+export function pickApiToken(jwt: string | null | undefined, device: string | null | undefined): string | null {
+  if (jwt && !isDeviceSessionToken(jwt) && !isAccessTokenExpired(jwt)) return jwt;
+  if (device && isDeviceSessionToken(device)) return device;
+  if (jwt) return jwt;
+  return null;
+}
+
+/** Mint (or rotate) a local device session while online with a valid JWT. */
+export async function mintDeviceSession(accessToken: string): Promise<string | null> {
+  if (!accessToken || isDeviceSessionToken(accessToken) || isAccessTokenExpired(accessToken)) {
+    return readDeviceToken();
+  }
+  try {
+    const res = await fetch('/api/auth/device-session', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || typeof data.token !== 'string') {
+      return readDeviceToken();
+    }
+    writeDeviceToken(data.token);
+    return data.token;
+  } catch {
+    return readDeviceToken();
+  }
+}
+
+/** Revoke local device session(s) before logout. */
+export async function revokeDeviceSession(apiToken: string | null): Promise<void> {
+  const device = readDeviceToken();
+  const bearer = apiToken || device;
+  if (!bearer) {
+    clearDeviceToken();
+    return;
+  }
+  try {
+    await fetch('/api/auth/revoke-device-session', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${bearer}`,
+      },
+      body: JSON.stringify({ all: true, token: device }),
+    });
+  } catch {
+    // best-effort — still clear local storage
+  }
+  clearDeviceToken();
 }
 
 export interface ExtendedUserProfile {
@@ -84,6 +183,7 @@ export async function signInWithPassword(email: string, password: string): Promi
     try {
       localStorage.removeItem('hellodarzi-profile-cache');
       localStorage.removeItem('hellodarzi-supabase-auth');
+      clearDeviceToken();
     } catch {
       // ignore
     }
@@ -107,6 +207,10 @@ export async function signInWithPassword(email: string, password: string): Promi
     // Best-effort: cache password for offline Owner-mode unlock (local verifier only).
     if (profileResult.user && !profileResult.needsShopSetup) {
       void cacheOwnerUnlockPassword(accessToken, password);
+      const device = await mintDeviceSession(accessToken);
+      if (device) {
+        return { ...profileResult, token: pickApiToken(accessToken, device) };
+      }
     }
 
     return profileResult;
@@ -128,8 +232,14 @@ export async function completeShopSetup(
 ): Promise<AuthResult> {
   const result = await ensureLocalProfile(accessToken, { shopName: shopName.trim() });
   // Shop-setup path skipped verifier cache during sign-in — store it now.
-  if (result.user && opts?.password) {
-    void cacheOwnerUnlockPassword(accessToken, opts.password);
+  if (result.user) {
+    if (opts?.password) {
+      void cacheOwnerUnlockPassword(accessToken, opts.password);
+    }
+    const device = await mintDeviceSession(accessToken);
+    if (device) {
+      return { ...result, token: pickApiToken(accessToken, device) };
+    }
   }
   return result;
 }

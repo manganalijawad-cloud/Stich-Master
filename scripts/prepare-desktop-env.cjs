@@ -57,7 +57,18 @@ if (missing.length) {
   process.exit(1);
 }
 
-const lines = Object.entries(env).map(([k, v]) => `${k}=${JSON.stringify(v)}`);
+const lines = Object.entries(env)
+  .filter(([k, v]) => {
+    // Never bake an empty JWT secret into the installer.
+    if (k === 'SUPABASE_JWT_SECRET' && (!v || !String(v).trim())) return false;
+    return true;
+  })
+  .map(([k, v]) => `${k}=${JSON.stringify(v)}`);
 fs.mkdirSync(OUT_DIR, { recursive: true });
 fs.writeFileSync(OUT, lines.join('\n') + '\n', 'utf8');
 console.log('Prepared packaged desktop env: config/desktop.env');
+if (env.SUPABASE_JWT_SECRET) {
+  console.warn(
+    'WARNING: SUPABASE_JWT_SECRET is included in the packaged env. Prefer JWKS-only (ES256) and omit this secret for production builds.'
+  );
+}

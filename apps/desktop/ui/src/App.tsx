@@ -85,12 +85,14 @@ function AuthWrapper() {
       }, OWNER_IDLE_MS);
     };
 
+    // Real input only — wheel (not window scroll) covers nested panel scrolling.
     const events: Array<keyof WindowEventMap> = [
       'mousemove',
       'mousedown',
+      'pointerdown',
       'keydown',
       'touchstart',
-      'scroll',
+      'wheel',
       'click',
     ];
     events.forEach((evt) => window.addEventListener(evt, bumpActivity, { passive: true }));
@@ -388,8 +390,13 @@ function AuthWrapper() {
     return (
       <div className="h-screen flex flex-col">
         {isElectron && <TitleBar />}
-        <div className="flex-1 bg-[#0a0a0a] flex flex-col items-center justify-center text-white">
-          <p className="text-lg font-semibold text-white">Starting up...</p>
+        <div className="flex-1 bg-[#0f172a] flex flex-col items-center justify-center text-white gap-3 app-boot-screen">
+          <div className="app-boot-mark" aria-hidden="true">HD</div>
+          <p className="text-lg font-semibold tracking-tight">Hello Darzi</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Starting</p>
+          <div className="app-boot-track" aria-hidden="true">
+            <div className="app-boot-bar" />
+          </div>
         </div>
       </div>
     );

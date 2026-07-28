@@ -1,6 +1,6 @@
 import React from 'react';
 import { X } from 'lucide-react';
-import { DESKTOP_SHORTCUTS } from '../lib/keyboard';
+import { DESKTOP_SHORTCUTS } from '../../lib/keyboard';
 
 interface Props {
   open: boolean;

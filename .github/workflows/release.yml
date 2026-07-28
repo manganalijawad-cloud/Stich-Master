@@ -50,11 +50,16 @@ jobs:
           if (-not $env:VITE_SUPABASE_URL -or -not $env:VITE_SUPABASE_ANON_KEY) {
             throw "VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY secrets are required."
           }
-          @(
+          $lines = @(
             "VITE_SUPABASE_URL=$env:VITE_SUPABASE_URL"
             "VITE_SUPABASE_ANON_KEY=$env:VITE_SUPABASE_ANON_KEY"
-            "SUPABASE_JWT_SECRET=$env:SUPABASE_JWT_SECRET"
-          ) | Set-Content -Encoding utf8NoBOM .env
+          )
+          # Only ship HS256 secret when explicitly set. Prefer JWKS (ES256) verify — never bake an empty secret.
+          if ($env:SUPABASE_JWT_SECRET -and $env:SUPABASE_JWT_SECRET.Trim().Length -gt 0) {
+            Write-Warning "SUPABASE_JWT_SECRET is set — it will be embedded in the installer for legacy HS256 tokens. Prefer JWKS-only if your project uses ES256."
+            $lines += "SUPABASE_JWT_SECRET=$env:SUPABASE_JWT_SECRET"
+          }
+          $lines | Set-Content -Encoding utf8NoBOM .env
 
       - name: Build UI and server
         run: npm run build:all
@@ -65,13 +70,12 @@ jobs:
       - name: Prepare packaged Auth env
         run: node scripts/prepare-desktop-env.cjs
 
-      - name: Build installer (unsigned for v1)
+      - name: Build installer (unsigned)
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Azure Trusted Signing is optional later. For v1 we ship unsigned and
-          # document SmartScreen on the website. Do not select a missing azure config.
+          # Code signing deferred for now. Document SmartScreen on the website.
           Write-Warning "Building unsigned installer (Unknown publisher) — SmartScreen guidance is on the download page."
           Set-Location apps/desktop
           npx electron-builder --win --x64 --publish always --config electron-builder.json

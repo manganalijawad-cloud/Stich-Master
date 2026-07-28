@@ -16,6 +16,7 @@ import {
 
 import * as db from "./db";
 import { isSupabaseAuthConfigured, verifySupabaseAccessToken } from "./auth/supabaseJwt";
+import { startBackupScheduler, getAutoBackupsDir } from "./backupScheduler";
 
 // Load .env from packaged resources, repo root (dev), and cwd.
 // Electron main process usually injects Auth env first; this is a fallback.
@@ -141,7 +142,7 @@ function requireOwnerMode(req: AuthenticatedRequest, res: Response, next: NextFu
   next();
 }
 
-/** Supabase Auth: verify access JWT locally (works offline). No business DB involved. */
+/** Supabase JWT or local opaque device session (hddev_) for multi-day offline API access. */
 function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   void (async () => {
     try {
@@ -156,6 +157,27 @@ function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunctio
         req.user = cached.profile;
         req.token = token;
         if (req.user?.id && isOwnerModeActive(req.user.id)) touchOwnerMode(req.user.id);
+        return next();
+      }
+
+      // Local device sessions survive JWT expiry without network.
+      if (db.isDeviceSessionToken(token)) {
+        const session = db.validateDeviceSession(token);
+        if (!session) {
+          authCache.delete(token);
+          return res.status(401).json({
+            error: "Device session expired. Reconnect to the internet and sign in again.",
+          });
+        }
+        const profile = db.getProfile(session.userId);
+        if (!profile) {
+          return res.status(401).json({ error: "Account not found on this device. Sign in again to set up." });
+        }
+        const user = toAuthUser(profile);
+        req.user = user;
+        req.token = token;
+        cacheAuthUser(token, user);
+        if (isOwnerModeActive(user.id)) touchOwnerMode(user.id);
         return next();
       }
 
@@ -443,6 +465,46 @@ app.get("/api/auth/owner-mode", requireAuth, (req: AuthenticatedRequest, res: Re
   const active = isOwnerModeActive(userId);
   if (active) touchOwnerMode(userId);
   return res.json({ active });
+});
+
+/**
+ * Mint a local opaque device session after a valid Supabase JWT auth.
+ * Used so APIs keep working offline after the access JWT expires.
+ */
+app.post("/api/auth/device-session", requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  if (!req.token || db.isDeviceSessionToken(req.token)) {
+    return res.status(403).json({
+      error: "Online sign-in required to create a device session.",
+    });
+  }
+  try {
+    db.revokeDeviceSessionsForUser(req.user!.id);
+    const session = db.createDeviceSession(req.user!.id);
+    return res.json({ token: session.token, expiresAt: session.expiresAt });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || "Failed to create device session." });
+  }
+});
+
+/** Revoke the current device token and/or all device sessions for this user. */
+app.post("/api/auth/revoke-device-session", requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const bodyToken = typeof req.body?.token === "string" ? req.body.token : null;
+    if (bodyToken && db.isDeviceSessionToken(bodyToken)) {
+      db.revokeDeviceSession(bodyToken);
+    }
+    if (req.token && db.isDeviceSessionToken(req.token)) {
+      db.revokeDeviceSession(req.token);
+    }
+    if (req.body?.all) {
+      db.revokeDeviceSessionsForUser(req.user!.id);
+    }
+    if (req.token) authCache.delete(req.token);
+    if (bodyToken) authCache.delete(bodyToken);
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || "Failed to revoke device session." });
+  }
 });
 
 // -------------------------------------------------------------------------
@@ -1357,6 +1419,15 @@ app.post("/api/backup", requireAuth, requireRole(["Owner"]), requireOwnerMode, a
   }
 });
 
+/** Path to the daily auto-backup folder (same JSON format as manual download). */
+app.get("/api/backup/auto-dir", requireAuth, requireRole(["Owner"]), requireOwnerMode, (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    return res.json({ path: getAutoBackupsDir() });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || "Failed to resolve auto-backup folder." });
+  }
+});
+
 app.post("/api/restore", requireAuth, requireRole(["Owner"]), requireOwnerMode, async (req: AuthenticatedRequest, res: Response) => {
   const { backupData } = req.body;
   if (!backupData || !backupData.data) {
@@ -1682,6 +1753,7 @@ async function startServer(preferredPort?: number): Promise<number> {
     // desktop shell surfaces the problem instead of running with no storage.
     db.initDatabase();
     console.log("SQLite database initialized successfully");
+    startBackupScheduler();
   }
 
   async function serveAtPort(port: number): Promise<number> {

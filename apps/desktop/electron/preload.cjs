@@ -20,6 +20,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // User data path (persistent storage location)
   getUserDataPath: () => ipcRenderer.invoke('get-user-data-path'),
 
+  // Open a local folder/file in Explorer (auto-backups folder, etc.)
+  openPath: (targetPath) => ipcRenderer.invoke('open-path', targetPath),
+
   // Auto-launch on Windows startup
   getAutoLaunch: () => ipcRenderer.invoke('get-auto-launch'),
   setAutoLaunch: (enable) => ipcRenderer.invoke('set-auto-launch', enable),

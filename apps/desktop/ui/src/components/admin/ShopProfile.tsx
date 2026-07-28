@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Shield } from 'lucide-react';
+import { Save, Shield, Power } from 'lucide-react';
 import type { DeliverPaymentMode } from '../../types';
 
 interface ShopProfileProps {
@@ -22,6 +22,9 @@ export default function ShopProfile({ token, onSettingsUpdated, onOwnerModeRequi
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [autoLaunch, setAutoLaunch] = useState(false);
+  const [autoLaunchSaving, setAutoLaunchSaving] = useState(false);
+  const isElectron = !!(window as any).electronAPI?.isElectron;
 
   const loadSettings = async () => {
     setLoading(true);
@@ -47,6 +50,28 @@ export default function ShopProfile({ token, onSettingsUpdated, onOwnerModeRequi
   };
 
   useEffect(() => { loadSettings(); }, [token]);
+
+  useEffect(() => {
+    if (!isElectron) return;
+    const api = (window as any).electronAPI;
+    api?.getAutoLaunch?.()
+      .then((enabled: boolean) => setAutoLaunch(!!enabled))
+      .catch(() => setAutoLaunch(false));
+  }, [isElectron]);
+
+  const handleAutoLaunchChange = async (enabled: boolean) => {
+    if (!isElectron) return;
+    setAutoLaunch(enabled);
+    setAutoLaunchSaving(true);
+    try {
+      const result = await (window as any).electronAPI.setAutoLaunch(enabled);
+      setAutoLaunch(!!result);
+    } catch {
+      setAutoLaunch(!enabled);
+    } finally {
+      setAutoLaunchSaving(false);
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -230,6 +255,30 @@ export default function ShopProfile({ token, onSettingsUpdated, onOwnerModeRequi
           </label>
         </div>
       </section>
+
+      {isElectron && (
+        <section className="px-4 py-3 space-y-3">
+          <div className="flex items-center gap-2">
+            <Power className="icon-xs text-brand-sky shrink-0" />
+            <h3 className="text-xs font-bold text-brand-sidebar uppercase tracking-wider">Startup</h3>
+          </div>
+          <label className={`flex items-start gap-2 text-xs text-slate-700 max-w-xl ${autoLaunchSaving ? 'opacity-60' : ''}`}>
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={autoLaunch}
+              disabled={autoLaunchSaving}
+              onChange={(e) => handleAutoLaunchChange(e.target.checked)}
+            />
+            <span>
+              <span className="font-semibold block">Open Hello Darzi when Windows starts</span>
+              <span className="text-3xs text-slate-500">
+                Launches automatically after you sign in to this PC. Turn off anytime.
+              </span>
+            </span>
+          </label>
+        </section>
+      )}
     </form>
   );
 }

@@ -28,7 +28,14 @@ export default function VersionInfo({ collapsed = false, position }: { collapsed
     const api = (window as any).electronAPI;
 
     const unsubAvailable = api.onUpdateAvailable((info: { version: string }) => {
-      setUpdate(prev => ({ ...prev, available: true, version: info.version, downloading: true }));
+      // Background check only notifies — download starts when the user clicks Check / Update Available.
+      setUpdate(prev => ({
+        ...prev,
+        available: true,
+        version: info.version,
+        downloading: false,
+        error: undefined,
+      }));
     });
 
     const unsubNotAvailable = api.onUpdateNotAvailable(() => {
@@ -67,8 +74,15 @@ export default function VersionInfo({ collapsed = false, position }: { collapsed
       if (result.error && result.error !== 'Auto-updater not available') {
         setUpdate(prev => ({ ...prev, error: result.error }));
       }
-      if (!result.updateAvailable) {
-        setUpdate(prev => ({ ...prev, available: false }));
+      if (result.updateAvailable) {
+        setUpdate(prev => ({
+          ...prev,
+          available: true,
+          version: result.version || prev.version,
+          downloading: true,
+        }));
+      } else {
+        setUpdate(prev => ({ ...prev, available: false, downloading: false }));
       }
     } catch {
       setUpdate(prev => ({ ...prev, error: 'Failed to check for updates.' }));

@@ -1,6 +1,16 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import type { ExtendedUserProfile } from '../lib/auth';
-import { ensureLocalProfile, signOut as supabaseSignOut } from '../lib/auth';
+import {
+  ensureLocalProfile,
+  mintDeviceSession,
+  pickApiToken,
+  readDeviceToken,
+  clearDeviceToken,
+  revokeDeviceSession,
+  isAccessTokenExpired,
+  isDeviceSessionToken,
+  signOut as supabaseSignOut,
+} from '../lib/auth';
 import { getSupabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { localDataStore } from '../lib/localDataStore';
 
@@ -51,14 +61,6 @@ function clearCachedProfile(): void {
   }
 }
 
-function clearLegacyDeviceToken(): void {
-  try {
-    localStorage.removeItem('hellodarzi-device-token');
-  } catch {
-    // ignore
-  }
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<ExtendedUserProfile | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -70,6 +72,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const hydratingRef = useRef(false);
   /** True once a local profile is attached — blocks stale needsShopSetup hydrates. */
   const hasProfileRef = useRef(false);
+  /** Prevents SIGNED_OUT from wiping a device session during intentional logout. */
+  const signingOutRef = useRef(false);
+  const tokenRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    tokenRef.current = token;
+  }, [token]);
 
   const clearSession = useCallback(() => {
     hasProfileRef.current = false;
@@ -79,7 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsPasswordRecovery(false);
     setSubscriptionStatus(null);
     clearCachedProfile();
-    clearLegacyDeviceToken();
+    clearDeviceToken();
     localDataStore.clear();
   }, []);
 
@@ -87,7 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsPasswordRecovery(false);
   }, []);
 
-  const setSession = useCallback((newUser: ExtendedUserProfile, newToken: string) => {
+  const applySession = useCallback((newUser: ExtendedUserProfile, apiToken: string) => {
     hasProfileRef.current = true;
     setUser((prev) => {
       if (prev && prev.id !== newUser.id) {
@@ -95,13 +104,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       return newUser;
     });
-    setToken(newToken);
+    setToken(apiToken);
     setNeedsShopSetup(false);
     setIsPasswordRecovery(false);
     writeCachedProfile(newUser);
-    clearLegacyDeviceToken();
     setSubscriptionStatus(newUser.subscription_status || 'active');
   }, []);
+
+  const setSession = useCallback((newUser: ExtendedUserProfile, newToken: string) => {
+    const apiToken = pickApiToken(newToken, readDeviceToken()) || newToken;
+    applySession(newUser, apiToken);
+
+    // Rotate / mint local device session while we still have a live JWT.
+    if (!isDeviceSessionToken(newToken) && !isAccessTokenExpired(newToken)) {
+      void mintDeviceSession(newToken).then((device) => {
+        if (!mountedRef.current || !device) return;
+        setToken(pickApiToken(newToken, device) || device);
+      });
+    }
+  }, [applySession]);
 
   const completeShopSetupSession = useCallback((newUser: ExtendedUserProfile) => {
     hasProfileRef.current = true;
@@ -109,15 +130,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setNeedsShopSetup(false);
     writeCachedProfile(newUser);
     setSubscriptionStatus(newUser.subscription_status || 'active');
+    const jwtOrDevice = tokenRef.current;
+    if (jwtOrDevice && !isDeviceSessionToken(jwtOrDevice) && !isAccessTokenExpired(jwtOrDevice)) {
+      void mintDeviceSession(jwtOrDevice).then((device) => {
+        if (!mountedRef.current) return;
+        const next = pickApiToken(jwtOrDevice, device);
+        if (next) setToken(next);
+      });
+    }
   }, []);
 
-  const handleSignOut = useCallback(async () => {
+  const restoreFromDeviceToken = useCallback(async (deviceToken: string): Promise<boolean> => {
     try {
+      const res = await fetch('/api/auth/me', {
+        headers: { Authorization: `Bearer ${deviceToken}` },
+      });
+      if (!res.ok) return false;
+      const data = await res.json().catch(() => ({}));
+      const uid = data?.user?.id as string | undefined;
+      if (!uid) return false;
+      const cached = readCachedProfile(uid);
+      const profile: ExtendedUserProfile = cached || {
+        id: data.user.id,
+        email: data.user.email || '',
+        name: data.user.name || data.user.email || 'User',
+        role: data.user.role || 'Owner',
+        shop_id: data.user.shop_id,
+        shop_name: data.user.name,
+        created_at: '',
+        updated_at: '',
+        subscription_status: 'active',
+      };
+      if (mountedRef.current) {
+        applySession(profile, deviceToken);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }, [applySession]);
+
+  const handleSignOut = useCallback(async () => {
+    signingOutRef.current = true;
+    try {
+      await revokeDeviceSession(tokenRef.current);
       await supabaseSignOut();
     } catch {
       // local clear still proceeds
     }
     clearSession();
+    signingOutRef.current = false;
   }, [clearSession]);
 
   const hydrateFromAccessToken = useCallback(async (
@@ -150,6 +212,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (opts?.allowOfflineCache) {
+      const device = readDeviceToken();
+      if (device && (await restoreFromDeviceToken(device))) {
+        return;
+      }
+
       try {
         const { data } = await getSupabase().auth.getSession();
         const sessionUser = data.session?.user;
@@ -164,7 +231,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             mountedRef.current &&
             (!sessionEmail || !cachedEmail || cachedEmail === sessionEmail)
           ) {
-            setSession(cached, accessToken);
+            const apiToken = pickApiToken(accessToken, device) || accessToken;
+            applySession(cached, apiToken);
             return;
           }
         }
@@ -174,14 +242,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (mountedRef.current) {
-      setToken(accessToken);
+      setToken(pickApiToken(accessToken, readDeviceToken()) || accessToken);
     }
-  }, [setSession]);
+  }, [setSession, applySession, restoreFromDeviceToken]);
 
   useEffect(() => {
     let mounted = true;
     mountedRef.current = true;
-    clearLegacyDeviceToken();
 
     if (!isSupabaseConfigured()) {
       setIsLoading(false);
@@ -196,8 +263,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const { data } = await supabase.auth.getSession();
           const session = data.session;
+          const device = readDeviceToken();
+
           if (session?.access_token && mounted) {
-            await hydrateFromAccessToken(session.access_token, { allowOfflineCache: true });
+            const jwt = session.access_token;
+            if (!isAccessTokenExpired(jwt)) {
+              await hydrateFromAccessToken(jwt, { allowOfflineCache: true });
+            } else if (device) {
+              // JWT expired offline — keep shop usable via device session.
+              const ok = await restoreFromDeviceToken(device);
+              if (!ok) {
+                await hydrateFromAccessToken(jwt, { allowOfflineCache: true });
+              }
+            } else {
+              await hydrateFromAccessToken(jwt, { allowOfflineCache: true });
+            }
+            break;
+          }
+
+          // No Supabase session — try device-only restore (true multi-day offline).
+          if (device && mounted) {
+            await restoreFromDeviceToken(device);
           }
           break;
         } catch {
@@ -214,8 +300,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mountedRef.current) return;
 
-      if (event === 'SIGNED_OUT' || !session?.access_token) {
-        if (event === 'SIGNED_OUT') clearSession();
+      if (event === 'SIGNED_OUT') {
+        if (signingOutRef.current) return;
+        const device = readDeviceToken();
+        if (device) {
+          const ok = await restoreFromDeviceToken(device);
+          if (ok) return;
+        }
+        clearSession();
+        return;
+      }
+
+      if (!session?.access_token) {
         return;
       }
 
@@ -242,7 +338,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             force: true,
           });
         } else if (event === 'TOKEN_REFRESHED') {
-          setToken(session.access_token);
+          const device = readDeviceToken();
+          setToken(pickApiToken(session.access_token, device) || session.access_token);
+          void mintDeviceSession(session.access_token);
         }
       }
     });
@@ -255,7 +353,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mountedRef.current = false;
       subscription?.unsubscribe();
     };
-  }, [clearSession, hydrateFromAccessToken]);
+  }, [clearSession, hydrateFromAccessToken, restoreFromDeviceToken]);
 
   return (
     <AuthContext.Provider
