@@ -1700,21 +1700,12 @@ export default function OrdersSection({
             {!isCreating && (
             <div className="flex items-center gap-1.5 shrink-0">
               <button
-                type="button"
-                onClick={() => setShowShortcuts(true)}
-                className="btn-ghost text-3xs"
-                title="Keyboard shortcuts (?)"
-              >
-                ?
-              </button>
-              <button
                 onClick={startNewBooking}
                 className="btn-primary"
-                title="New order (Ctrl+N)"
+                title="Book a new order"
               >
                 <ShoppingCart className="icon-sm" />
                 Book Order
-                <kbd className="hidden xl:inline text-[9px] font-mono opacity-70 ml-1">Ctrl+N</kbd>
               </button>
             </div>
             )}
@@ -1809,7 +1800,7 @@ export default function OrdersSection({
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search order #, customer… (/ or Ctrl+F)"
+                  placeholder="Search order #, customer…"
                   className="input-base pl-8"
                   aria-label="Search orders"
                 />
@@ -1913,9 +1904,8 @@ export default function OrdersSection({
                 type="button"
                 onClick={cancelBooking}
                 className="text-xs text-slate-500 hover:text-slate-800 font-semibold uppercase tracking-wider cursor-pointer"
-                title="Cancel (Esc)"
               >
-                Cancel <kbd className="font-mono text-[9px] opacity-60">Esc</kbd>
+                Cancel
               </button>
             </div>
 
@@ -1962,7 +1952,7 @@ export default function OrdersSection({
                         value={customerSearch}
                         onChange={(e) => setCustomerSearch(e.target.value)}
                         className="input-base pl-10 font-semibold"
-                        placeholder="Search customer — ↑↓ Enter to select"
+                        placeholder="Search customer by name or phone…"
                         aria-label="Search customers"
                       />
                     </div>
@@ -2254,10 +2244,8 @@ export default function OrdersSection({
                     type="button"
                     onClick={goSummaryStep}
                     className="btn-primary"
-                    title="Review (Ctrl+Enter)"
                   >
                     Review <ChevronRight className="icon-xs" />
-                    <kbd className="hidden sm:inline text-[9px] font-mono opacity-70">Ctrl+Enter</kbd>
                   </button>
                 </div>
               </div>
@@ -2528,11 +2516,9 @@ export default function OrdersSection({
                     type="button"
                     onClick={handleFinalizeBooking}
                     className="btn-success flex-1"
-                    title="Lock order (Ctrl+Enter)"
                   >
                     <CheckCircle className="w-5 h-5" />
                     Lock Order & Confirm
-                    <kbd className="hidden sm:inline text-[9px] font-mono opacity-80 ml-1">Ctrl+Enter</kbd>
                   </button>
                 </div>
               </div>
@@ -2841,7 +2827,7 @@ export default function OrdersSection({
                   <div className="flex flex-wrap items-center gap-1.5 print:hidden">
                     <button
                       onClick={triggerPrintReceipt}
-                      title="Print (Ctrl+P)"
+                      title="Print receipt"
                       className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-semibold rounded-lg text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-[background-color,border-color] hover:border-slate-300"
                     >
                       <Printer className="w-3.5 h-3.5 text-slate-500" />
@@ -2862,7 +2848,7 @@ export default function OrdersSection({
                           });
                           setIsEditing(true);
                         }}
-                        title="Edit (F2)"
+                        title="Edit order"
                         className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-lg text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-[background-color]"
                       >
                         <Edit3 className="w-3.5 h-3.5 text-brand-sky" />

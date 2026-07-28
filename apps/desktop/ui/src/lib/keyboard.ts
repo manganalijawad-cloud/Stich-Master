@@ -44,19 +44,10 @@ export function matchHotkeys(e: KeyboardEvent, handlers: HotkeyHandler[]): void 
   }
 }
 
-/** Common chord labels for the in-app cheat sheet. */
+/** Simple keys only — shop staff should use buttons; these are optional helpers. */
 export const DESKTOP_SHORTCUTS: Array<{ keys: string; action: string; scope?: string }> = [
-  { keys: 'Ctrl+1…4', action: 'Switch Customers / Orders / Finances / Settings', scope: 'App' },
-  { keys: 'Ctrl+N', action: 'New order or customer', scope: 'Page' },
-  { keys: 'Ctrl+F / /', action: 'Focus search', scope: 'Page' },
-  { keys: '↑ ↓', action: 'Move through list / search results', scope: 'Page' },
-  { keys: 'Enter', action: 'Open selected / confirm primary action', scope: 'Page' },
-  { keys: 'Esc', action: 'Cancel, close dialog, or go back', scope: 'Global' },
-  { keys: 'Ctrl+Enter', action: 'Next step / lock order / save', scope: 'Forms' },
-  { keys: 'Ctrl+S', action: 'Save edits', scope: 'Orders' },
-  { keys: 'Ctrl+P', action: 'Print', scope: 'Orders' },
-  { keys: 'F2', action: 'Edit selected order', scope: 'Orders' },
-  { keys: 'Ctrl+Shift+→', action: 'Advance order status', scope: 'Orders' },
-  { keys: 'Delete', action: 'Delete (Owner, with confirm)', scope: 'Orders' },
-  { keys: '?', action: 'Show this shortcut list', scope: 'Global' },
+  { keys: 'Esc', action: 'Cancel, go back, or close a dialog', scope: 'Anywhere' },
+  { keys: 'Enter', action: 'Confirm the highlighted item or dialog', scope: 'Lists & dialogs' },
+  { keys: '↑ ↓', action: 'Move through a list', scope: 'Lists' },
+  { keys: '/', action: 'Jump to search', scope: 'Orders & Customers' },
 ];

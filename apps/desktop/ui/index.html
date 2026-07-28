@@ -29,7 +29,9 @@
   <body>
     <div id="root">
       <div class="boot-splash" role="status" aria-live="polite" aria-label="Loading Hello Darzi">
-        <div class="boot-splash-mark" aria-hidden="true">HD</div>
+        <div class="boot-splash-mark" aria-hidden="true">
+          <img src="/apple-touch-icon.png" alt="" width="48" height="48" />
+        </div>
         <div class="boot-splash-brand">Hello Darzi</div>
         <div class="boot-splash-sub">Loading</div>
         <div class="boot-splash-track" aria-hidden="true"><div class="boot-splash-bar"></div></div>
@@ -54,12 +56,15 @@
         width: 48px;
         height: 48px;
         border-radius: 12px;
-        display: grid;
-        place-items: center;
-        font-weight: 800;
-        letter-spacing: -0.04em;
-        border: 1px solid rgba(148, 163, 184, 0.35);
-        background: #1e293b;
+        overflow: hidden;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        background: #0f172a;
+      }
+      .boot-splash-mark img {
+        width: 100%;
+        height: 100%;
+        display: block;
+        object-fit: contain;
       }
       .boot-splash-brand {
         font-size: 20px;

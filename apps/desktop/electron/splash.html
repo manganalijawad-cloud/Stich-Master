@@ -28,20 +28,19 @@
       animation: splash-in 320ms ease-out forwards;
     }
     .mark {
-      width: 52px;
-      height: 52px;
-      border-radius: 14px;
-      background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
-      border: 1px solid rgba(148, 163, 184, 0.35);
-      display: grid;
-      place-items: center;
+      width: 64px;
+      height: 64px;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #0f172a;
+      border: 1px solid rgba(148, 163, 184, 0.25);
       box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
     }
-    .mark span {
-      font-size: 18px;
-      font-weight: 800;
-      letter-spacing: -0.04em;
-      color: #e2e8f0;
+    .mark img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: contain;
     }
     .brand {
       margin: 0;
@@ -89,7 +88,9 @@
 </head>
 <body>
   <div class="wrap" role="status" aria-live="polite" aria-label="Starting Hello Darzi">
-    <div class="mark" aria-hidden="true"><span>HD</span></div>
+    <div class="mark" aria-hidden="true">
+      <img src="./app-icon.png" alt="" width="64" height="64" />
+    </div>
     <h1 class="brand">Hello Darzi</h1>
     <p class="sub">Starting</p>
     <div class="track" aria-hidden="true"><div class="bar"></div></div>

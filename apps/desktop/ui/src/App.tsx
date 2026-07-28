@@ -391,7 +391,9 @@ function AuthWrapper() {
       <div className="h-screen flex flex-col">
         {isElectron && <TitleBar />}
         <div className="flex-1 bg-[#0f172a] flex flex-col items-center justify-center text-white gap-3 app-boot-screen">
-          <div className="app-boot-mark" aria-hidden="true">HD</div>
+          <div className="app-boot-mark" aria-hidden="true">
+            <img src="/apple-touch-icon.png" alt="" width={48} height={48} />
+          </div>
           <p className="text-lg font-semibold tracking-tight">Hello Darzi</p>
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Starting</p>
           <div className="app-boot-track" aria-hidden="true">
@@ -679,8 +681,8 @@ function AuthWrapper() {
           </div>
         </header>
 
-        <main className={`flex-1 min-h-0 min-w-0 p-2 md:p-3 ${(activeTab === 'Orders' || activeTab === 'Customers') ? 'overflow-hidden' : 'overflow-x-hidden overflow-y-auto content-scroll'}`}>
-          <div className="animate-fade-in h-full min-h-0 desk-fill">
+        <main className={`flex-1 min-h-0 min-w-0 p-2 md:p-3 overflow-x-hidden overflow-y-auto content-scroll`}>
+          <div className={`animate-fade-in min-h-0 ${(activeTab === 'Orders' || activeTab === 'Customers') ? 'h-full min-h-0' : ''}`}>
             {activeTab === 'Customers' && (
               <CustomersSection
                 token={token}

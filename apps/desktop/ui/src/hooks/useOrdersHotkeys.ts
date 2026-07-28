@@ -148,37 +148,33 @@ export function useOrdersHotkeys(api: OrdersHotkeyApi): void {
             a.cancelBooking();
             return true;
           }
-          if (isMod(ev) && ev.key === 'Enter') {
-            if (a.bookingStep === 'customer' && !a.showCreateCustomer) {
-              if (a.searchResults.length > 0) {
+          // Customer search: Enter selects (including while typing in the search box)
+          if (a.bookingStep === 'customer' && !a.showCreateCustomer) {
+            const inTextarea = ev.target instanceof HTMLTextAreaElement;
+            if (!inTextarea && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp' || ev.key === 'Enter')) {
+              if (ev.key === 'ArrowDown' && a.searchResults.length > 0) {
+                a.setHighlightIndex((prev) => Math.min(prev + 1, a.searchResults.length - 1));
+                return true;
+              }
+              if (ev.key === 'ArrowUp' && a.searchResults.length > 0) {
+                a.setHighlightIndex((prev) => Math.max(prev - 1, 0));
+                return true;
+              }
+              if (ev.key === 'Enter' && a.searchResults.length > 0) {
                 const idx = Math.max(0, Math.min(a.highlightIndex, a.searchResults.length - 1));
                 a.selectCustomerByIndex(idx);
                 return true;
               }
-              a.openCreateCustomer();
-              return true;
             }
+          }
+          // Next / lock: plain Enter when not typing in a field (buttons are the main path)
+          if (ev.key === 'Enter' && !editable) {
             if (a.bookingStep === 'garments') {
               a.goSummaryStep();
               return true;
             }
             if (a.bookingStep === 'summary') {
               a.lockOrder();
-              return true;
-            }
-          }
-          if (a.bookingStep === 'customer' && !a.showCreateCustomer && !editable) {
-            if (ev.key === 'ArrowDown' && a.searchResults.length > 0) {
-              a.setHighlightIndex((prev) => Math.min(prev + 1, a.searchResults.length - 1));
-              return true;
-            }
-            if (ev.key === 'ArrowUp' && a.searchResults.length > 0) {
-              a.setHighlightIndex((prev) => Math.max(prev - 1, 0));
-              return true;
-            }
-            if (ev.key === 'Enter' && a.searchResults.length > 0) {
-              const idx = Math.max(0, Math.min(a.highlightIndex, a.searchResults.length - 1));
-              a.selectCustomerByIndex(idx);
               return true;
             }
           }
@@ -191,7 +187,7 @@ export function useOrdersHotkeys(api: OrdersHotkeyApi): void {
             a.cancelEdit();
             return true;
           }
-          if (isMod(ev) && (ev.key === 's' || ev.key === 'S' || ev.key === 'Enter')) {
+          if (ev.key === 'Enter' && !editable) {
             a.saveEdits();
             return true;
           }

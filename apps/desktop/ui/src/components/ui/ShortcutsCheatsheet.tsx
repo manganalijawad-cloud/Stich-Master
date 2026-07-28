@@ -25,8 +25,8 @@ export default function ShortcutsCheatsheet({ open, onClose }: Props) {
       >
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h3 className="text-base font-bold text-slate-900 font-display">Keyboard shortcuts</h3>
-            <p className="text-3xs text-slate-500 mt-0.5">Designed for fast shop work without the mouse.</p>
+            <h3 className="text-base font-bold text-slate-900 font-display">Optional keys</h3>
+            <p className="text-3xs text-slate-500 mt-0.5">You can do everything with the mouse. These are just extras.</p>
           </div>
           <button type="button" className="btn-ghost" onClick={onClose} aria-label="Close">
             <X className="icon-sm" />

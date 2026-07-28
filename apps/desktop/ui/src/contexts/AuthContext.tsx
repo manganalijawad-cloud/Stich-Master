@@ -61,6 +61,49 @@ function clearCachedProfile(): void {
   }
 }
 
+/** Any cached profile on this device — used for instant paint before network/API. */
+function readAnyCachedProfile(): ExtendedUserProfile | null {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_KEY);
+    if (!raw) return null;
+    const cached = JSON.parse(raw) as ExtendedUserProfile;
+    if (!cached?.id) return null;
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
+function readStoredAccessToken(): string | null {
+  try {
+    const raw = localStorage.getItem('hellodarzi-supabase-auth');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as {
+      access_token?: string;
+      currentSession?: { access_token?: string };
+    };
+    return parsed.access_token || parsed.currentSession?.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
+async function waitForServer(timeoutMs = 8000): Promise<boolean> {
+  const start = Date.now();
+  let delay = 120;
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const res = await fetch('/api/config-status', { method: 'GET' });
+      if (res.ok) return true;
+    } catch {
+      // server still booting
+    }
+    await new Promise((r) => setTimeout(r, delay));
+    delay = Math.min(delay * 1.5, 800);
+  }
+  return false;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<ExtendedUserProfile | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -141,33 +184,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const restoreFromDeviceToken = useCallback(async (deviceToken: string): Promise<boolean> => {
-    try {
-      const res = await fetch('/api/auth/me', {
-        headers: { Authorization: `Bearer ${deviceToken}` },
-      });
-      if (!res.ok) return false;
-      const data = await res.json().catch(() => ({}));
-      const uid = data?.user?.id as string | undefined;
-      if (!uid) return false;
-      const cached = readCachedProfile(uid);
-      const profile: ExtendedUserProfile = cached || {
-        id: data.user.id,
-        email: data.user.email || '',
-        name: data.user.name || data.user.email || 'User',
-        role: data.user.role || 'Owner',
-        shop_id: data.user.shop_id,
-        shop_name: data.user.name,
-        created_at: '',
-        updated_at: '',
-        subscription_status: 'active',
-      };
-      if (mountedRef.current) {
-        applySession(profile, deviceToken);
+    const attempt = async (): Promise<boolean> => {
+      try {
+        const res = await fetch('/api/auth/me', {
+          headers: { Authorization: `Bearer ${deviceToken}` },
+        });
+        if (!res.ok) return false;
+        const data = await res.json().catch(() => ({}));
+        const uid = data?.user?.id as string | undefined;
+        if (!uid) return false;
+        const cached = readCachedProfile(uid);
+        const profile: ExtendedUserProfile = cached || {
+          id: data.user.id,
+          email: data.user.email || '',
+          name: data.user.name || data.user.email || 'User',
+          role: data.user.role || 'Owner',
+          shop_id: data.user.shop_id,
+          shop_name: data.user.name,
+          created_at: '',
+          updated_at: '',
+          subscription_status: 'active',
+        };
+        if (mountedRef.current) {
+          applySession(profile, deviceToken);
+        }
+        return true;
+      } catch {
+        return false;
       }
-      return true;
-    } catch {
-      return false;
+    };
+
+    if (await attempt()) return true;
+    // Local API may still be warming after splash → app navigation.
+    await waitForServer(5000);
+    for (let i = 0; i < 3; i++) {
+      if (await attempt()) return true;
+      await new Promise((r) => setTimeout(r, 250 * (i + 1)));
     }
+    return false;
   }, [applySession]);
 
   const handleSignOut = useCallback(async () => {
@@ -249,6 +303,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true;
     mountedRef.current = true;
+    let settled = false;
 
     if (!isSupabaseConfigured()) {
       setIsLoading(false);
@@ -258,47 +313,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const supabase = getSupabase();
     let subscription: { unsubscribe: () => void } | null = null;
 
-    const restore = async () => {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          const { data } = await supabase.auth.getSession();
-          const session = data.session;
-          const device = readDeviceToken();
+    const finishLoading = () => {
+      if (!mounted || settled) return;
+      settled = true;
+      setIsLoading(false);
+    };
 
-          if (session?.access_token && mounted) {
-            const jwt = session.access_token;
-            if (!isAccessTokenExpired(jwt)) {
-              await hydrateFromAccessToken(jwt, { allowOfflineCache: true });
-            } else if (device) {
-              // JWT expired offline — keep shop usable via device session.
-              const ok = await restoreFromDeviceToken(device);
-              if (!ok) {
-                await hydrateFromAccessToken(jwt, { allowOfflineCache: true });
-              }
-            } else {
-              await hydrateFromAccessToken(jwt, { allowOfflineCache: true });
-            }
-            break;
-          }
+    // Instant paint for returning users — never flash the login form while session restores.
+    const cachedProfile = readAnyCachedProfile();
+    const deviceToken = readDeviceToken();
+    const storedJwt = readStoredAccessToken();
+    const optimisticToken = pickApiToken(storedJwt, deviceToken);
+    if (cachedProfile && optimisticToken) {
+      applySession(cachedProfile, optimisticToken);
+    }
 
-          // No Supabase session — try device-only restore (true multi-day offline).
-          if (device && mounted) {
-            await restoreFromDeviceToken(device);
+    const restoreSession = async (session: { access_token?: string } | null | undefined) => {
+      const device = readDeviceToken();
+      const jwt = session?.access_token;
+
+      if (jwt) {
+        if (!isAccessTokenExpired(jwt)) {
+          await hydrateFromAccessToken(jwt, { allowOfflineCache: true });
+        } else if (device) {
+          const ok = await restoreFromDeviceToken(device);
+          if (!ok) {
+            await hydrateFromAccessToken(jwt, { allowOfflineCache: true });
           }
-          break;
-        } catch {
-          if (attempt < 2) {
-            await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
-            continue;
-          }
+        } else {
+          await hydrateFromAccessToken(jwt, { allowOfflineCache: true });
         }
+        return;
       }
 
-      if (mounted) setIsLoading(false);
+      if (device) {
+        await restoreFromDeviceToken(device);
+      }
     };
 
     const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mountedRef.current) return;
+
+      if (event === 'INITIAL_SESSION') {
+        try {
+          await restoreSession(session);
+        } finally {
+          finishLoading();
+        }
+        return;
+      }
 
       if (event === 'SIGNED_OUT') {
         if (signingOutRef.current) return;
@@ -331,7 +394,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (event !== 'TOKEN_REFRESHED') {
           setIsPasswordRecovery(false);
         }
-        // Avoid double-hydrate on cold start (getSession + INITIAL_SESSION)
         if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
           await hydrateFromAccessToken(session.access_token, {
             allowOfflineCache: false,
@@ -346,14 +408,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     subscription = data.subscription;
 
-    void restore();
+    // Fallback if INITIAL_SESSION is delayed/missing (older clients / storage races).
+    const fallbackTimer = window.setTimeout(() => {
+      void (async () => {
+        if (settled || !mounted) return;
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          await restoreSession(sessionData.session);
+        } finally {
+          finishLoading();
+        }
+      })();
+    }, 1500);
 
     return () => {
       mounted = false;
       mountedRef.current = false;
+      window.clearTimeout(fallbackTimer);
       subscription?.unsubscribe();
     };
-  }, [clearSession, hydrateFromAccessToken, restoreFromDeviceToken]);
+  }, [applySession, clearSession, hydrateFromAccessToken, restoreFromDeviceToken]);
 
   return (
     <AuthContext.Provider

@@ -837,11 +837,10 @@ export default function CustomersSection({
               <button
                 onClick={startCreateCustomer}
                 className="btn-primary"
-                title="New customer (Ctrl+N)"
+                title="Add a new customer"
               >
                 <UserPlus className="icon-sm" />
                 Add Customer
-                <kbd className="hidden xl:inline text-[9px] font-mono opacity-70 ml-1">Ctrl+N</kbd>
               </button>
             )}
           </div>
@@ -854,7 +853,7 @@ export default function CustomersSection({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search customers… (/ or Ctrl+F)"
+                placeholder="Search customers…"
                 className="input-base pl-9 pr-9"
                 aria-label="Search customers"
               />
@@ -1074,7 +1073,7 @@ export default function CustomersSection({
                             id="customers-print-btn"
                             onClick={handlePrintCustomer}
                             className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 rounded-md cursor-pointer transition-colors"
-                            title="Print customer profile (Ctrl+P)"
+                            title="Print customer profile"
                             aria-label="Print customer"
                           >
                             <Printer className="icon-xs" />
