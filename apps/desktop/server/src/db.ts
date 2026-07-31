@@ -265,6 +265,62 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_customers_updated_at ON customers(updated_at);
 CREATE INDEX IF NOT EXISTS idx_orders_updated_at ON orders(updated_at);
 
+-- Payment ledger (orders.paid_amount remains the live total; rows sync to cloud)
+CREATE TABLE IF NOT EXISTS payments (
+  id TEXT PRIMARY KEY,
+  shop_id TEXT REFERENCES shops(id),
+  order_id TEXT,
+  amount REAL NOT NULL DEFAULT 0,
+  method TEXT DEFAULT '',
+  notes TEXT DEFAULT '',
+  created_by TEXT NOT NULL,
+  updated_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS expenses (
+  id TEXT PRIMARY KEY,
+  shop_id TEXT REFERENCES shops(id),
+  category TEXT DEFAULT '',
+  description TEXT DEFAULT '',
+  amount REAL NOT NULL DEFAULT 0,
+  expense_date TEXT,
+  created_by TEXT NOT NULL,
+  updated_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_payments_created_by ON payments(created_by);
+CREATE INDEX IF NOT EXISTS idx_payments_order_id ON payments(order_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_created_by ON expenses(created_by);
+
+-- Cloud sync outbox + status (local-only; never exported as business backup rows)
+CREATE TABLE IF NOT EXISTS sync_state (
+  user_id TEXT PRIMARY KEY,
+  last_pulled_at TEXT,
+  last_pushed_at TEXT,
+  last_backup_at TEXT,
+  status TEXT NOT NULL DEFAULT 'idle',
+  last_error TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS sync_outbox (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  table_name TEXT NOT NULL,
+  record_id TEXT NOT NULL,
+  op TEXT NOT NULL CHECK(op IN ('upsert','delete')),
+  changed_at TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  UNIQUE(user_id, table_name, record_id, op)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sync_outbox_user ON sync_outbox(user_id, changed_at);
+
 `;
 
 export function initDatabase(dbPath?: string): void {
@@ -298,6 +354,7 @@ export function initDatabase(dbPath?: string): void {
   migrateOrdersSchema();
   migrateShopsSchema();
   migrateShopSettingsSchema();
+  migrateSyncSchema();
   // Drop legacy device PIN table (feature removed)
   try {
     db.exec("DROP TABLE IF EXISTS device_unlock_verifier");
@@ -368,6 +425,7 @@ export function ensureShop(
   } catch {
     /* legacy name column may be absent */
   }
+  enqueueSync(createdBy, "shops", shopId, "upsert");
   return shopId;
 }
 
@@ -394,6 +452,7 @@ export function createCustomer(data: {
     data.address || null, data.email || null,
     data.notes || null, data.created_by, data.updated_by || data.created_by, now, now
   );
+  enqueueSync(data.created_by, "customers", id, "upsert");
   return db.prepare("SELECT * FROM customers WHERE id = ?").get(id) as DbCustomer;
 }
 
@@ -412,14 +471,20 @@ export function updateCustomer(id: string, createdBy: string, data: Partial<DbCu
   params.push(nowISO());
   params.push(id, createdBy);
   db.prepare(`UPDATE customers SET ${sets.join(", ")} WHERE id = ? AND created_by = ?`).run(...params);
+  enqueueSync(createdBy, "customers", id, "upsert");
   return getCustomerById(id, createdBy);
 }
 
 export function deleteCustomer(id: string, createdBy: string): boolean {
   const customer = getCustomerById(id, createdBy);
   if (!customer) return false;
+  const measurementIds = (
+    db.prepare("SELECT id FROM measurements WHERE customer_id = ? AND created_by = ?").all(id, createdBy) as { id: string }[]
+  ).map((r) => r.id);
   db.prepare("DELETE FROM measurements WHERE customer_id = ? AND created_by = ?").run(id, createdBy);
   db.prepare("DELETE FROM customers WHERE id = ? AND created_by = ?").run(id, createdBy);
+  for (const mid of measurementIds) enqueueSync(createdBy, "measurements", mid, "delete");
+  enqueueSync(createdBy, "customers", id, "delete");
   return true;
 }
 
@@ -455,6 +520,7 @@ export function upsertMeasurement(customerId: string, createdBy: string, measure
     db.prepare("UPDATE measurements SET data = ?, updated_by = ?, updated_at = ? WHERE id = ?").run(
       JSON.stringify(measurementData), updatedBy || createdBy, now, existing.id
     );
+    enqueueSync(createdBy, "measurements", existing.id, "upsert");
     return db.prepare("SELECT * FROM measurements WHERE id = ?").get(existing.id) as DbMeasurement;
   } else {
     const id = uuidv4();
@@ -462,6 +528,7 @@ export function upsertMeasurement(customerId: string, createdBy: string, measure
       INSERT INTO measurements (id, customer_id, data, created_by, updated_by, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(id, customerId, JSON.stringify(measurementData), createdBy, updatedBy || createdBy, now, now);
+    enqueueSync(createdBy, "measurements", id, "upsert");
     return db.prepare("SELECT * FROM measurements WHERE id = ?").get(id) as DbMeasurement;
   }
 }
@@ -554,6 +621,7 @@ export function createOrder(data: {
     data.due_date || null, JSON.stringify(data.measurement_snapshot || {}),
     data.created_by, data.updated_by || data.created_by, now, now
   );
+  enqueueSync(data.created_by, "orders", id, "upsert");
   return db.prepare("SELECT * FROM orders WHERE id = ?").get(id) as DbOrder;
 }
 
@@ -576,11 +644,13 @@ export function updateOrder(id: string, createdBy: string, data: Partial<DbOrder
   params.push(nowISO());
   params.push(id, createdBy);
   db.prepare(`UPDATE orders SET ${sets.join(", ")} WHERE id = ? AND created_by = ?`).run(...params);
+  enqueueSync(createdBy, "orders", id, "upsert");
   return getOrderById(id, createdBy);
 }
 
 export function deleteOrder(id: string, createdBy: string): boolean {
   const result = db.prepare("DELETE FROM orders WHERE id = ? AND created_by = ?").run(id, createdBy);
+  if (result.changes > 0) enqueueSync(createdBy, "orders", id, "delete");
   return result.changes > 0;
 }
 
@@ -616,6 +686,7 @@ export function archiveOrders(createdBy: string, beforeDate?: string): { count: 
     params.push(beforeDate);
   }
   const result = db.prepare(sql).run(...params);
+  enqueueSyncMany(createdBy, "orders", ids, "upsert");
   return { count: result.changes, ids };
 }
 
@@ -688,6 +759,8 @@ export function upsertProfile(profile: { id: string; email: string; name?: strin
       shopId, profile.created_by || profile.id, now, now
     );
   }
+  enqueueSync(profile.id, "profiles", profile.id, "upsert");
+  if (shopId) enqueueSync(profile.created_by || profile.id, "shops", shopId, "upsert");
 }
 
 export function getProfilesByOwner(ownerId: string): any[] {
@@ -744,6 +817,8 @@ export function rekeyProfileOwnership(oldUserId: string, newUserId: string, emai
       "customers",
       "measurements",
       "orders",
+      "payments",
+      "expenses",
       "garment_types",
       "styling_categories",
       "inventory",
@@ -814,6 +889,7 @@ export function createShop(
   } catch {
     /* column may not exist on new installs */
   }
+  enqueueSync(createdBy, "shops", id, "upsert");
   return { id, name: shopName, shop_name: shopName };
 }
 
@@ -852,6 +928,7 @@ export function saveSetting(key: string, value: any, userId: string, updatedBy?:
     db.prepare(`
       UPDATE shop_settings SET value = ?, updated_at = ?, updated_by = ? WHERE key = ? AND user_id = ?
     `).run(strVal, now, updatedBy || userId, key, userId);
+    enqueueSync(userId, "shop_settings", String(existing.id), "upsert");
     return { id: String(existing.id), key, user_id: userId };
   }
 
@@ -860,6 +937,7 @@ export function saveSetting(key: string, value: any, userId: string, updatedBy?:
     INSERT INTO shop_settings (id, key, value, user_id, updated_at, updated_by)
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(id, key, strVal, userId, now, updatedBy || userId);
+  enqueueSync(userId, "shop_settings", id, "upsert");
   return { id, key, user_id: userId };
 }
 
@@ -890,6 +968,7 @@ export function createGarmentType(data: any): any {
     data.display_order || 0, data.price || 0,
     JSON.stringify(data.measurement_fields || []),
     data.created_by, data.updated_by || data.created_by, now, now);
+  enqueueSync(data.created_by, "garment_types", id, "upsert");
   return db.prepare("SELECT * FROM garment_types WHERE id = ?").get(id);
 }
 
@@ -913,12 +992,21 @@ export function updateGarmentType(id: string, createdBy: string, data: any): any
   params.push(id, createdBy);
   const result = db.prepare(`UPDATE garment_types SET ${sets.join(", ")} WHERE id = ? AND created_by = ?`).run(...params);
   if (result.changes === 0) return null;
+  enqueueSync(createdBy, "garment_types", id, "upsert");
   return db.prepare("SELECT * FROM garment_types WHERE id = ?").get(id);
 }
 
 export function deleteGarmentType(id: string, createdBy: string): boolean {
+  const styleIds = (
+    db.prepare("SELECT id FROM styling_categories WHERE garment_type_id = ?").all(id) as { id: string }[]
+  ).map((r) => r.id);
   db.prepare("DELETE FROM styling_categories WHERE garment_type_id = ?").run(id);
-  return db.prepare("DELETE FROM garment_types WHERE id = ? AND created_by = ?").run(id, createdBy).changes > 0;
+  const ok = db.prepare("DELETE FROM garment_types WHERE id = ? AND created_by = ?").run(id, createdBy).changes > 0;
+  if (ok) {
+    for (const sid of styleIds) enqueueSync(createdBy, "styling_categories", sid, "delete");
+    enqueueSync(createdBy, "garment_types", id, "delete");
+  }
+  return ok;
 }
 
 export function reorderGarmentTypes(ids: string[], createdBy: string): void {
@@ -926,6 +1014,7 @@ export function reorderGarmentTypes(ids: string[], createdBy: string): void {
   const now = nowISO();
   for (let i = 0; i < ids.length; i++) {
     update.run(i, now, ids[i], createdBy);
+    enqueueSync(createdBy, "garment_types", ids[i], "upsert");
   }
 }
 
@@ -949,6 +1038,7 @@ export function createStylingCategory(data: any): any {
   `).run(id, data.shop_id || null, data.garment_type_id, data.name,
     data.display_order || 0, JSON.stringify(data.options || []),
     data.created_by, data.updated_by || data.created_by, now, now);
+  enqueueSync(data.created_by, "styling_categories", id, "upsert");
   return db.prepare("SELECT * FROM styling_categories WHERE id = ?").get(id);
 }
 
@@ -968,11 +1058,14 @@ export function updateStylingCategory(id: string, createdBy: string, data: any):
   params.push(nowISO());
   params.push(id, createdBy);
   db.prepare(`UPDATE styling_categories SET ${sets.join(", ")} WHERE id = ? AND created_by = ?`).run(...params);
+  enqueueSync(createdBy, "styling_categories", id, "upsert");
   return db.prepare("SELECT * FROM styling_categories WHERE id = ?").get(id);
 }
 
 export function deleteStylingCategory(id: string, createdBy: string): boolean {
-  return db.prepare("DELETE FROM styling_categories WHERE id = ? AND created_by = ?").run(id, createdBy).changes > 0;
+  const ok = db.prepare("DELETE FROM styling_categories WHERE id = ? AND created_by = ?").run(id, createdBy).changes > 0;
+  if (ok) enqueueSync(createdBy, "styling_categories", id, "delete");
+  return ok;
 }
 
 export function reorderStylingCategories(ids: string[], createdBy: string): void {
@@ -980,6 +1073,7 @@ export function reorderStylingCategories(ids: string[], createdBy: string): void
   const now = nowISO();
   for (let i = 0; i < ids.length; i++) {
     update.run(i, now, ids[i], createdBy);
+    enqueueSync(createdBy, "styling_categories", ids[i], "upsert");
   }
 }
 
@@ -1291,6 +1385,346 @@ export function getAuditLogs(options: {
 }
 
 // ---------------------------------------------------------------------------
+// CLOUD SYNC OUTBOX / STATE (local SQLite only)
+// ---------------------------------------------------------------------------
+const SYNCABLE_TABLES = [
+  "shops",
+  "profiles",
+  "customers",
+  "measurements",
+  "garment_types",
+  "styling_categories",
+  "orders",
+  "payments",
+  "expenses",
+  "shop_settings",
+] as const;
+
+export type SyncOp = "upsert" | "delete";
+export type SyncStatus = "idle" | "syncing" | "ok" | "error" | "offline";
+
+export interface SyncStateRow {
+  user_id: string;
+  last_pulled_at: string | null;
+  last_pushed_at: string | null;
+  last_backup_at: string | null;
+  status: SyncStatus;
+  last_error: string | null;
+  updated_at: string;
+}
+
+export interface OutboxRow {
+  id: string;
+  user_id: string;
+  table_name: string;
+  record_id: string;
+  op: SyncOp;
+  changed_at: string;
+  attempts: number;
+  last_error: string | null;
+}
+
+function syncTableExists(name: string): boolean {
+  try {
+    const row = db
+      .prepare("SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = ?")
+      .get(name) as { ok: number } | undefined;
+    return !!row;
+  } catch {
+    return false;
+  }
+}
+
+/** Ensure sync tables exist on older DBs that predate SCHEMA additions. */
+export function migrateSyncSchema(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS payments (
+      id TEXT PRIMARY KEY,
+      shop_id TEXT REFERENCES shops(id),
+      order_id TEXT,
+      amount REAL NOT NULL DEFAULT 0,
+      method TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      created_by TEXT NOT NULL,
+      updated_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS expenses (
+      id TEXT PRIMARY KEY,
+      shop_id TEXT REFERENCES shops(id),
+      category TEXT DEFAULT '',
+      description TEXT DEFAULT '',
+      amount REAL NOT NULL DEFAULT 0,
+      expense_date TEXT,
+      created_by TEXT NOT NULL,
+      updated_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS sync_state (
+      user_id TEXT PRIMARY KEY,
+      last_pulled_at TEXT,
+      last_pushed_at TEXT,
+      last_backup_at TEXT,
+      status TEXT NOT NULL DEFAULT 'idle',
+      last_error TEXT,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS sync_outbox (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      table_name TEXT NOT NULL,
+      record_id TEXT NOT NULL,
+      op TEXT NOT NULL CHECK(op IN ('upsert','delete')),
+      changed_at TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      UNIQUE(user_id, table_name, record_id, op)
+    );
+    CREATE INDEX IF NOT EXISTS idx_sync_outbox_user ON sync_outbox(user_id, changed_at);
+    CREATE INDEX IF NOT EXISTS idx_payments_created_by ON payments(created_by);
+    CREATE INDEX IF NOT EXISTS idx_expenses_created_by ON expenses(created_by);
+  `);
+}
+
+/** Enqueue a local change for background cloud sync. */
+export function enqueueSync(
+  userId: string,
+  tableName: string,
+  recordId: string,
+  op: SyncOp = "upsert"
+): void {
+  if (!userId || !tableName || !recordId) return;
+  if (!(SYNCABLE_TABLES as readonly string[]).includes(tableName)) return;
+  if (!db || !syncTableExists("sync_outbox")) return;
+  const now = nowISO();
+  try {
+    db.prepare(`
+      INSERT INTO sync_outbox (id, user_id, table_name, record_id, op, changed_at, attempts, last_error)
+      VALUES (?, ?, ?, ?, ?, ?, 0, NULL)
+      ON CONFLICT(user_id, table_name, record_id, op) DO UPDATE SET
+        changed_at = excluded.changed_at,
+        attempts = 0,
+        last_error = NULL
+    `).run(uuidv4(), userId, tableName, recordId, op, now);
+  } catch (err) {
+    console.warn("[sync] enqueue failed:", err);
+  }
+}
+
+export function enqueueSyncMany(
+  userId: string,
+  tableName: string,
+  recordIds: string[],
+  op: SyncOp = "upsert"
+): void {
+  for (const id of recordIds) enqueueSync(userId, tableName, id, op);
+}
+
+export function getPendingCount(userId: string): number {
+  if (!db || !syncTableExists("sync_outbox")) return 0;
+  const row = db
+    .prepare("SELECT COUNT(*) AS c FROM sync_outbox WHERE user_id = ?")
+    .get(userId) as { c: number };
+  return row?.c || 0;
+}
+
+export function listOutbox(userId: string, limit = 500): OutboxRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM sync_outbox WHERE user_id = ? ORDER BY changed_at ASC LIMIT ?`
+    )
+    .all(userId, limit) as OutboxRow[];
+}
+
+export function removeOutbox(id: string): void {
+  db.prepare("DELETE FROM sync_outbox WHERE id = ?").run(id);
+}
+
+export function markOutboxError(id: string, error: string): void {
+  db.prepare(
+    `UPDATE sync_outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?`
+  ).run(error.slice(0, 500), id);
+}
+
+export function getSyncState(userId: string): SyncStateRow {
+  if (!db || !syncTableExists("sync_state")) {
+    return {
+      user_id: userId,
+      last_pulled_at: null,
+      last_pushed_at: null,
+      last_backup_at: null,
+      status: "idle",
+      last_error: null,
+      updated_at: nowISO(),
+    };
+  }
+  const row = db
+    .prepare("SELECT * FROM sync_state WHERE user_id = ?")
+    .get(userId) as SyncStateRow | undefined;
+  if (row) return row;
+  const now = nowISO();
+  db.prepare(`
+    INSERT INTO sync_state (user_id, status, updated_at)
+    VALUES (?, 'idle', ?)
+  `).run(userId, now);
+  return {
+    user_id: userId,
+    last_pulled_at: null,
+    last_pushed_at: null,
+    last_backup_at: null,
+    status: "idle",
+    last_error: null,
+    updated_at: now,
+  };
+}
+
+export function updateSyncState(
+  userId: string,
+  patch: Partial<Omit<SyncStateRow, "user_id">>
+): SyncStateRow {
+  getSyncState(userId);
+  const sets: string[] = [];
+  const params: any[] = [];
+  for (const key of [
+    "last_pulled_at",
+    "last_pushed_at",
+    "last_backup_at",
+    "status",
+    "last_error",
+  ] as const) {
+    if (patch[key] !== undefined) {
+      sets.push(`${key} = ?`);
+      params.push(patch[key]);
+    }
+  }
+  sets.push("updated_at = ?");
+  params.push(nowISO());
+  params.push(userId);
+  db.prepare(`UPDATE sync_state SET ${sets.join(", ")} WHERE user_id = ?`).run(...params);
+  return getSyncState(userId);
+}
+
+/** Seed outbox with every local row for a first full backup/push. */
+export function enqueueFullSnapshot(userId: string): number {
+  let count = 0;
+  for (const table of SYNCABLE_TABLES) {
+    if (!syncTableExists(table)) continue;
+    let rows: { id: string }[] = [];
+    try {
+      if (table === "shop_settings") {
+        rows = db
+          .prepare("SELECT id FROM shop_settings WHERE user_id = ?")
+          .all(userId) as { id: string }[];
+      } else if (table === "profiles") {
+        rows = db
+          .prepare("SELECT id FROM profiles WHERE id = ?")
+          .all(userId) as { id: string }[];
+      } else if (table === "shops") {
+        const profile = db
+          .prepare("SELECT shop_id FROM profiles WHERE id = ?")
+          .get(userId) as { shop_id?: string } | undefined;
+        if (profile?.shop_id) {
+          rows = db
+            .prepare("SELECT id FROM shops WHERE id = ? OR created_by = ?")
+            .all(profile.shop_id, userId) as { id: string }[];
+        } else {
+          rows = db
+            .prepare("SELECT id FROM shops WHERE created_by = ?")
+            .all(userId) as { id: string }[];
+        }
+      } else {
+        rows = db
+          .prepare(`SELECT id FROM ${table} WHERE created_by = ?`)
+          .all(userId) as { id: string }[];
+      }
+    } catch {
+      continue;
+    }
+    for (const row of rows) {
+      enqueueSync(userId, table, row.id, "upsert");
+      count++;
+    }
+  }
+  return count;
+}
+
+export function getSyncStatusPayload(userId: string): {
+  status: SyncStatus;
+  lastBackupAt: string | null;
+  lastPulledAt: string | null;
+  lastPushedAt: string | null;
+  pendingChanges: number;
+  lastError: string | null;
+  tables: string[];
+} {
+  const state = getSyncState(userId);
+  return {
+    status: state.status,
+    lastBackupAt: state.last_backup_at,
+    lastPulledAt: state.last_pulled_at,
+    lastPushedAt: state.last_pushed_at,
+    pendingChanges: getPendingCount(userId),
+    lastError: state.last_error,
+    tables: [...SYNCABLE_TABLES],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// PAYMENTS / EXPENSES (sync-ready; UI can adopt later)
+// ---------------------------------------------------------------------------
+export function createPayment(data: {
+  id?: string; shop_id?: string; order_id?: string; amount: number;
+  method?: string; notes?: string; created_by: string; updated_by?: string;
+}): any {
+  const id = data.id || uuidv4();
+  const now = nowISO();
+  const shopId = ensureShop(data.shop_id, data.created_by);
+  db.prepare(`
+    INSERT INTO payments (id, shop_id, order_id, amount, method, notes, created_by, updated_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id, shopId, data.order_id || null, data.amount || 0,
+    data.method || "", data.notes || "",
+    data.created_by, data.updated_by || data.created_by, now, now
+  );
+  enqueueSync(data.created_by, "payments", id, "upsert");
+  return db.prepare("SELECT * FROM payments WHERE id = ?").get(id);
+}
+
+export function deletePayment(id: string, createdBy: string): boolean {
+  const ok = db.prepare("DELETE FROM payments WHERE id = ? AND created_by = ?").run(id, createdBy).changes > 0;
+  if (ok) enqueueSync(createdBy, "payments", id, "delete");
+  return ok;
+}
+
+export function createExpense(data: {
+  id?: string; shop_id?: string; category?: string; description?: string;
+  amount: number; expense_date?: string; created_by: string; updated_by?: string;
+}): any {
+  const id = data.id || uuidv4();
+  const now = nowISO();
+  const shopId = ensureShop(data.shop_id, data.created_by);
+  db.prepare(`
+    INSERT INTO expenses (id, shop_id, category, description, amount, expense_date, created_by, updated_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id, shopId, data.category || "", data.description || "",
+    data.amount || 0, data.expense_date || null,
+    data.created_by, data.updated_by || data.created_by, now, now
+  );
+  enqueueSync(data.created_by, "expenses", id, "upsert");
+  return db.prepare("SELECT * FROM expenses WHERE id = ?").get(id);
+}
+
+export function deleteExpense(id: string, createdBy: string): boolean {
+  const ok = db.prepare("DELETE FROM expenses WHERE id = ? AND created_by = ?").run(id, createdBy).changes > 0;
+  if (ok) enqueueSync(createdBy, "expenses", id, "delete");
+  return ok;
+}
+
+// ---------------------------------------------------------------------------
 // BACKUP / RESTORE HELPERS
 // ---------------------------------------------------------------------------
 export function exportBackup(createdBy: string): Record<string, any[]> {
@@ -1304,6 +1738,8 @@ export function exportBackup(createdBy: string): Record<string, any[]> {
     customers: db.prepare("SELECT * FROM customers WHERE created_by = ?").all(createdBy),
     measurements: db.prepare("SELECT * FROM measurements WHERE created_by = ?").all(createdBy),
     orders: db.prepare("SELECT * FROM orders WHERE created_by = ?").all(createdBy),
+    payments: db.prepare("SELECT * FROM payments WHERE created_by = ?").all(createdBy),
+    expenses: db.prepare("SELECT * FROM expenses WHERE created_by = ?").all(createdBy),
     shop_settings: db.prepare("SELECT * FROM shop_settings WHERE user_id = ? OR key LIKE ?").all(createdBy, `${createdBy}:%`),
     garment_types: db.prepare("SELECT * FROM garment_types WHERE created_by = ?").all(createdBy),
     styling_categories: db.prepare("SELECT * FROM styling_categories WHERE created_by = ?").all(createdBy),
@@ -1320,6 +1756,8 @@ export function importBackup(data: Record<string, any[]>, targetUserId: string):
     "customers",
     "measurements",
     "orders",
+    "payments",
+    "expenses",
     "shop_settings",
     "garment_types",
     "styling_categories",
@@ -1331,6 +1769,8 @@ export function importBackup(data: Record<string, any[]>, targetUserId: string):
     "garment_types",
     "styling_categories",
     "orders",
+    "payments",
+    "expenses",
     "shop_settings",
   ];
 
@@ -1340,6 +1780,8 @@ export function importBackup(data: Record<string, any[]>, targetUserId: string):
 
   const transaction = db.transaction(() => {
     // Child tables first so FK cleanup succeeds
+    db.prepare("DELETE FROM payments WHERE created_by = ?").run(targetUserId);
+    db.prepare("DELETE FROM expenses WHERE created_by = ?").run(targetUserId);
     db.prepare("DELETE FROM orders WHERE created_by = ?").run(targetUserId);
     db.prepare("DELETE FROM measurements WHERE created_by = ?").run(targetUserId);
     db.prepare("DELETE FROM customers WHERE created_by = ?").run(targetUserId);
@@ -1382,6 +1824,12 @@ export function importBackup(data: Record<string, any[]>, targetUserId: string):
   });
 
   transaction();
+  // Local restore is source of truth — queue a full cloud push for next online sync.
+  try {
+    enqueueFullSnapshot(targetUserId);
+  } catch {
+    /* sync optional */
+  }
   return { imported };
 }
 

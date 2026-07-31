@@ -1,6 +1,7 @@
 /**
- * Supabase Auth client — authentication only.
- * No Supabase database, RLS, or storage is used for application data.
+ * Supabase client — Auth (sign-in) plus optional cloud backup/sync.
+ * Business data is always written to local SQLite first; the server sync
+ * engine mirrors it to Supabase DB/Storage when online.
  */
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';

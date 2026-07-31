@@ -18,6 +18,7 @@ import { localDataStore } from './lib/localDataStore';
 import { useLocalData } from './lib/useLocalData';
 import { isEditableTarget, isMod } from './lib/keyboard';
 import ShortcutsCheatsheet from './components/ui/ShortcutsCheatsheet';
+import { startCloudSyncAutoRunner } from './lib/cloudSync';
 
 function AuthWrapper() {
   const { user, token, isLoading, signOut, needsShopSetup, isPasswordRecovery } = useAuth();
@@ -40,6 +41,12 @@ function AuthWrapper() {
     // Clear legacy persisted Owner flag from older builds
     localStorage.removeItem('tailor_active_role');
   }, []);
+
+  // Background cloud sync: SQLite first, then Supabase when online.
+  useEffect(() => {
+    if (!token || !user) return;
+    return startCloudSyncAutoRunner(() => token);
+  }, [token, user]);
 
   const switchToOwner = () => {
     if (!token) return;

@@ -14,6 +14,7 @@ const ALLOWED = new Set([
   'VITE_SUPABASE_URL',
   'VITE_SUPABASE_ANON_KEY',
   'SUPABASE_URL',
+  'SUPABASE_ANON_KEY',
   'SUPABASE_JWT_SECRET',
 ]);
 
@@ -44,9 +45,12 @@ if (!fs.existsSync(SRC)) {
 
 const env = parseEnv(fs.readFileSync(SRC, 'utf8'));
 
-// Prefer explicit SUPABASE_URL; otherwise mirror VITE URL for the local server.
+// Prefer explicit SUPABASE_*; otherwise mirror VITE_* for the local server.
 if (!env.SUPABASE_URL && env.VITE_SUPABASE_URL) {
   env.SUPABASE_URL = env.VITE_SUPABASE_URL;
+}
+if (!env.SUPABASE_ANON_KEY && env.VITE_SUPABASE_ANON_KEY) {
+  env.SUPABASE_ANON_KEY = env.VITE_SUPABASE_ANON_KEY;
 }
 
 const missing = [];

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Database, Calendar, Upload, Shield, Printer, ListTodo, Sliders, ArrowUp, FolderOpen } from 'lucide-react';
+import { Database, Calendar, Upload, Shield, Printer, ListTodo, Sliders, ArrowUp, FolderOpen, Cloud } from 'lucide-react';
 import { GarmentType } from '../types';
 import GarmentConfiguration from './GarmentConfiguration';
 import DataImport from './DataImport';
 import ShopProfile from './admin/ShopProfile';
 import PrintSettings from './admin/PrintSettings';
 import PipelineSettings from './admin/PipelineSettings';
+import CloudBackup from './admin/CloudBackup';
 import { localDataStore } from '../lib/localDataStore';
 
 interface OwnerDashboardProps {
@@ -15,7 +16,7 @@ interface OwnerDashboardProps {
 }
 
 export default function OwnerDashboard({ token, onSettingsUpdated, onOwnerModeRequired }: OwnerDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'ShopProfile' | 'Documents' | 'Pipeline' | 'GarmentTypes' | 'Backup' | 'Import'>('ShopProfile');
+  const [activeTab, setActiveTab] = useState<'ShopProfile' | 'Documents' | 'Pipeline' | 'GarmentTypes' | 'Backup' | 'CloudBackup' | 'Import'>('ShopProfile');
 
   const [archiveCutoff, setArchiveCutoff] = useState('');
   const [archiveSuccess, setArchiveSuccess] = useState<string | null>(null);
@@ -216,6 +217,7 @@ export default function OwnerDashboard({ token, onSettingsUpdated, onOwnerModeRe
     { id: 'Pipeline' as const, label: 'Order stages', icon: ListTodo },
     { id: 'GarmentTypes' as const, label: 'Clothes types', icon: Sliders },
     { id: 'Backup' as const, label: 'Backup', icon: Database },
+    { id: 'CloudBackup' as const, label: 'Cloud backup', icon: Cloud },
     { id: 'Import' as const, label: 'Import customers', icon: Upload },
   ];
 
@@ -265,6 +267,10 @@ export default function OwnerDashboard({ token, onSettingsUpdated, onOwnerModeRe
           <div className="p-3 animate-fade-in">
             <DataImport token={token} garmentTypes={garmentTypes} onComplete={() => setActiveTab('ShopProfile')} />
           </div>
+        )}
+
+        {activeTab === 'CloudBackup' && (
+          <CloudBackup token={token} onOwnerModeRequired={onOwnerModeRequired} />
         )}
 
         {activeTab === 'Backup' && (

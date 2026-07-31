@@ -1,7 +1,8 @@
 /**
- * Authentication API — Supabase Auth only.
- * Business data stays in the local SQLite database via /api/*.
+ * Authentication API — Supabase Auth for identity.
+ * Business data stays in the local SQLite database via /api/* (source of truth).
  * After online sign-in, a local hddev_ device session keeps /api working offline.
+ * Cloud backup/sync uses the Supabase session separately when online.
  */
 
 import { getAuthRedirectUrl, getSupabase, isSupabaseConfigured } from './supabaseClient';

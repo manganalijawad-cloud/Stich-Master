@@ -1,6 +1,6 @@
 # Hello Darzi Desktop
 
-Windows desktop app for tailor shops. Business data stays in local SQLite. Supabase is used for Auth only.
+Windows desktop app for tailor shops. Business data stays in local SQLite (source of truth). Supabase is used for Auth, optional cloud backup/sync, and Storage.
 
 ## Deliver to users
 
@@ -59,6 +59,7 @@ The `Build and Release` workflow builds the NSIS installer and publishes it to G
 - **First sign-in needs internet.** After that, a local device session (`hddev_…`, ~90-day sliding) keeps the shop usable without network.
 - **Owner unlock** still uses the local password verifier (not cloud).
 - **Daily auto-backups** write restore-compatible JSON under `%AppData%\Hello Darzi\data\backups\` (last 7 kept). Manual download/restore remains in Owner → Backup.
+- **Cloud backup** (Owner → Cloud backup) mirrors SQLite to Supabase when online. Writes always hit SQLite first; pending changes sync on reconnect (last-write-wins on `updated_at`). Apply `supabase/migrations/20260731000000_cloud_sync.sql` once per project.
 - Accounts stay **invite-only**; password help stays **WhatsApp**; **one PC / one shop account**.
 
 ### Notes

@@ -17,6 +17,7 @@ import {
 import * as db from "./db";
 import { isSupabaseAuthConfigured, verifySupabaseAccessToken } from "./auth/supabaseJwt";
 import { startBackupScheduler, getAutoBackupsDir } from "./backupScheduler";
+import { isCloudSyncConfigured, runCloudSync, markSyncOffline } from "./sync";
 
 // Load .env from packaged resources, repo root (dev), and cwd.
 // Electron main process usually injects Auth env first; this is a fallback.
@@ -1416,6 +1417,99 @@ app.post("/api/backup", requireAuth, requireRole(["Owner"]), requireOwnerMode, a
     return res.json(backup);
   } catch (err: any) {
     return res.status(500).json({ error: "Failed to download database backup: " + err.message });
+  }
+});
+
+// -------------------------------------------------------------------------
+// CLOUD BACKUP / SYNC (Supabase — SQLite remains source of truth)
+// -------------------------------------------------------------------------
+function extractCloudAccessToken(req: AuthenticatedRequest): string | null {
+  const header = req.headers["x-supabase-access-token"];
+  const fromHeader = Array.isArray(header) ? header[0] : header;
+  if (fromHeader && !db.isDeviceSessionToken(fromHeader)) return fromHeader;
+  if (req.token && !db.isDeviceSessionToken(req.token)) return req.token;
+  return null;
+}
+
+/** Sync status for Cloud Backup page (works offline — reads local outbox/state). */
+app.get("/api/sync/status", requireAuth, requireRole(["Owner"]), (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const payload = db.getSyncStatusPayload(req.user!.id);
+    return res.json({
+      ...payload,
+      configured: isCloudSyncConfigured(),
+      onlineCapable: Boolean(extractCloudAccessToken(req)),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || "Failed to read sync status." });
+  }
+});
+
+/**
+ * Push pending SQLite changes to Supabase, then pull remote (LWW on updated_at).
+ * Requires a live Supabase access token (Bearer JWT or X-Supabase-Access-Token).
+ */
+app.post("/api/sync/run", requireAuth, requireRole(["Owner"]), async (req: AuthenticatedRequest, res: Response) => {
+  const accessToken = extractCloudAccessToken(req);
+  if (!accessToken) {
+    markSyncOffline(req.user!.id);
+    return res.status(401).json({
+      error: "Cloud sync requires an online Supabase session. Reconnect to the internet and sign in again.",
+      ...db.getSyncStatusPayload(req.user!.id),
+      configured: isCloudSyncConfigured(),
+    });
+  }
+
+  // Verify JWT still valid (also refreshes JWKS cache when online)
+  try {
+    const claims = await verifySupabaseAccessToken(accessToken);
+    if (!claims?.sub) {
+      markSyncOffline(req.user!.id);
+      return res.status(401).json({
+        error: "Supabase session expired. Sign in again while online.",
+        ...db.getSyncStatusPayload(req.user!.id),
+      });
+    }
+    if (claims.sub !== req.user!.id) {
+      return res.status(403).json({ error: "Cloud session does not match the signed-in account." });
+    }
+  } catch (err: any) {
+    markSyncOffline(req.user!.id);
+    return res.status(401).json({
+      error: err?.message || "Supabase session expired. Sign in again while online.",
+      ...db.getSyncStatusPayload(req.user!.id),
+    });
+  }
+
+  const forceFullPush = Boolean(req.body?.forceFullPush);
+  try {
+    const result = await runCloudSync(req.user!.id, accessToken, { forceFullPush });
+    if (result.ok) {
+      db.logAction("CLOUD_SYNC", req.user!.id, req.user!.email, req.user!.shop_id, {
+        pushed: result.pushed,
+        pulled: result.pulled,
+        forceFullPush,
+      });
+    }
+    return res.status(result.ok ? 200 : 500).json({
+      ...result,
+      configured: isCloudSyncConfigured(),
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      error: err?.message || "Cloud sync failed.",
+      ...db.getSyncStatusPayload(req.user!.id),
+    });
+  }
+});
+
+/** Mark sync state offline (client lost connectivity). */
+app.post("/api/sync/offline", requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  try {
+    markSyncOffline(req.user!.id);
+    return res.json(db.getSyncStatusPayload(req.user!.id));
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
   }
 });
 
