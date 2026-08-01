@@ -1892,7 +1892,7 @@ async function startServer(preferredPort?: number): Promise<number> {
       );
       const vite = await viteModule.createServer({
         configFile: viteConfigPath,
-        server: { middlewareMode: true },
+        server: { middlewareMode: true, allowedHosts: true },
         appType: "spa",
       });
       app.use(vite.middlewares);
