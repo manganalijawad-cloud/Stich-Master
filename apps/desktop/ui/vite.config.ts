@@ -20,6 +20,8 @@ export default defineConfig(() => {
       },
     },
     server: {
+      // Allow cloud-agent / tunnel preview hosts (trycloudflare, localhost, etc.)
+      allowedHosts: true,
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
