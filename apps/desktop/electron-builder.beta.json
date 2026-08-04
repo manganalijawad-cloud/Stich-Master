@@ -1,0 +1,76 @@
+{
+  "appId": "com.hellodarzi.app.beta",
+  "productName": "Hello Darzi Beta",
+  "electronVersion": "43.1.1",
+  "directories": {
+    "output": "../../out/desktop-beta"
+  },
+  "files": [
+    "electron/**/*"
+  ],
+  "asarUnpack": [
+    "**/node_modules/better-sqlite3/**/*",
+    "**/node_modules/bindings/**/*",
+    "**/node_modules/file-uri-to-path/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": "../../dist",
+      "to": "dist",
+      "filter": [
+        "**/*"
+      ]
+    },
+    {
+      "from": "../../config/desktop.env",
+      "to": ".env"
+    },
+    {
+      "from": "../../node_modules/bindings",
+      "to": "dist/node_modules/bindings",
+      "filter": [
+        "**/*"
+      ]
+    },
+    {
+      "from": "../../node_modules/file-uri-to-path",
+      "to": "dist/node_modules/file-uri-to-path",
+      "filter": [
+        "**/*"
+      ]
+    }
+  ],
+  "win": {
+    "icon": "ui/public/icon.ico",
+    "artifactName": "Hello-Darzi-Beta-Setup-${version}.${ext}",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ]
+  },
+  "protocols": {
+    "name": "Hello Darzi Beta",
+    "schemes": [
+      "hellodarzi-beta"
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": "always",
+    "createStartMenuShortcut": true,
+    "shortcutName": "Hello Darzi Beta",
+    "runAfterFinish": true
+  },
+  "publish": {
+    "provider": "github",
+    "owner": "manganalijawad-cloud",
+    "repo": "Stich-Master",
+    "releaseType": "prerelease"
+  }
+}

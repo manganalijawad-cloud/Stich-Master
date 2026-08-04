@@ -29,6 +29,23 @@ Output:
 - Unpacked smoke path: `out/desktop/win-unpacked/Hello Darzi.exe`
 - Update metadata (when publishing): `out/desktop/latest.yml`
 
+### Build a beta installer (safe pre-release testing)
+
+```bash
+npm run clean
+npm run electron:build:beta
+```
+
+Output:
+
+- Installer: `out/desktop-beta/Hello-Darzi-Beta-Setup-<version>-beta.<stamp>.exe`
+- Unpacked app: `out/desktop-beta/win-unpacked/Hello Darzi Beta.exe`
+
+Notes:
+
+- Beta uses a separate app ID (`com.hellodarzi.app.beta`), so it can be installed alongside production.
+- Optional override: `BETA_VERSION=1.0.4-beta.1 npm run electron:build:beta`
+
 ### Publish a release (users get updates via GitHub Releases)
 
 1. Confirm **every** `package.json` version matches (root + `apps/desktop` are required by CI).
