@@ -3,6 +3,7 @@
  * Business data stays in the local SQLite database via /api/* (source of truth).
  * After online sign-in, a local hddev_ device session keeps /api working offline.
  * Cloud backup/sync uses the Supabase session separately when online.
+ * New devices restore the user’s cloud data into SQLite during ensure-profile.
  */
 
 import { getAuthRedirectUrl, getSupabase, isSupabaseConfigured } from './supabaseClient';

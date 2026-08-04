@@ -25,7 +25,8 @@ Or paste `migrations/20260731000000_cloud_sync.sql` into **SQL Editor → Run**.
 
 - Writes always go to local SQLite first.
 - Pending changes are queued in `sync_outbox`.
-- When online with a valid session, the desktop app pushes then pulls.
+- **New device (empty local DB for this Auth user):** on sign-in, `ensure-profile` full-pulls all cloud rows into SQLite before shop setup — same shop/customers/orders, no duplicates.
+- **Existing device:** when online with a valid session, the app pushes the outbox then pulls rows with `updated_at` newer than `last_pulled_at`.
 - Conflicts use **last write wins** on `updated_at`.
 - Owner → **Cloud backup** shows status, pending count, last backup, and **Backup Now**.
 

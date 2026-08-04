@@ -143,7 +143,8 @@ export default function CloudBackup({ token, onOwnerModeRequired }: CloudBackupP
             </h3>
             <p className="text-3xs text-slate-500 mt-0.5">
               This PC’s SQLite database is the source of truth. Changes save locally first, then
-              sync to Supabase in the background when you are online.
+              sync both ways with Supabase when you are online — including updates from other
+              devices signed in to the same account.
             </p>
           </div>
         </div>

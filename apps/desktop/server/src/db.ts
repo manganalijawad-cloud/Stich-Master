@@ -1606,6 +1606,58 @@ export function updateSyncState(
   return getSyncState(userId);
 }
 
+/**
+ * True when this Auth user has no local profile and no owned business rows.
+ * Used to detect a new device / fresh SQLite so we can full-pull from Supabase
+ * before creating a duplicate shop.
+ */
+export function isLocalUserDataEmpty(userId: string): boolean {
+  if (!userId || !db) return true;
+  if (getProfile(userId)) return false;
+
+  const ownedTables = [
+    "shops",
+    "customers",
+    "measurements",
+    "orders",
+    "payments",
+    "expenses",
+    "garment_types",
+    "styling_categories",
+  ] as const;
+
+  for (const table of ownedTables) {
+    if (!syncTableExists(table)) continue;
+    try {
+      const row = db
+        .prepare(`SELECT 1 AS ok FROM ${table} WHERE created_by = ? LIMIT 1`)
+        .get(userId) as { ok: number } | undefined;
+      if (row) return false;
+    } catch {
+      /* table missing columns on very old DBs — ignore */
+    }
+  }
+
+  if (syncTableExists("shop_settings")) {
+    try {
+      const row = db
+        .prepare("SELECT 1 AS ok FROM shop_settings WHERE user_id = ? LIMIT 1")
+        .get(userId) as { ok: number } | undefined;
+      if (row) return false;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return true;
+}
+
+/** Drop pending outbox rows for a user (e.g. after a clean cloud restore). */
+export function clearOutboxForUser(userId: string): void {
+  if (!userId || !db || !syncTableExists("sync_outbox")) return;
+  db.prepare("DELETE FROM sync_outbox WHERE user_id = ?").run(userId);
+}
+
 /** Seed outbox with every local row for a first full backup/push. */
 export function enqueueFullSnapshot(userId: string): number {
   let count = 0;

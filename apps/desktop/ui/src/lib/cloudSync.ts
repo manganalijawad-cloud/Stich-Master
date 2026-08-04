@@ -1,7 +1,10 @@
 /**
- * Client helpers for offline-first cloud backup/sync.
+ * Client helpers for offline-first multi-device cloud backup/sync.
  * SQLite (via /api) is always written first; this module only triggers
  * background sync when a live Supabase session + network are available.
+ *
+ * New devices restore via ensure-profile (server full-pull). Ongoing sync
+ * pushes local outbox changes and pulls other-device updates by updated_at.
  */
 
 import { getSupabase, isSupabaseConfigured } from './supabaseClient';
@@ -24,6 +27,7 @@ export interface CloudSyncStatusPayload {
   pulled?: number;
   ok?: boolean;
   error?: string;
+  initialRestore?: boolean;
 }
 
 let syncInFlight: Promise<CloudSyncStatusPayload | null> | null = null;
@@ -102,8 +106,8 @@ export async function runCloudSync(
     if (!res.ok) {
       throw new Error(data.error || 'Cloud sync failed');
     }
-    // Apply pulled cloud rows into the in-memory UI cache
-    if ((data.pulled ?? 0) > 0) {
+    // Apply pulled cloud rows into the in-memory UI cache (other-device changes)
+    if ((data.pulled ?? 0) > 0 || data.initialRestore) {
       try {
         await localDataStore.hydrate(apiToken, { force: true });
       } catch {
@@ -118,7 +122,7 @@ export async function runCloudSync(
   return syncInFlight;
 }
 
-/** Start listening for reconnect → auto-sync pending changes. */
+/** Start listening for reconnect → push local changes and pull other-device updates. */
 export function startCloudSyncAutoRunner(getApiToken: () => string | null): () => void {
   let stopped = false;
 
@@ -141,12 +145,12 @@ export function startCloudSyncAutoRunner(getApiToken: () => string | null): () =
   // Initial attempt shortly after boot (covers already-online sessions)
   const bootTimer = setTimeout(trySync, 2500);
 
-  // Periodic drain while online (pending outbox)
+  // Periodic bi-directional sync while online:
+  // - push local outbox changes
+  // - pull rows changed on other devices (updated_at > last_pulled_at)
   const interval = setInterval(() => {
     if (!isBrowserOnline()) return;
-    void fetchSyncStatus(getApiToken() || '').then((s) => {
-      if (s.pendingChanges > 0) trySync();
-    }).catch(() => {});
+    trySync();
   }, 5 * 60 * 1000);
 
   return () => {

@@ -1,10 +1,12 @@
 /**
- * Offline-first cloud sync engine.
+ * Offline-first cloud sync engine (multi-device).
  *
  * Flow:
  *  1. All writes go to SQLite first (callers enqueue outbox entries).
- *  2. When online + Supabase JWT available, push outbox then pull remote.
- *  3. Conflicts resolve with Last-Write-Wins on updated_at.
+ *  2. New / empty device: full-pull from Supabase before any local shop creation.
+ *  3. Existing device: push outbox, then pull remote diffs via updated_at.
+ *  4. Conflicts resolve with Last-Write-Wins on updated_at.
+ *  5. Upserts use stable primary keys → no duplicate records across devices.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -14,6 +16,8 @@ import {
   enqueueFullSnapshot,
   getPendingCount,
   getSyncState,
+  isLocalUserDataEmpty,
+  clearOutboxForUser,
   listOutbox,
   markOutboxError,
   removeOutbox,
@@ -34,8 +38,12 @@ export interface SyncResult {
   pulled: number;
   pendingChanges: number;
   lastBackupAt: string | null;
+  /** True when this run was a full download onto an empty local DB. */
+  initialRestore?: boolean;
   error?: string;
 }
+
+const PULL_PAGE_SIZE = 1000;
 
 function parseTs(value: string | null | undefined): number {
   if (!value) return 0;
@@ -135,6 +143,15 @@ function upsertLocal(table: string, row: Record<string, any>): void {
   const cols = localColumns(table);
   const keys = Object.keys(row).filter((k) => cols.has(k) && k !== "sync_status");
   if (!keys.length || !row.id) return;
+
+  // Avoid UNIQUE(key, user_id) collisions when a remote row reuses a setting key
+  // with a different primary key than a stale local row.
+  if (table === "shop_settings" && row.key && row.user_id) {
+    db.prepare(
+      "DELETE FROM shop_settings WHERE key = ? AND user_id = ? AND id != ?"
+    ).run(row.key, row.user_id, row.id);
+  }
+
   const placeholders = keys.map(() => "?").join(", ");
   const vals = keys.map((k) => row[k] ?? null);
   db.prepare(
@@ -218,14 +235,14 @@ async function pushOutboxItem(
   removeOutbox(item.id);
 }
 
-async function pullTable(
+async function fetchRemotePage(
   client: SupabaseClient,
   userId: string,
   def: SyncTableDef,
-  since: string | null
-): Promise<number> {
-  if (def.optionalLocal && !localTableExists(def.name)) return 0;
-
+  since: string | null,
+  from: number,
+  to: number
+): Promise<Record<string, any>[]> {
   let query = client.from(def.name).select("*");
   if (def.ownerColumn === "created_by") query = query.eq("created_by", userId);
   else if (def.ownerColumn === "user_id") query = query.eq("user_id", userId);
@@ -235,37 +252,82 @@ async function pullTable(
     query = query.gt("updated_at", since);
   }
 
+  // Stable order required for range pagination
+  query = query.order("id", { ascending: true }).range(from, to);
+
   const { data, error } = await query;
   if (error) throw new Error(`Pull ${def.name}: ${error.message}`);
-  if (!data?.length) return 0;
+  return (data || []) as Record<string, any>[];
+}
+
+async function pullTable(
+  client: SupabaseClient,
+  userId: string,
+  def: SyncTableDef,
+  since: string | null
+): Promise<number> {
+  if (def.optionalLocal && !localTableExists(def.name)) return 0;
 
   let applied = 0;
-  for (const remote of data) {
-    const local = getLocalRow(def.name, remote.id);
-    const remoteTs = parseTs(remote.updated_at);
+  let offset = 0;
 
-    if (remote.deleted_at) {
-      if (!local || remoteTs >= parseTs(local.updated_at)) {
-        deleteLocal(def.name, remote.id);
-        applied++;
+  for (;;) {
+    const page = await fetchRemotePage(
+      client,
+      userId,
+      def,
+      since,
+      offset,
+      offset + PULL_PAGE_SIZE - 1
+    );
+    if (!page.length) break;
+
+    for (const remote of page) {
+      const local = getLocalRow(def.name, remote.id);
+      const remoteTs = parseTs(remote.updated_at);
+
+      if (remote.deleted_at) {
+        if (!local || remoteTs >= parseTs(local.updated_at)) {
+          deleteLocal(def.name, remote.id);
+          applied++;
+        }
+        continue;
       }
-      continue;
+
+      if (local && parseTs(local.updated_at) > remoteTs) {
+        // Local newer — keep local; outbox (if any) will push it later
+        continue;
+      }
+
+      const row = await toLocalRow(client, def, remote);
+      upsertLocal(def.name, row);
+      applied++;
     }
 
-    if (local && parseTs(local.updated_at) > remoteTs) {
-      // Local newer — keep local; ensure outbox has it
-      continue;
-    }
-
-    const row = await toLocalRow(client, def, remote);
-    upsertLocal(def.name, row);
-    applied++;
+    if (page.length < PULL_PAGE_SIZE) break;
+    offset += PULL_PAGE_SIZE;
   }
+
   return applied;
+}
+
+async function pullAllTables(
+  client: SupabaseClient,
+  userId: string,
+  since: string | null
+): Promise<number> {
+  let pulled = 0;
+  for (const def of SYNC_TABLES) {
+    pulled += await pullTable(client, userId, def, since);
+  }
+  return pulled;
 }
 
 /**
  * Run a full sync cycle for a user. Safe to call concurrently — uses syncing status lock.
+ *
+ * - Empty local DB for this user → download everything from Supabase (new device).
+ * - Existing local data → push outbox, then pull rows newer than last_pulled_at.
  */
 export async function runCloudSync(
   userId: string,
@@ -300,11 +362,46 @@ export async function runCloudSync(
 
   let pushed = 0;
   let pulled = 0;
+  let initialRestore = false;
 
   try {
     const client = createUserSupabaseClient(accessToken);
+    const localEmpty = isLocalUserDataEmpty(userId);
 
-    // First backup / explicit Backup Now seeds the full snapshot into the outbox.
+    // ------------------------------------------------------------------
+    // New device / empty SQLite for this Auth user: full download first.
+    // Never create a duplicate shop here — ensure-profile runs after this.
+    // ------------------------------------------------------------------
+    if (localEmpty && !options?.forceFullPush) {
+      initialRestore = true;
+      clearOutboxForUser(userId);
+      pulled = await pullAllTables(client, userId, null);
+
+      const now = nowISO();
+      // Cloud already holds the canonical copy — mark both sides current so the
+      // next cycle is incremental and does not re-seed a full snapshot push.
+      const state = updateSyncState(userId, {
+        status: "ok",
+        last_pushed_at: now,
+        last_pulled_at: now,
+        last_backup_at: now,
+        last_error: null,
+      });
+
+      return {
+        ok: true,
+        status: state.status,
+        pushed: 0,
+        pulled,
+        pendingChanges: getPendingCount(userId),
+        lastBackupAt: state.last_backup_at,
+        initialRestore: true,
+      };
+    }
+
+    // ------------------------------------------------------------------
+    // Existing local data: push pending changes, then pull diffs.
+    // ------------------------------------------------------------------
     if (options?.forceFullPush || !current.last_pushed_at) {
       enqueueFullSnapshot(userId);
     }
@@ -320,10 +417,10 @@ export async function runCloudSync(
       }
     }
 
+    // First pull on a device that already has local rows uses since=null (full
+    // merge with LWW). Later runs only fetch rows newer than last_pulled_at.
     const since = current.last_pulled_at;
-    for (const def of SYNC_TABLES) {
-      pulled += await pullTable(client, userId, def, since);
-    }
+    pulled = await pullAllTables(client, userId, since);
 
     const now = nowISO();
     const state = updateSyncState(userId, {
@@ -341,6 +438,7 @@ export async function runCloudSync(
       pulled,
       pendingChanges: getPendingCount(userId),
       lastBackupAt: state.last_backup_at,
+      initialRestore,
     };
   } catch (err: any) {
     const message = err?.message || String(err);
@@ -355,6 +453,7 @@ export async function runCloudSync(
       pulled,
       pendingChanges: getPendingCount(userId),
       lastBackupAt: state.last_backup_at,
+      initialRestore,
       error: message,
     };
   }

@@ -315,7 +315,7 @@ function isClaimableLegacyEmail(email: string | undefined | null): boolean {
  * After Supabase Auth succeeds, ensure a local profile/shop exists for business data.
  * Auth credentials never touch SQLite — only the identity → shop mapping.
  */
-app.post("/api/auth/ensure-profile", requireAuth, (req: AuthenticatedRequest, res: Response) => {
+app.post("/api/auth/ensure-profile", requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   const supabaseUserId = req.user!.id;
   const email = (req.user!.email || "").trim();
   const shopNameInput = typeof req.body?.shopName === "string" ? req.body.shopName.trim() : "";
@@ -339,6 +339,40 @@ app.post("/api/auth/ensure-profile", requireAuth, (req: AuthenticatedRequest, re
             db.rekeyProfileOwnership(legacyOwner.id, supabaseUserId, email || legacyOwner.email);
             profile = db.getProfile(supabaseUserId);
           }
+        }
+      }
+    }
+
+    // Multi-device: if this Auth user has no local profile yet, download their
+    // cloud mirror into SQLite before prompting for first-run shop setup.
+    // Prevents a second shop when signing in on a new PC.
+    if (!profile && isCloudSyncConfigured()) {
+      const accessToken = extractCloudAccessToken(req);
+      if (accessToken) {
+        try {
+          const restore = await runCloudSync(supabaseUserId, accessToken);
+          profile = db.getProfile(supabaseUserId);
+          if (profile) {
+            db.logAction("CLOUD_RESTORE", supabaseUserId, email, profile.shop_id, {
+              pulled: restore.pulled,
+              initialRestore: restore.initialRestore === true,
+            });
+          } else if (!restore.ok) {
+            // Do not create a new shop when cloud restore failed — that would
+            // fork the account into duplicate data on the next successful sync.
+            return res.status(503).json({
+              error:
+                restore.error ||
+                "Could not restore your shop data from the cloud. Check your connection and try again.",
+            });
+          }
+        } catch (err: any) {
+          console.warn("[sync] device restore error:", err?.message || err);
+          return res.status(503).json({
+            error:
+              err?.message ||
+              "Could not restore your shop data from the cloud. Check your connection and try again.",
+          });
         }
       }
     }
@@ -1489,6 +1523,7 @@ app.post("/api/sync/run", requireAuth, requireRole(["Owner"]), async (req: Authe
         pushed: result.pushed,
         pulled: result.pulled,
         forceFullPush,
+        initialRestore: result.initialRestore === true,
       });
     }
     return res.status(result.ok ? 200 : 500).json({

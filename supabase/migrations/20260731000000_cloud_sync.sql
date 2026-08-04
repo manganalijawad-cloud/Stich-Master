@@ -186,33 +186,44 @@ alter table public.shop_settings enable row level security;
 alter table public.garment_types enable row level security;
 alter table public.styling_categories enable row level security;
 
+-- Idempotent: safe to re-run after a partial apply
+drop policy if exists "shops_own" on public.shops;
 create policy "shops_own" on public.shops
   for all using (created_by = auth.uid()) with check (created_by = auth.uid());
 
+drop policy if exists "profiles_own" on public.profiles;
 create policy "profiles_own" on public.profiles
   for all using (id = auth.uid()) with check (id = auth.uid());
 
+drop policy if exists "customers_own" on public.customers;
 create policy "customers_own" on public.customers
   for all using (created_by = auth.uid()) with check (created_by = auth.uid());
 
+drop policy if exists "measurements_own" on public.measurements;
 create policy "measurements_own" on public.measurements
   for all using (created_by = auth.uid()) with check (created_by = auth.uid());
 
+drop policy if exists "orders_own" on public.orders;
 create policy "orders_own" on public.orders
   for all using (created_by = auth.uid()) with check (created_by = auth.uid());
 
+drop policy if exists "payments_own" on public.payments;
 create policy "payments_own" on public.payments
   for all using (created_by = auth.uid()) with check (created_by = auth.uid());
 
+drop policy if exists "expenses_own" on public.expenses;
 create policy "expenses_own" on public.expenses
   for all using (created_by = auth.uid()) with check (created_by = auth.uid());
 
+drop policy if exists "shop_settings_own" on public.shop_settings;
 create policy "shop_settings_own" on public.shop_settings
   for all using (user_id = auth.uid()) with check (user_id = auth.uid());
 
+drop policy if exists "garment_types_own" on public.garment_types;
 create policy "garment_types_own" on public.garment_types
   for all using (created_by = auth.uid()) with check (created_by = auth.uid());
 
+drop policy if exists "styling_categories_own" on public.styling_categories;
 create policy "styling_categories_own" on public.styling_categories
   for all using (created_by = auth.uid()) with check (created_by = auth.uid());
 
@@ -229,18 +240,22 @@ values (
 )
 on conflict (id) do nothing;
 
+drop policy if exists "shop_assets_select_own" on storage.objects;
 create policy "shop_assets_select_own"
   on storage.objects for select
   using (bucket_id = 'shop-assets' and (storage.foldername(name))[1] = auth.uid()::text);
 
+drop policy if exists "shop_assets_insert_own" on storage.objects;
 create policy "shop_assets_insert_own"
   on storage.objects for insert
   with check (bucket_id = 'shop-assets' and (storage.foldername(name))[1] = auth.uid()::text);
 
+drop policy if exists "shop_assets_update_own" on storage.objects;
 create policy "shop_assets_update_own"
   on storage.objects for update
   using (bucket_id = 'shop-assets' and (storage.foldername(name))[1] = auth.uid()::text);
 
+drop policy if exists "shop_assets_delete_own" on storage.objects;
 create policy "shop_assets_delete_own"
   on storage.objects for delete
   using (bucket_id = 'shop-assets' and (storage.foldername(name))[1] = auth.uid()::text);
